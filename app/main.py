@@ -1,25 +1,35 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from linebot.v3 import WebhookParser
-from linebot.v3.messaging import Configuration, ApiClient, MessagingApi
+from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingApi
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
 
 from app.config import CHANNEL_SECRET, CHANNEL_ACCESS_TOKEN
 from app.database import engine, Base, get_db
-
-# Import Handler ที่เราเพิ่งสร้าง
 from app.handlers.message_handler import handle_text_message
 
-Base.metadata.create_all(bind=engine)
+# NEW: The "lifespan" context manager is how FastAPI runs code BEFORE the server starts accepting requests
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # This block runs ONE TIME when you start uvicorn
+    async with engine.begin() as conn:
+        # We use create_all to ensure tables exist. 
+        # (Note: In a real production app, you should use Alembic for migrations instead of this)
+        await conn.run_sync(Base.metadata.create_all)
+        print("Database tables checked/created successfully!")
+    yield
+    # (Anything below the yield runs when the server is shutting down)
 
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 parser = WebhookParser(CHANNEL_SECRET)
 
+# Notice how the Dependency now asks for an AsyncSession
 @app.post("/callback")
-async def callback(request: Request, db: Session = Depends(get_db)):
+async def callback(request: Request, db: AsyncSession = Depends(get_db)):
     signature = request.headers.get('x-line-signature', '')
     body = await request.body()
     body_text = body.decode('utf-8')
@@ -29,13 +39,12 @@ async def callback(request: Request, db: Session = Depends(get_db)):
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
+    async with AsyncApiClient(configuration) as api_client:
+        line_bot_api = AsyncMessagingApi(api_client)
 
         for event in events:
-            # ตอนนี้ดักแค่ Text Message ก่อน
             if isinstance(event, MessageEvent) and isinstance(event.message, TextMessageContent):
-                # โยนให้ Handler จัดการต่อ
-                handle_text_message(event, db, line_bot_api)
+                # Because the handler now talks to the Async Database, we MUST use 'await' here
+                await handle_text_message(event, db, line_bot_api)
 
     return 'OK'

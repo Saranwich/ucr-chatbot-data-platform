@@ -1,56 +1,47 @@
-from sqlalchemy.orm import Session
-from linebot.v3.messaging import MessagingApi, ReplyMessageRequest, TextMessage
-from linebot.v3.webhooks import MessageEvent
-import app.models as models
+from linebot.v3.messaging import (
+    ReplyMessageRequest,
+    TextMessage,
+    QuickReply,
+    QuickReplyItem,
+    MessageAction,
+    LocationAction,
+    CameraAction
+)
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
-def handle_text_message(event: MessageEvent, db: Session, line_bot_api: MessagingApi):
-    user_id = event.source.user_id
-    user_text = event.message.text
+from app.models import User, SurveySession
+from app.utils.survey_loader import survey_manager
+from app.services.survey_service import process_survey_answer, start_survey_session
 
-    # --- สเตป 1: เช็ค User ---
-    user = db.query(models.User).filter(models.User.lineuser_id == user_id).first()
-    if not user:
-        user = models.User(lineuser_id=user_id, display_name="Unknown")
-        db.add(user)
-        db.commit()
+SURVEY_TRIGGER_MAP = {
+    "เริ่มทำแบบสำรวจ": "v1"
+    # อนาคตถ้ามีโปรเจกต์ใหม่ แค่มาเพิ่มตรงนี้ เช่น "รายงานน้ำท่วม": "flood_v2"
+}
 
-    # --- สเตป 2: เซฟคำตอบ (ถ้ามีคำถามค้างอยู่) ---
-    pending_log = db.query(models.AskLog).filter(
-        models.AskLog.lineuser_id == user_id,
-        models.AskLog.is_answered == False
-    ).first()
+async def handle_text_message(event, line_bot_api, db: AsyncSession):
+    text = event.message.text.strip()
+    
+    # อ่านแล้วเข้าใจทันที: "ถ้าข้อความนี้อยู่ในแผนผังจุดชนวนแบบสำรวจ..."
+    if text in SURVEY_TRIGGER_MAP:
+        target_version = SURVEY_TRIGGER_MAP[text]
+        await start_survey_session(event.source.user_id, target_version, event.reply_token, line_bot_api, db)
+        return
 
-    if pending_log:
-        new_response = models.Response(
-            lineuser_id=user_id,
-            question_id=pending_log.question_id,
-            response_type="text",
-            response_text=user_text
-        )
-        db.add(new_response)
-        pending_log.is_answered = True
-        db.commit()
+    # ถ้าไม่ใช่ แปลว่าเป็นการตอบคำถามข้อความอิสระ
+    await process_survey_answer(event.source.user_id, text, event.reply_token, line_bot_api, db)
 
-    # --- สเตป 3: หาคำถามข้อถัดไป ---
-    answered_questions = db.query(models.AskLog.question_id).filter(models.AskLog.lineuser_id == user_id)
-    next_question = db.query(models.Question).filter(
-        models.Question.is_active == True,
-        ~models.Question.question_id.in_(answered_questions)
-    ).order_by(models.Question.question_id).first()
+async def handle_location_message(event, line_bot_api, db: AsyncSession):
 
-    # --- สเตป 4: เตรียมข้อความตอบกลับ ---
-    if next_question:
-        new_log = models.AskLog(lineuser_id=user_id, question_id=next_question.question_id)
-        db.add(new_log)
-        db.commit()
-        reply_text = next_question.question_text
-    else:
-        reply_text = "ขอบคุณที่ให้ข้อมูลครับ ตอนนี้ตอบครบทุกคำถามแล้ว! 🎉"
+    answer_data = {
+        "lat": event.message.latitude, 
+        "lng": event.message.longitude
+    }
+    # 2. โยนเข้าสมองกล (Service) ทันที
+    await process_survey_answer(event.source.user_id, answer_data, event.reply_token, line_bot_api, db)
 
-    # ยิงข้อความกลับ
-    line_bot_api.reply_message_with_http_info(
-        ReplyMessageRequest(
-            reply_token=event.reply_token,
-            messages=[TextMessage(text=reply_text)]
-        )
-    )
+async def handle_image_message(event, line_bot_api, db: AsyncSession):
+    # 1. แกะข้อมูลดิบ (LINE จะส่งเป็น message_id มาให้เราไปโหลดรูปอีกที)
+    answer_data = {"image_id": event.message.id}
+    # 2. โยนเข้าสมองกล
+    await process_survey_answer(event.source.user_id, answer_data, event.reply_token, line_bot_api, db)

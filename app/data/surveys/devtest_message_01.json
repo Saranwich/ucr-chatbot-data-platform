@@ -1,0 +1,76 @@
+{
+  "version": "v1",
+  "questions": [
+    {
+      "id": "q1_location",
+      "type": "location",
+      "text": "สวัสดีครับ! เริ่มต้นแบบสำรวจวันนี้ รบกวนแชร์พิกัดปัจจุบันให้หน่อยนะครับ 📍",
+      "options": [
+        {
+          "label": "📍 ส่งพิกัดตำแหน่ง",
+          "action_type": "location"
+        }
+      ]
+    },
+    {
+      "id": "q2_temperature",
+      "type": "quick_reply",
+      "text": "ขอบคุณครับ! วันนี้อากาศบริเวณนั้นเป็นยังไงบ้างครับ? 🌡️",
+      "options": [
+        {
+          "label": "ร้อนจัด 🥵",
+          "action_type": "message",
+          "value": "ร้อนจัด"
+        },
+        {
+          "label": "กำลังดี 😌",
+          "action_type": "message",
+          "value": "กำลังดี"
+        },
+        {
+          "label": "เย็นสบาย 🍃",
+          "action_type": "message",
+          "value": "เย็นสบาย"
+        }
+      ]
+    },
+    {
+      "id": "q3_noise",
+      "type": "quick_reply",
+      "text": "แล้วเรื่องระดับเสียงล่ะครับ ตอนนี้เสียงดังรบกวนไหม? 🔊",
+      "options": [
+        {
+          "label": "เงียบสงบ 🤫",
+          "action_type": "message",
+          "value": "เงียบสงบ"
+        },
+        {
+          "label": "มีเสียงปกติ 😐",
+          "action_type": "message",
+          "value": "ปกติ"
+        },
+        {
+          "label": "ดังน่ารำคาญ 🚧",
+          "action_type": "message",
+          "value": "ดังน่ารำคาญ"
+        }
+      ]
+    },
+    {
+      "id": "q4_trash",
+      "type": "image",
+      "text": "สุดท้ายนี้ มีขยะหรือปัญหาพื้นที่ตรงไหนอยากถ่ายรูปรายงานไหมครับ? (ถ้าไม่มีกดข้ามได้เลย) 📸",
+      "options": [
+        {
+          "label": "📸 เปิดกล้องถ่ายรูป",
+          "action_type": "camera"
+        },
+        {
+          "label": "⏭️ ข้าม",
+          "action_type": "message",
+          "value": "ข้าม"
+        }
+      ]
+    }
+  ]
+}

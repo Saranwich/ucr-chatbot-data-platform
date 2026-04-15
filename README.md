@@ -55,6 +55,25 @@ Before running the application, you must have the following set up:
 **PostgreSQL Database:**
 - Install and run a PostgreSQL server locally or use a cloud provider.
 - Create a new database for this project.
+- **Mandatory:** Enable the PostGIS extension in your new database. 
+
+  **For Linux (Ubuntu/Debian):**
+  Install the PostGIS package matching your PostgreSQL version (e.g., version 16):
+  ```bash
+  sudo apt install postgresql-16-postgis-3
+  ```
+
+  **For Windows:**
+  1. Open the **Application Stack Builder** (installed alongside PostgreSQL).
+  2. Select your PostgreSQL installation from the dropdown.
+  3. Expand the **Spatial Extensions** category and check **PostGIS**.
+  4. Follow the installation wizard.
+
+  **Finally, enable it in your database:**
+  Connect to your database via `psql` or pgAdmin and run:
+  ```sql
+  CREATE EXTENSION postgis;
+  ```
 - Have your database connection credentials ready (username, password, host, port, database name).
 
 ### 2. Clone the repository

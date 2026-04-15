@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, JSON
 from sqlalchemy.sql import func
 from geoalchemy2 import Geometry
 from app.database import Base
@@ -9,35 +9,46 @@ class User(Base):
     display_name = Column(String)
     created_at = Column(DateTime, server_default=func.now())
 
-class Question(Base):
-    __tablename__ = "questions"
-    question_id = Column(Integer, primary_key=True, autoincrement=True)
-    question_text = Column(String, nullable=False)
-    question_type = Column(String, nullable=False, default="text") 
-    options = Column(JSON, nullable=True) 
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, server_default=func.now())
-
-class AskLog(Base):
-    __tablename__ = "ask_logs"
-    log_id = Column(Integer, primary_key=True, autoincrement=True)
-    lineuser_id = Column(String, ForeignKey("users.lineuser_id"))
-    question_id = Column(Integer, ForeignKey("questions.question_id"))
-    asked_at = Column(DateTime, server_default=func.now())
-    is_answered = Column(Boolean, default=False)
-
-class Response(Base):
-    __tablename__ = "responses"
-    response_id = Column(Integer, primary_key=True, autoincrement=True)
-    lineuser_id = Column(String, ForeignKey("users.lineuser_id"))
-    question_id = Column(Integer, ForeignKey("questions.question_id"))
-    response_type = Column(String, nullable=False) 
-    response_text = Column(Text, nullable=True)
+class SurveySession(Base):
+    __tablename__ = "survey_sessions"
+    # ใช้ lineuser_id เป็น Primary Key ได้เลย เพราะ 1 คนควรมีแค่ 1 Session ที่กำลังทำอยู่
+    lineuser_id = Column(String, ForeignKey("users.lineuser_id"), primary_key=True)
+    survey_version = Column(String, nullable=False)  # เช่น "v1"
+    current_step = Column(Integer, default=0)        # ตอนนี้กำลังตอบคำถาม index ที่เท่าไหร่
+    payload = Column(JSON, default=dict, nullable=False) 
     
-    # NEW: Using PostGIS Geometry type for professional mapping
-    # 'POINT' means a single GPS coordinate
-    # 'srid=4326' is the global standard (WGS84) used by GPS and Google Maps
+    # เวลาเอาไว้เช็ค Timeout (ถ้าเกิน 1 ชม. ค่อยย้ายไปลงตาราง Incomplete)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class CompletedReport(Base):
+    __tablename__ = "completed_reports"
+    report_id = Column(Integer, primary_key=True, autoincrement=True)
+    lineuser_id = Column(String, ForeignKey("users.lineuser_id"))
+    survey_version = Column(String, nullable=False)
+    # แยก Location ออกมาเป็น PostGIS Geometry เพื่อให้สถาปนิกเอาไปพล็อตแผนที่ได้ง่าย
     location_data = Column(Geometry('POINT', srid=4326), nullable=True)
     
+    # ข้อมูลคำตอบทั่วไป (Text, Choice) จะถูกย้ายจาก Session มากองรวมกันในนี้
+    payload = Column(JSON, nullable=False)
+    
+    
+    # แยกลิงก์รูปภาพออกมาเก็บเป็นคอลัมน์ จะจัดการไฟล์ง่ายกว่ายัดลง JSON
     image_path = Column(String, nullable=True)
-    response_time = Column(DateTime, server_default=func.now())
+    
+    created_at = Column(DateTime, server_default=func.now())
+
+class IncompleteReport(Base):
+    __tablename__ = "incomplete_reports"
+    report_id = Column(Integer, primary_key=True, autoincrement=True)
+    lineuser_id = Column(String, ForeignKey("users.lineuser_id"))
+    survey_version = Column(String, nullable=False)
+    location_data = Column(Geometry('POINT', srid=4326), nullable=True)
+    
+    # จุดที่คนเทงาน (เอาไว้วิเคราะห์ว่าคำถามข้อไหนคนหนีเยอะสุด)
+    drop_off_step = Column(Integer, nullable=False)
+    
+    payload = Column(JSON, nullable=False)
+    image_path = Column(String, nullable=True)
+    
+    status = Column(String, default="timeout") # สถานะ (เช่น timeout, cancelled)
+    created_at = Column(DateTime, server_default=func.now())

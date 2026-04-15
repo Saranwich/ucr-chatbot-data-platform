@@ -6,9 +6,10 @@ from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingAp
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
 
-from app.config import CHANNEL_SECRET, CHANNEL_ACCESS_TOKEN
+from app.config import CHANNEL_SECRET, CHANNEL_ACCESS_TOKEN, SURVEY_QUESTIONS
 from app.database import engine, Base, get_db
 from app.handlers.message_handler import handle_text_message
+from app.utils.survey_loader import survey_manager
 
 # NEW: The "lifespan" context manager is how FastAPI runs code BEFORE the server starts accepting requests
 @asynccontextmanager
@@ -17,8 +18,18 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         # We use create_all to ensure tables exist. 
         # (Note: In a real production app, you should use Alembic for migrations instead of this)
+
         await conn.run_sync(Base.metadata.create_all)
         print("Database tables checked/created successfully!")
+
+        try:
+            # สมมติว่ารันจาก root directory ของโปรเจกต์
+            survey_path = SURVEY_QUESTIONS
+            survey_manager.load_from_file(survey_path)
+        except Exception as e:
+            print(f"Failed to load survey JSON: {e}")
+            # ถ้าโหลด JSON ไม่ผ่าน ให้หยุดการรันเซิร์ฟเวอร์ไปเลย จะได้รู้ตัวว่าไฟล์พัง!
+            raise e
     yield
     # (Anything below the yield runs when the server is shutting down)
 

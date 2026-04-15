@@ -13,11 +13,7 @@ from sqlalchemy.future import select
 from app.models import User, SurveySession
 from app.utils.survey_loader import survey_manager
 from app.services.survey_service import process_survey_answer, start_survey_session
-
-SURVEY_TRIGGER_MAP = {
-    "เริ่มทำแบบสำรวจ": "v1"
-    # อนาคตถ้ามีโปรเจกต์ใหม่ แค่มาเพิ่มตรงนี้ เช่น "รายงานน้ำท่วม": "flood_v2"
-}
+from app.config import SURVEY_TRIGGER_MAP
 
 async def handle_text_message(event, line_bot_api, db: AsyncSession):
     text = event.message.text.strip()

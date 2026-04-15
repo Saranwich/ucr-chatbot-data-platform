@@ -22,6 +22,6 @@ raw_survey_path = os.getenv("SURVEY_QUESTIONS")
 if not raw_survey_path:
     raise ValueError("ลืมใส่ SURVEY_QUESTIONS ในไฟล์ .env")
 #safe_relative_path = raw_survey_path.lstrip('/') # ป้องกันกรณีใส่ path แบบ /app/data/survey.json ที่มี / ข้างหน้า
-SURVEY_QUESTIONS = str(BASE_DIR / raw_survey_path).lstrip('/') # รวมกับ BASE_DIR และป้องกันกรณีใส่ path แบบ /app/data/survey.json ที่มี / ข้างหน้า
+SURVEY_QUESTIONS = str(BASE_DIR / raw_survey_path)#.lstrip('/') # รวมกับ BASE_DIR และป้องกันกรณีใส่ path แบบ /app/data/survey.json ที่มี / ข้างหน้า
 
 print(SURVEY_QUESTIONS)

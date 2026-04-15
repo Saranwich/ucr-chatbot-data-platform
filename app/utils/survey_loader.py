@@ -2,6 +2,7 @@ import json
 import os
 from pydantic import BaseModel
 from typing import List, Optional, Dict
+from pathlib import Path
 
 # --- 1. กำหนดโครงสร้าง (Schema) ให้ตรงกับไฟล์ JSON ---
 class SurveyOption(BaseModel):
@@ -36,6 +37,15 @@ class SurveyManager:
             survey_data = Survey(**raw_data) 
             self._surveys[survey_data.version] = survey_data
             print(f"✅ Loaded survey version '{survey_data.version}' successfully!")
+
+    def load_all_surveys_in_directory(self, directory_path: Path):
+        """กวาดอ่านไฟล์ .json ทั้งหมดในโฟลเดอร์"""
+        if not directory_path.exists() or not directory_path.is_dir():
+            print(f"⚠️ Directory not found: {directory_path}")
+            return
+            
+        for file_path in directory_path.glob("*.json"):
+            self.load_from_file(str(file_path))
 
     def get_survey(self, version: str) -> Optional[Survey]:
         """ดึงข้อมูลแบบสำรวจทั้งชุดตามเวอร์ชัน"""

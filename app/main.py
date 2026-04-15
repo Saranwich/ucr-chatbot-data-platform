@@ -3,12 +3,12 @@ from fastapi import FastAPI, Request, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from linebot.v3 import WebhookParser
 from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingApi
-from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from linebot.v3.webhooks import MessageEvent, TextMessageContent, LocationMessageContent, ImageMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
 
 from app.config import CHANNEL_SECRET, CHANNEL_ACCESS_TOKEN, SURVEY_QUESTIONS
 from app.database import engine, Base, get_db
-from app.handlers.message_handler import handle_text_message
+from app.handlers.message_handler import handle_text_message, handle_location_message, handle_image_message
 from app.utils.survey_loader import survey_manager
 
 # NEW: The "lifespan" context manager is how FastAPI runs code BEFORE the server starts accepting requests
@@ -54,8 +54,17 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
         line_bot_api = AsyncMessagingApi(api_client)
 
         for event in events:
-            if isinstance(event, MessageEvent) and isinstance(event.message, TextMessageContent):
-                # Because the handler now talks to the Async Database, we MUST use 'await' here
-                await handle_text_message(event, db, line_bot_api)
+            if isinstance(event, MessageEvent):
+                # ถ้าเป็นข้อความตัวอักษร หรือ Quick Reply แบบ message
+                if isinstance(event.message, TextMessageContent):
+                    await handle_text_message(event, line_bot_api, db)
+                
+                # ถ้าเป็นพิกัด (Location)
+                elif isinstance(event.message, LocationMessageContent):
+                    await handle_location_message(event, line_bot_api, db)
+                
+                # ถ้าเป็นรูปภาพ (เผื่อไว้สำหรับคำถามข้อสุดท้ายเลย)
+                elif isinstance(event.message, ImageMessageContent):
+                    await handle_image_message(event, line_bot_api, db)
 
     return 'OK'

@@ -1,6 +1,6 @@
 # UCR Chatbot Data Platform
 
-A data collection platform built on the LINE Messaging API, designed for daily community data surveys. This chatbot engages with local residents to gather hyper-local environmental and infrastructure data to assist in the redesign and mapping of community areas.
+A data collection platform built on the LINE Messaging API, designed for daily community data surveys. This chatbot engages with local residents to gather hyper-local environmental and infrastructure data to assist in the redesign and mapping of community areas via the GAMA platform.
 
 ## Concept & Purpose
 
@@ -10,71 +10,57 @@ The bot collects various types of data from users, including:
 - Temperature & Humidity
 - Sunlight levels
 - Sound/Noise levels
-- Trash and waste reporting
+- Trash and waste reporting (via Image IDs)
 - Location data (Coordinates) for mapping facilities and issues
 
 By crowdsourcing this data directly from the community via a familiar chat interface, we can build a comprehensive and dynamic map of the area's current state and needs.
 
 ## Tech Stack
 
-- Platform: LINE Messaging API (Chatbot Interface)
-- Backend / API: FastAPI
-- Database: PostgreSQL (via SQLAlchemy ORM)
+- **Platform:** LINE Messaging API
+- **Backend:** FastAPI
+- **Database:** PostgreSQL (asyncpg)
+- **Geospatial:** PostGIS
 
 ## Core Features
 
-- Automated User Onboarding: Registers new community members (LINE users) automatically upon their first interaction.
-- Dynamic Survey Engine: Delivers questions sequentially based on active entries in the database.
-- Rich Data Collection: Designed to handle and store various data types, specifically emphasizing text responses and Location data.
-- State Management: Tracks where a user is in the survey, allowing them to resume seamlessly if they stop halfway.
-- Clean Architecture: Well-structured FastAPI application separating routing, database models, and message handling logic.
+- **User Onboarding:** Registers LINE users upon first interaction.
+- **Survey Engine:** Loads survey sequences from JSON files (e.g., `devtest_message_01.json`) without database migrations.
+- **Data Collection:** Processes text responses, LINE Location events, and Image messages.
+- **State Management:** Tracks survey progress using temporary database sessions and JSONB payloads.
+- **Structure:** Separates routing (`main.py`), controllers (`handlers/`), and business logic (`services/`).
 
 ## Project Structure
 
 ```text
 ucr-chatbot-data-platform/
 ├── app/
+│   ├── data/             # Survey JSON files and static assets
 │   ├── database/         # Database connection and session management
-│   ├── handlers/         # LINE message processing logic (handling text, location, etc.)
-│   ├── models/           # SQLAlchemy models (User, Question, AskLog, Response)
-│   ├── config.py         # Environment variables configuration
-│   └── main.py           # FastAPI entry point & LINE Webhook callback
+│   ├── handlers/         # LINE message processing logic
+│   ├── models/           # SQLAlchemy models
+│   ├── services/         # Core business logic & State Machine
+│   ├── utils/            # Utilities (survey_loader, config)
+│   └── main.py           # FastAPI entry point & Webhook callback
 ├── requirements.txt      # Python dependencies
-└── .env                  # Environment variables (not tracked)
+└── .env.example          # Environment variables template
 ```
 
 ## Setup & Installation
 
 ### 1. Prerequisites
-Before running the application, you must have the following set up:
 
 **LINE Official Account:**
 - Create a Provider and a Messaging API Channel on the [LINE Developers Console](https://developers.line.biz/en/).
-- Obtain your `Channel Secret` and `Channel Access Token` from the channel settings.
+- Obtain your `Channel Secret` and `Channel Access Token`.
+- Configure and upload a Rich Menu to trigger the survey.
 
 **PostgreSQL Database:**
-- Install and run a PostgreSQL server locally or use a cloud provider.
-- Create a new database for this project.
-- **Mandatory:** Enable the PostGIS extension in your new database. 
-
-  **For Linux (Ubuntu/Debian):**
-  Install the PostGIS package matching your PostgreSQL version (e.g., version 16):
-  ```bash
-  sudo apt install postgresql-16-postgis-3
-  ```
-
-  **For Windows:**
-  1. Open the **Application Stack Builder** (installed alongside PostgreSQL).
-  2. Select your PostgreSQL installation from the dropdown.
-  3. Expand the **Spatial Extensions** category and check **PostGIS**.
-  4. Follow the installation wizard.
-
-  **Finally, enable it in your database:**
-  Connect to your database via `psql` or pgAdmin and run:
+- Install a PostgreSQL server and create a new database.
+- **Mandatory:** You must enable the PostGIS extension in your database **BEFORE** running the application for the first time.
   ```sql
   CREATE EXTENSION postgis;
   ```
-- Have your database connection credentials ready (username, password, host, port, database name).
 
 ### 2. Clone the repository
 ```bash
@@ -82,15 +68,13 @@ git clone <repository-url>
 cd ucr-chatbot-data-platform
 ```
 
-### 3. Create and activate a virtual environment
-
-**On Linux/macOS:**
+### 3. Virtual Environment
+**Linux/macOS:**
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
-
-**On Windows:**
+**Windows:**
 ```cmd
 python -m venv venv
 venv\Scripts\activate
@@ -101,28 +85,31 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 5. Configure Environment Variables
-Create a `.env` file in the root directory and add your credentials:
+### 5. Environment Variables
+Copy the template file and add your credentials:
+```bash
+cp .env.example .env
+```
+Edit `.env`:
 ```env
 CHANNEL_SECRET=your_line_channel_secret
 CHANNEL_ACCESS_TOKEN=your_line_channel_access_token
 DATABASE_URL=postgresql://user:password@localhost/dbname
+# RICHMENU_ID=richmenu-....
 ```
+*(Note: The application automatically replaces `postgresql://` with `postgresql+asyncpg://`)*
 
 ### 6. Run the application
 ```bash
 uvicorn app.main:app --reload
 ```
-*Note: The application will automatically create the required database tables (`users`, `questions`, `ask_logs`, `responses`) upon startup.*
+*(Note: The application automatically creates the `users`, `survey_sessions`, and `completed_reports` tables upon startup.)*
 
-## Database Schema Overview
+## Webhook Configuration (Local Development)
 
-- Users: Stores LINE User IDs to identify community members.
-- Questions: A configurable library of survey questions.
-- AskLog: Tracks the state of the survey for each user (which question was asked, is it answered).
-- Responses: Stores the actual data provided by users, including a dedicated field for location data.
-
-## Webhook Configuration
-
-To connect the bot to LINE, ensure your LINE Developer Console Webhook URL is set to your server's endpoint (must be HTTPS):
-`https://<your-domain>/callback`
+LINE requires an HTTPS URL for webhooks. For local testing, use a tunneling service like [ngrok](https://ngrok.com/):
+```bash
+ngrok http 8000
+```
+Copy the HTTPS URL provided by ngrok and set your LINE Webhook URL to:
+`https://<your-ngrok-url>/callback`

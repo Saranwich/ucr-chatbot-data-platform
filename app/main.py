@@ -6,7 +6,7 @@ from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingAp
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, LocationMessageContent, ImageMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
 
-from app.config import CHANNEL_SECRET, CHANNEL_ACCESS_TOKEN, SURVEY_QUESTIONS
+from app.config import CHANNEL_SECRET, CHANNEL_ACCESS_TOKEN, SURVEYS_DIR
 from app.database import engine, Base, get_db
 from app.handlers.message_handler import handle_text_message, handle_location_message, handle_image_message
 from app.utils.survey_loader import survey_manager
@@ -14,22 +14,21 @@ from app.utils.survey_loader import survey_manager
 # NEW: The "lifespan" context manager is how FastAPI runs code BEFORE the server starts accepting requests
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # This block runs ONE TIME when you start uvicorn
+    # 1. จัดการ Database
     async with engine.begin() as conn:
-        # We use create_all to ensure tables exist. 
-        # (Note: In a real production app, you should use Alembic for migrations instead of this)
-
         await conn.run_sync(Base.metadata.create_all)
-        print("Database tables checked/created successfully!")
+        print("✅ Database tables checked/created successfully!")
 
-        try:
-            # สมมติว่ารันจาก root directory ของโปรเจกต์
-            survey_path = SURVEY_QUESTIONS
-            survey_manager.load_from_file(survey_path)
-        except Exception as e:
-            print(f"Failed to load survey JSON: {e}")
-            # ถ้าโหลด JSON ไม่ผ่าน ให้หยุดการรันเซิร์ฟเวอร์ไปเลย จะได้รู้ตัวว่าไฟล์พัง!
-            raise e
+    # 2. จัดการโหลด Survey JSON ทั้งโฟลเดอร์
+    try:
+        # ใช้ฟังก์ชันใหม่ที่เราเพิ่งสร้าง ชี้ไปที่โฟลเดอร์ SURVEYS_DIR
+        survey_manager.load_all_surveys_in_directory(SURVEYS_DIR)
+        print("✅ All survey JSONs loaded successfully during startup!")
+    except Exception as e:
+        print(f"❌ Failed to load survey JSONs: {e}")
+        # ถ้าโหลดไม่ผ่าน (เช่น โฟลเดอร์ไม่มี หรือไฟล์ JSON พัง) ให้หยุดเซิร์ฟเวอร์ไปเลย
+        raise e
+        
     yield
     # (Anything below the yield runs when the server is shutting down)
 

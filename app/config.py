@@ -10,6 +10,7 @@ CHANNEL_SECRET = os.getenv("CHANNEL_SECRET")
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 SURVEYS_DIR = BASE_DIR / "app" / "data" / "surveys"
+IMAGES_DIR = BASE_DIR / "app" / "data" / "images"
 
 #add question file path here
 SURVEY_TRIGGER_MAP = {

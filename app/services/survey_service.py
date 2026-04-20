@@ -23,6 +23,7 @@ async def start_survey_session(user_id: str, survey_version: str, reply_token: s
     if not user:
         user = User(lineuser_id=user_id)
         db.add(user)
+        await db.flush()
 
     # 2. ล้างไพ่ (ถ้ามีงานค้างอยู่ให้ลบทิ้ง เริ่มใหม่)
     session_result = await db.execute(select(SurveySession).where(SurveySession.lineuser_id == user_id))
@@ -33,7 +34,6 @@ async def start_survey_session(user_id: str, survey_version: str, reply_token: s
         await db.flush()
 
     # 3. สร้าง Session ใหม่ (เริ่ม Step 0)
-    survey_version = survey_version
     new_session = SurveySession(
         lineuser_id=user_id,
         survey_version=survey_version,

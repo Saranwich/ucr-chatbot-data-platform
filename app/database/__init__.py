@@ -11,8 +11,28 @@ if DATABASE_URL.startswith("postgres://"):
 else:
     ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
+# Clean up 'sslmode' from URL as it's not supported by asyncpg in the connection string
+# This is common on platforms like Render/Heroku
+connect_args = {}
+if "sslmode" in ASYNC_DATABASE_URL:
+    import re
+    # Remove sslmode=... from the URL string
+    ASYNC_DATABASE_URL = re.sub(r"[?&]sslmode=[^&]*", "", ASYNC_DATABASE_URL)
+    # If we removed a param that was at the start, we might have ? replaced by nothing but followed by &
+    # Ensure the URL still has a ? if there are other params left
+    if "?" not in ASYNC_DATABASE_URL and "=" in ASYNC_DATABASE_URL.split("/")[-1]:
+         ASYNC_DATABASE_URL = ASYNC_DATABASE_URL.replace("&", "?", 1)
+    
+    # For asyncpg on Render, we usually need ssl=True
+    connect_args["ssl"] = True
+
 # create_async_engine is the async version of create_engine
-engine = create_async_engine(ASYNC_DATABASE_URL, echo=False,json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False))
+engine = create_async_engine(
+    ASYNC_DATABASE_URL, 
+    echo=False,
+    json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False),
+    connect_args=connect_args
+)
 
 # async_sessionmaker returns an AsyncSession
 SessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)

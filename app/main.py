@@ -40,13 +40,15 @@ async def lifespan(app: FastAPI):
     yield
     # (Anything below the yield runs when the server is shutting down)
 
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")
+
 app = FastAPI(lifespan=lifespan)
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust this to specific domains in production
-    allow_credentials=False,
+    allow_origins=[FRONTEND_URL, "http://localhost:4200"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

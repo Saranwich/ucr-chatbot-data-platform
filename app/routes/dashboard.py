@@ -35,7 +35,6 @@ async def get_available_dates(db: AsyncSession = Depends(get_db)):
 
 @router.get("/reports", response_model=List[CompletedReportSchema])
 async def get_completed_reports(date: Optional[str] = None, db: AsyncSession = Depends(get_db)):
-    print(f"DEBUG: get_completed_reports called with date={date}")
     # ดึงข้อมูลรายงานที่เสร็จสมบูรณ์ พร้อมแปลง Geometry เป็น Lat/Lon
     query = select(
         CompletedReport.report_id,

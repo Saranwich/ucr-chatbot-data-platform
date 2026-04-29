@@ -10,6 +10,14 @@ from app.config import CHANNEL_SECRET, CHANNEL_ACCESS_TOKEN, SURVEYS_DIR
 from app.database import engine, Base, get_db
 from app.handlers.message_handler import handle_text_message, handle_location_message, handle_image_message
 from app.utils.survey_loader import survey_manager
+from app.routes.dashboard import router as dashboard_router
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
+
+# Ensure uploads directory exists BEFORE mounting StaticFiles
+if not os.path.exists("uploads"):
+    os.makedirs("uploads")
 
 # NEW: The "lifespan" context manager is how FastAPI runs code BEFORE the server starts accepting requests
 @asynccontextmanager
@@ -33,6 +41,21 @@ async def lifespan(app: FastAPI):
     # (Anything below the yield runs when the server is shutting down)
 
 app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust this to specific domains in production
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include Routers
+app.include_router(dashboard_router)
+
+# Mount Static Files
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 parser = WebhookParser(CHANNEL_SECRET)

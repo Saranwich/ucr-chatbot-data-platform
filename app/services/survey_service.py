@@ -9,6 +9,8 @@ from linebot.v3.messaging import (
     LocationAction,
     CameraAction
 )
+from linebot.v3.messaging import AsyncMessagingApiBlob
+import os
 
 # Import โมเดล Database และตัวโหลด JSON ของเรา
 from app.models import User, SurveySession, CompletedReport
@@ -48,6 +50,20 @@ async def start_survey_session(user_id: str, survey_version: str, reply_token: s
     if first_question:
         await send_question(reply_token, first_question, line_bot_api)
 
+async def download_line_image(message_id: str, api_client):
+    """โหลดไฟล์รูปจาก LINE มาเก็บไว้ในเครื่อง"""
+    blob_api = AsyncMessagingApiBlob(api_client)
+    content = await blob_api.get_message_content(message_id)
+    
+    filename = f"{message_id}.jpg"
+    filepath = os.path.join("uploads", filename)
+    
+    # เขียนไฟล์ลงดิสก์
+    with open(filepath, "wb") as f:
+        f.write(content)
+    
+    return filename
+
 
 async def process_survey_answer(user_id: str, answer_data, reply_token: str, line_bot_api, db: AsyncSession):
     """เครื่องจักร State Machine: รับคำตอบ -> บันทึก -> ถามข้อต่อไป หรือ จบงาน"""
@@ -66,6 +82,16 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
     # 2. เอาคำถามข้อที่เพิ่งตอบไปมาเป็น Key เพื่อบันทึกคำตอบ
     current_question = survey_manager.get_question_by_step(survey_version, current_step)
     if not current_question: return
+
+    # 🌟 พิเศษ: ถ้าเป็นรูปภาพ ให้โหลดมาเก็บไว้ก่อน
+    if isinstance(answer_data, dict) and "image_id" in answer_data:
+        try:
+            filename = await download_line_image(answer_data["image_id"], line_bot_api.api_client)
+            answer_data["image_filename"] = filename
+            # เราเก็บ URL สั้นๆ ไว้ให้ Frontend เรียกง่ายๆ
+            answer_data["image_url"] = f"/uploads/{filename}"
+        except Exception as e:
+            print(f"❌ Failed to download image: {e}")
 
     # บันทึกลง payload (ต้อง copy() ก่อนเพื่อให้ SQLAlchemy รู้ว่ามีการเปลี่ยนแปลง)
     payload = active_session.payload.copy() if active_session.payload else {}

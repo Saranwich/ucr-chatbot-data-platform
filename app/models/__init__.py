@@ -3,8 +3,10 @@ from sqlalchemy.sql import func
 from datetime import datetime, timezone, timedelta
 
 # ฟังก์ชันช่วยดึงเวลาปัจจุบันแบบ Bangkok (UTC+7) สำหรับ Python-side default
+# เราต้องใช้ .replace(tzinfo=None) เพื่อให้เป็น naive datetime (ไม่มี timezone แปะไป) 
+# เพราะ SQLAlchemy Column DateTime(timezone=False) ไม่รองรับ aware datetime ในบางกรณี
 def get_bangkok_now():
-    return datetime.now(timezone(timedelta(hours=7)))
+    return datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None)
 from geoalchemy2 import Geometry
 from app.database import Base
 

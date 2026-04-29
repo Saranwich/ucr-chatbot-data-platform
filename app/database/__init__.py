@@ -23,8 +23,13 @@ if "sslmode" in ASYNC_DATABASE_URL:
     if "?" not in ASYNC_DATABASE_URL and "=" in ASYNC_DATABASE_URL.split("/")[-1]:
          ASYNC_DATABASE_URL = ASYNC_DATABASE_URL.replace("&", "?", 1)
     
-    # For asyncpg on Render, we usually need ssl=True
-    connect_args["ssl"] = True
+    # For asyncpg on Render, we need SSL.
+    # We use a custom SSL context to allow self-signed certificates (common on managed DBs)
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    connect_args["ssl"] = ctx
 
 # create_async_engine is the async version of create_engine
 engine = create_async_engine(

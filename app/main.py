@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, Depends
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from linebot.v3 import WebhookParser
 from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingApi
@@ -24,6 +25,8 @@ if not os.path.exists("uploads"):
 async def lifespan(app: FastAPI):
     # 1. จัดการ Database
     async with engine.begin() as conn:
+        # Enable PostGIS extension if not exists
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         await conn.run_sync(Base.metadata.create_all)
         print("✅ Database tables checked/created successfully!")
 

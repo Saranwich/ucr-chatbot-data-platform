@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, JSON, text
 from sqlalchemy.sql import func
 from geoalchemy2 import Geometry
 from app.database import Base
@@ -7,7 +7,7 @@ class User(Base):
     __tablename__ = "users"
     lineuser_id = Column(String, primary_key=True, index=True)
     display_name = Column(String)
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))
 
 class SurveySession(Base):
     __tablename__ = "survey_sessions"
@@ -18,7 +18,7 @@ class SurveySession(Base):
     payload = Column(JSON, default=dict, nullable=False) 
     
     # เวลาเอาไว้เช็ค Timeout (ถ้าเกิน 1 ชม. ค่อยย้ายไปลงตาราง Incomplete)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(DateTime, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"), onupdate=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))
 
 class CompletedReport(Base):
     __tablename__ = "completed_reports"
@@ -35,7 +35,7 @@ class CompletedReport(Base):
     # แยกลิงก์รูปภาพออกมาเก็บเป็นคอลัมน์ จะจัดการไฟล์ง่ายกว่ายัดลง JSON
     image_path = Column(String, nullable=True)
     
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))
 
 class IncompleteReport(Base):
     __tablename__ = "incomplete_reports"
@@ -51,4 +51,4 @@ class IncompleteReport(Base):
     image_path = Column(String, nullable=True)
     
     status = Column(String, default="timeout") # สถานะ (เช่น timeout, cancelled)
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))

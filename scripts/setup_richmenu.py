@@ -1,11 +1,12 @@
-import requests
-import json
-from app.config import IMAGES_DIR, CHANNEL_ACCESS_TOKEN
-
 import sys
 from pathlib import Path
 root_dir = Path(__file__).resolve().parent.parent
-sys.path.append(str(root_dir))
+if str(root_dir) not in sys.path:
+    sys.path.append(str(root_dir))
+
+import requests
+import json
+from app.config import IMAGES_DIR, CHANNEL_ACCESS_TOKEN
 
 # ดึง Path รูปมาจาก config
 IMAGE_PATH = IMAGES_DIR / "rich_menu.jpg"

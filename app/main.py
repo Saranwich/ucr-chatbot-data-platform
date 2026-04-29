@@ -27,8 +27,11 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         # Enable PostGIS extension if not exists
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        
+        # Create tables if not exist
         await conn.run_sync(Base.metadata.create_all)
-        print("✅ Database tables checked/created successfully!")
+        
+        print("✅ Database tables checked/created with Bangkok timezone defaults!")
 
     # 2. จัดการโหลด Survey JSON ทั้งโฟลเดอร์
     try:

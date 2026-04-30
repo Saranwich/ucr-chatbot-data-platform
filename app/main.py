@@ -49,8 +49,13 @@ async def lifespan(app: FastAPI):
     # (Anything below the yield runs when the server is shutting down)
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")
+ENV = os.getenv("ENV", "development")
 
-app = FastAPI(lifespan=lifespan)
+# Disable Swagger UI and ReDoc in production
+docs_url = None if ENV == "production" else "/docs"
+redoc_url = None if ENV == "production" else "/redoc"
+
+app = FastAPI(lifespan=lifespan, docs_url=docs_url, redoc_url=redoc_url)
 
 # Add CORS middleware
 app.add_middleware(

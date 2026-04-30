@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Response
+from app.utils.auth import get_current_user
 from fastapi.responses import StreamingResponse
 from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingApiBlob
 from app.config import CHANNEL_ACCESS_TOKEN
@@ -14,7 +15,10 @@ from datetime import datetime
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 @router.get("/stats", response_model=DashboardStats)
-async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
+async def get_dashboard_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     user_count = await db.scalar(select(func.count(User.lineuser_id)))
     completed_count = await db.scalar(select(func.count(CompletedReport.report_id)))
     incomplete_count = await db.scalar(select(func.count(IncompleteReport.report_id)))
@@ -26,7 +30,10 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     }
 
 @router.get("/available-dates")
-async def get_available_dates(db: AsyncSession = Depends(get_db)):
+async def get_available_dates(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     # ดึงวันที่ทั้งหมดที่มีการทำรายงาน (CompletedReport)
     query = select(func.date(CompletedReport.created_at).distinct())
     result = await db.execute(query)
@@ -34,7 +41,11 @@ async def get_available_dates(db: AsyncSession = Depends(get_db)):
     return {"dates": dates}
 
 @router.get("/reports", response_model=List[CompletedReportSchema])
-async def get_completed_reports(date: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+async def get_completed_reports(
+    date: Optional[str] = None, 
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     # ดึงข้อมูลรายงานที่เสร็จสมบูรณ์ พร้อมแปลง Geometry เป็น Lat/Lon
     query = select(
         CompletedReport.report_id,
@@ -61,7 +72,11 @@ async def get_completed_reports(date: Optional[str] = None, db: AsyncSession = D
     return reports
 
 @router.get("/reports/{report_id}", response_model=CompletedReportSchema)
-async def get_report_detail(report_id: int, db: AsyncSession = Depends(get_db)):
+async def get_report_detail(
+    report_id: int, 
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     query = select(
         CompletedReport.report_id,
         CompletedReport.lineuser_id,

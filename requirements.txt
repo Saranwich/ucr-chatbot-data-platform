@@ -38,3 +38,5 @@ uvicorn==0.44.0
 wrapt==2.1.2
 yarl==1.23.0
 gunicorn==23.0.0
+python-jose[cryptography]==3.5.0
+bcrypt==4.2.0

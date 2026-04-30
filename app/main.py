@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+import time
+from collections import defaultdict
 from linebot.v3 import WebhookParser
 from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingApi
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, LocationMessageContent, ImageMessageContent
@@ -61,6 +63,21 @@ app.add_middleware(
 
 # Include Routers
 app.include_router(dashboard_router)
+
+# Simple Rate Limiting for Health Check
+health_check_limits = defaultdict(float)
+
+@app.get("/api/health")
+async def health_check(request: Request):
+    client_ip = request.client.host
+    current_time = time.time()
+    
+    # Allow 1 request every 5 seconds per IP
+    if current_time - health_check_limits[client_ip] < 5:
+        raise HTTPException(status_code=429, detail="Too many requests")
+        
+    health_check_limits[client_ip] = current_time
+    return {"status": "ok"}
 
 # Mount Static Files
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

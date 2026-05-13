@@ -20,6 +20,16 @@ SURVEY_TRIGGER_MAP = {
     # อนาคตถ้ามีโปรเจกต์ใหม่ แค่มาเพิ่มตรงนี้ เช่น "รายงานน้ำท่วม": "flood_v2"
 }
 
+# Static Reply Messages
+PROJECT_INFO_TEXT = (
+    "🏢 โครงการ UCR Smart City Chatbot\n"
+    "เราใช้ข้อมูลจากท่านเพื่อนำไปออกแบบผังเมืองและชุมชนให้มีคุณภาพชีวิตที่ดีขึ้น\n\n"
+    "ขอบคุณที่เป็นส่วนหนึ่งในการพัฒนาเมืองของเราครับ!"
+)
+
+REPORT_DEVELOPMENT_TEXT = "📝 ระบบรายงานปัญหา (Report) กำลังอยู่ระหว่างการพัฒนาเป็นรูปแบบ Website (LIFF) ครับ"
+SUMMARY_PLACEHOLDER_TEXT = "📊 ระบบสรุปผลกำลังอยู่ระหว่างการพัฒนา จะพร้อมให้ใช้งานเร็วๆ นี้ครับ"
+
 #if forget add .env
 if not CHANNEL_SECRET or not CHANNEL_ACCESS_TOKEN:
     raise ValueError("CHANNEL_SECRET or CHANNEL_ACCESS_TOKEN not found in .env")

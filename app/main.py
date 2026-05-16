@@ -30,14 +30,17 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. จัดการ Database
-    async with engine.begin() as conn:
-        # Enable PostGIS extension if not exists
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
-        
-        # Create tables if not exist
-        await conn.run_sync(Base.metadata.create_all)
-        
-        print("✅ Database tables checked/created with Bangkok timezone defaults!")
+    try:
+        async with engine.begin() as conn:
+            # Enable PostGIS extension if not exists
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+            
+            # Create tables if not exist
+            await conn.run_sync(Base.metadata.create_all)
+            
+            print("✅ Database tables checked/created with Bangkok timezone defaults!")
+    except Exception as e:
+        print(f"⚠️ Database initialization warning (likely concurrent start): {e}")
 
     # 2. จัดการโหลด Survey JSON ทั้งโฟลเดอร์
     try:

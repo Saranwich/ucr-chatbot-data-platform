@@ -22,7 +22,7 @@ from mangum import Mangum
 import os
 
 # Detect if running in AWS Lambda
-is_lambda = os.environ.get("AWS_EXECUTION_ENV") is not None
+is_lambda = os.environ.get("AWS_LAMBDA_FUNCTION_NAME") is not None
 UPLOAD_DIR = "/tmp/uploads" if is_lambda else "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 

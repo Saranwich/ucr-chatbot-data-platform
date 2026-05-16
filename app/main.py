@@ -16,6 +16,7 @@ from app.utils.survey_loader import survey_manager
 from app.routes.dashboard import router as dashboard_router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from mangum import Mangum
 import os
 
 # Ensure uploads directory exists BEFORE mounting StaticFiles
@@ -120,3 +121,5 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
                     await handle_image_message(event, line_bot_api, db)
 
     return 'OK'
+
+handler = Mangum(app)

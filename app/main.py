@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi.responses import JSONResponse
+import traceback
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import time
@@ -69,6 +71,15 @@ app.add_middleware(
 
 # Include Routers
 app.include_router(dashboard_router)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_msg = f"Unhandled Exception: {str(exc)}\n{traceback.format_exc()}"
+    print(error_msg)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "traceback": error_msg}
+    )
 
 # Simple Rate Limiting for Health Check
 health_check_limits = defaultdict(float)

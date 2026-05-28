@@ -1,10 +1,9 @@
 import os
-from dotenv import load_dotenv
+import app.config_loader
 from pathlib import Path
 
 # base direcroty and load from .env
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv()
 
 CHANNEL_SECRET = os.getenv("CHANNEL_SECRET")
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")

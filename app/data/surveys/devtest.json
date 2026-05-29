@@ -1,0 +1,167 @@
+{
+  "version": "devtest",
+  "questions": {
+
+    "q_choice_1": {
+      "id": "q_choice_1",
+      "type": "quick_reply",
+      "text": "[Layer 1] Choose your path:",
+      "options": [
+        { "label": "1 - Route A", "action_type": "message", "value": "A", "next_question_id": null },
+        { "label": "2 - Route B", "action_type": "message", "value": "B", "next_question_id": null }
+      ]
+    },
+    "q_choice_2": {
+      "id": "q_choice_2",
+      "type": "quick_reply",
+      "text": "[Layer 1] Still here. Ready to go deeper?",
+      "options": [
+        { "label": "Yes, continue", "action_type": "message", "value": "continue", "next_question_id": null }
+      ]
+    },
+
+    "q_a_1": {
+      "id": "q_a_1",
+      "type": "quick_reply",
+      "text": "[Layer 2 / Route A] You made it to Route A. Choose next:",
+      "options": [
+        { "label": "A1", "action_type": "message", "value": "A1", "next_question_id": null },
+        { "label": "A2", "action_type": "message", "value": "A2", "next_question_id": null }
+      ]
+    },
+    "q_a_2": {
+      "id": "q_a_2",
+      "type": "quick_reply",
+      "text": "[Layer 2 / Route A] Confirm before dispatching to Layer 3.",
+      "options": [
+        { "label": "Confirm", "action_type": "message", "value": "confirm", "next_question_id": null }
+      ]
+    },
+
+    "q_b_1": {
+      "id": "q_b_1",
+      "type": "quick_reply",
+      "text": "[Layer 2 / Route B] You made it to Route B. Choose next:",
+      "options": [
+        { "label": "B1", "action_type": "message", "value": "B1", "next_question_id": null },
+        { "label": "B2", "action_type": "message", "value": "B2", "next_question_id": null }
+      ]
+    },
+    "q_b_2": {
+      "id": "q_b_2",
+      "type": "quick_reply",
+      "text": "[Layer 2 / Route B] Confirm before dispatching to Layer 3.",
+      "options": [
+        { "label": "Confirm", "action_type": "message", "value": "confirm", "next_question_id": null }
+      ]
+    },
+
+    "q_a1_1": {
+      "id": "q_a1_1",
+      "type": "quick_reply",
+      "text": "[Layer 3 / Route A1] Path: start → A → A1. You arrived!",
+      "options": [
+        { "label": "Got it", "action_type": "message", "value": "ok", "next_question_id": null }
+      ]
+    },
+    "q_a1_2": {
+      "id": "q_a1_2",
+      "type": "quick_reply",
+      "text": "[Layer 3 / Route A1] Last question. Survey ends after this.",
+      "options": [
+        { "label": "Finish", "action_type": "message", "value": "done", "next_question_id": null }
+      ]
+    },
+
+    "q_a2_1": {
+      "id": "q_a2_1",
+      "type": "quick_reply",
+      "text": "[Layer 3 / Route A2] Path: start → A → A2. You arrived!",
+      "options": [
+        { "label": "Got it", "action_type": "message", "value": "ok", "next_question_id": null }
+      ]
+    },
+    "q_a2_2": {
+      "id": "q_a2_2",
+      "type": "quick_reply",
+      "text": "[Layer 3 / Route A2] Last question. Survey ends after this.",
+      "options": [
+        { "label": "Finish", "action_type": "message", "value": "done", "next_question_id": null }
+      ]
+    },
+
+    "q_b1_1": {
+      "id": "q_b1_1",
+      "type": "quick_reply",
+      "text": "[Layer 3 / Route B1] Path: start → B → B1. You arrived!",
+      "options": [
+        { "label": "Got it", "action_type": "message", "value": "ok", "next_question_id": null }
+      ]
+    },
+    "q_b1_2": {
+      "id": "q_b1_2",
+      "type": "quick_reply",
+      "text": "[Layer 3 / Route B1] Last question. Survey ends after this.",
+      "options": [
+        { "label": "Finish", "action_type": "message", "value": "done", "next_question_id": null }
+      ]
+    },
+
+    "q_b2_1": {
+      "id": "q_b2_1",
+      "type": "quick_reply",
+      "text": "[Layer 3 / Route B2] Path: start → B → B2. You arrived!",
+      "options": [
+        { "label": "Got it", "action_type": "message", "value": "ok", "next_question_id": null }
+      ]
+    },
+    "q_b2_2": {
+      "id": "q_b2_2",
+      "type": "quick_reply",
+      "text": "[Layer 3 / Route B2] Last question. Survey ends after this.",
+      "options": [
+        { "label": "Finish", "action_type": "message", "value": "done", "next_question_id": null }
+      ]
+    }
+
+  },
+
+  "routes": {
+    "choice_route": ["q_choice_1", "q_choice_2"],
+    "a_route":      ["q_a_1",      "q_a_2"],
+    "b_route":      ["q_b_1",      "q_b_2"],
+    "a1_route":     ["q_a1_1",     "q_a1_2"],
+    "a2_route":     ["q_a2_1",     "q_a2_2"],
+    "b1_route":     ["q_b1_1",     "q_b1_2"],
+    "b2_route":     ["q_b2_1",     "q_b2_2"]
+  },
+
+  "flow": {
+    "onstart": "choice_route",
+    "after": {
+      "choice_route": {
+        "type": "dispatcher",
+        "look_up_answer_of": "q_choice_1",
+        "map": { "A": "a_route", "B": "b_route" },
+        "default": null
+      },
+      "a_route": {
+        "type": "dispatcher",
+        "look_up_answer_of": "q_a_1",
+        "map": { "A1": "a1_route", "A2": "a2_route" },
+        "default": null
+      },
+      "b_route": {
+        "type": "dispatcher",
+        "look_up_answer_of": "q_b_1",
+        "map": { "B1": "b1_route", "B2": "b2_route" },
+        "default": null
+      },
+      "a1_route": null,
+      "a2_route": null,
+      "b1_route": null,
+      "b2_route": null
+    },
+    "forks": {}
+  }
+}

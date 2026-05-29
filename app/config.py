@@ -14,8 +14,8 @@ IMAGES_DIR = BASE_DIR / "app" / "data" / "images"
 
 #add question file path here
 SURVEY_TRIGGER_MAP = {
-    "เริ่มทำแบบสำรวจ": "devtest_message_01",
-    "devtest": "devtest_message_02"
+    "เริ่มทำแบบสำรวจ": "community_report_v1",
+    "devtest": "devtest",
     # อนาคตถ้ามีโปรเจกต์ใหม่ แค่มาเพิ่มตรงนี้ เช่น "รายงานน้ำท่วม": "flood_v2"
 }
 

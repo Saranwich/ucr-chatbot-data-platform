@@ -25,6 +25,7 @@ class SurveySession(Base):
     current_step = Column(Integer, default=0)          # step index within current_route_id
     route_history = Column(JSON, default=list, nullable=False)  # stack: [{"route_id": str, "step": int}]
     payload = Column(JSON, default=dict, nullable=False)
+    pending_multi_select = Column(JSON, default=dict, nullable=False)  # {question_id: [answers]}
     updated_at = Column(DateTime, default=get_bangkok_now, onupdate=get_bangkok_now, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))
 
 class CompletedReport(Base):

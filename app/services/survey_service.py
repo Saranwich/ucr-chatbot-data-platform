@@ -12,7 +12,7 @@ from linebot.v3.messaging import (
 
 from app.models import User, SurveySession, CompletedReport
 from app.utils.survey_loader import survey_manager
-from app.services.routing import compute_next_state
+from app.services.routing import compute_next_state, compute_go_back_state, compute_multi_select_state
 
 
 async def start_survey_session(user_id: str, survey_version: str, reply_token: str, line_bot_api, db: AsyncSession):
@@ -54,11 +54,11 @@ async def start_survey_session(user_id: str, survey_version: str, reply_token: s
     db.add(new_session)
     await db.commit()
 
-    # 5. Send first question of the starting route
+    # 5. Send first question of the starting route (no go-back on first question)
     first_question_id = survey.routes[start_route_id][0]
     first_question = survey_manager.get_question(survey_version, first_question_id)
     if first_question:
-        await send_question(reply_token, first_question, line_bot_api)
+        await send_question(reply_token, first_question, line_bot_api, show_go_back=False)
 
 
 async def process_survey_answer(user_id: str, answer_data, reply_token: str, line_bot_api, db: AsyncSession):
@@ -78,15 +78,74 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
     survey_version = active_session.survey_version
     survey = survey_manager.get_survey(survey_version)
 
-    # 2. Identify the question the user just answered
+    # 2. Handle go-back before touching the payload
+    if answer_data == "__go_back__":
+        go_back = compute_go_back_state(
+            active_session.current_route_id,
+            active_session.current_step,
+            active_session.route_history or [],
+            survey,
+        )
+        if go_back["action"] == "at_beginning":
+            return
+
+        # Clear the answer for the question we're returning to so the user re-answers it
+        payload = (active_session.payload or {}).copy()
+        payload.pop(go_back["question_id"], None)
+        active_session.payload = payload
+        active_session.current_route_id = go_back["route_id"]
+        active_session.current_step = go_back["step"]
+        if "route_history" in go_back:
+            active_session.route_history = list(go_back["route_history"])
+        await db.commit()
+
+        prev_question = survey_manager.get_question(survey_version, go_back["question_id"])
+        is_first = (go_back["route_id"] == survey.flow.onstart and go_back["step"] == 0)
+        await send_question(reply_token, prev_question, line_bot_api, show_go_back=not is_first)
+        return
+
+    # 3. Identify the question the user just answered
     current_route = survey.routes[active_session.current_route_id]
     current_question_id = current_route[active_session.current_step]
+    current_question = survey_manager.get_question(survey_version, current_question_id)
 
-    # 3. Handle image answer — store proxy URL instead of downloading
+    # 4. Handle multi_select accumulation
+    if current_question and current_question.type == "multi_select":
+        pending_all = (active_session.pending_multi_select or {}).copy()
+        pending_this = pending_all.get(current_question_id, [])
+        ms_result = compute_multi_select_state(
+            pending=pending_this,
+            new_answer=answer_data,
+            max_selections=current_question.max_selections or 99,
+        )
+
+        if ms_result["action"] == "ignore":
+            return
+
+        if ms_result["action"] == "accumulate":
+            pending_all[current_question_id] = ms_result["pending"]
+            active_session.pending_multi_select = pending_all
+            await db.commit()
+            selected_count = len(ms_result["pending"])
+            max_sel = current_question.max_selections or 99
+            await send_question(
+                reply_token, current_question, line_bot_api,
+                show_go_back=True,
+                multi_select_pending=ms_result["pending"],
+                multi_select_max=max_sel,
+            )
+            return
+
+        # action == "confirm" — save final answers and fall through to routing
+        pending_all.pop(current_question_id, None)
+        active_session.pending_multi_select = pending_all
+        answer_data = ms_result["answers"]
+
+    # 5. Handle image answer — store proxy URL instead of downloading
     if isinstance(answer_data, dict) and "image_id" in answer_data:
         answer_data["image_url"] = f"/api/dashboard/image/{answer_data['image_id']}"
 
-    # 4. Save answer into payload (copy() so SQLAlchemy detects the change)
+    # 6. Save answer into payload (copy() so SQLAlchemy detects the change)
     payload = active_session.payload.copy() if active_session.payload else {}
     payload[current_question_id] = answer_data
     active_session.payload = payload
@@ -107,7 +166,7 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
         active_session.route_history = list(result["route_history"])
         await db.commit()
         next_question = survey_manager.get_question(survey_version, result["next_question_id"])
-        await send_question(reply_token, next_question, line_bot_api)
+        await send_question(reply_token, next_question, line_bot_api, show_go_back=True)
 
     elif result["action"] == "next_route":
         # If we just finished the profile route, mark the user as profiled
@@ -122,7 +181,7 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
         active_session.route_history = list(result["route_history"])
         await db.commit()
         next_question = survey_manager.get_question(survey_version, result["next_question_id"])
-        await send_question(reply_token, next_question, line_bot_api)
+        await send_question(reply_token, next_question, line_bot_api, show_go_back=True)
 
     elif result["action"] == "complete":
         # Find the location answer anywhere in the payload
@@ -152,9 +211,22 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
         )
 
 
-async def send_question(reply_token: str, question_obj, line_bot_api):
+async def send_question(
+    reply_token: str,
+    question_obj,
+    line_bot_api,
+    show_go_back: bool = True,
+    multi_select_pending: list = None,
+    multi_select_max: int = None,
+):
     quick_reply_items = []
+    already_selected = set(multi_select_pending or [])
+
     for opt in question_obj.options:
+        # Skip options the user already picked
+        if opt.value and opt.value in already_selected:
+            continue
+
         action = None
         if opt.action_type == "message":
             action = MessageAction(label=opt.label, text=opt.value if opt.value else opt.label)
@@ -166,8 +238,24 @@ async def send_question(reply_token: str, question_obj, line_bot_api):
         if action:
             quick_reply_items.append(QuickReplyItem(action=action))
 
+    if multi_select_pending is not None:
+        count = len(multi_select_pending)
+        confirm_label = f"✅ ยืนยัน ({count}/{multi_select_max})"
+        confirm_action = MessageAction(label=confirm_label, text="__confirm_multi__")
+        quick_reply_items.append(QuickReplyItem(action=confirm_action))
+
+    if show_go_back:
+        go_back_action = MessageAction(label="◀️ ย้อนกลับ", text="__go_back__")
+        quick_reply_items.append(QuickReplyItem(action=go_back_action))
+
+    # Build question text — show selected items as a running list
+    text = question_obj.text
+    if multi_select_pending:
+        selected_labels = ", ".join(multi_select_pending)
+        text = f"{text}\n\nเลือกแล้ว: {selected_labels}"
+
     message = TextMessage(
-        text=question_obj.text,
+        text=text,
         quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items else None
     )
 

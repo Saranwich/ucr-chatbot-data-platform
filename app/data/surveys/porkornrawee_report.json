@@ -1,0 +1,60 @@
+{
+  "version": "socratic_community_report",
+  "questions": {
+
+    "q_socratic_implication": {
+      "id": "q_socratic_implication",
+      "type": "quick_reply",
+      "text": "สวัสดีครับ 🏡 ช่วงนี้สภาพแวดล้อมในพื้นที่ มีเรื่องไหนที่สร้างความลำบากหรือกระทบการใช้ชีวิตของคุณมากที่สุดครับ?",
+      "options": [
+        { "label": "แดดร้อนจัดจนอยู่ลำบาก 🌡️", "action_type": "message", "value": "heat", "next_question_id": "q_socratic_evidence" },
+        { "label": "น้ำขัง/ท่วม เดินทางยาก 🌊", "action_type": "message", "value": "flood", "next_question_id": "q_socratic_evidence" }
+      ]
+    },
+
+    "q_socratic_evidence": {
+      "id": "q_socratic_evidence",
+      "type": "quick_reply",
+      "text": "เข้าใจเลยครับ แล้วจากปัญหาที่เจอ มันทำให้ส่วนไหนของการใช้ชีวิตสะดุด หรือน่าเป็นห่วงที่สุดครับ?",
+      "options": [
+        { "label": "ทำมาหากิน/ทำงานลำบาก", "action_type": "message", "value": "economic_impact", "next_question_id": "q_socratic_alternative" },
+        { "label": "ห่วงคนแก่/เด็ก/ผู้ป่วย", "action_type": "message", "value": "vulnerable_groups", "next_question_id": "q_socratic_alternative" },
+        { "label": "เสี่ยงอันตราย/อุบัติเหตุ", "action_type": "message", "value": "safety_risk", "next_question_id": "q_socratic_alternative" }
+      ]
+    },
+
+    "q_socratic_alternative": {
+      "id": "q_socratic_alternative",
+      "type": "multi_select",
+      "max_selections": 2,
+      "text": "ถ้าเราสามารถร่วมกันปรับพื้นที่ตรงนี้ได้ คุณมองว่า 'จุดเริ่มต้น' แบบไหนที่จะช่วยแก้ปัญหาให้คนส่วนใหญ่ได้จริงครับ? (เลือกได้ 2 ข้อ)",
+      "options": [
+        { "label": "เพิ่มร่มเงา / หลังคา / พัดลม", "action_type": "message", "value": "shade_cooling", "next_question_id": "q_location" },
+        { "label": "ปรับพื้น / ลอกท่อ / ทำทางเดิน", "action_type": "message", "value": "infrastructure", "next_question_id": "q_location" },
+        { "label": "เพิ่มไฟส่องสว่าง / จุดนั่งพัก", "action_type": "message", "value": "lighting_resting", "next_question_id": "q_location" }
+      ]
+    },
+
+    "q_location": {
+      "id": "q_location",
+      "type": "location",
+      "text": "เพื่อให้ทีมงานเห็นภาพและวิเคราะห์พื้นที่ได้แม่นยำขึ้น รบกวนแชร์พิกัดที่เกิดปัญหาหน่อยนะครับ 📍",
+      "options": [
+        { "label": "📍 ส่งพิกัดตำแหน่ง", "action_type": "location", "next_question_id": "q_photo" }
+      ]
+    },
+
+    "q_photo": {
+      "id": "q_photo",
+      "type": "image",
+      "text": "ขอบคุณมากครับ! คำถามสุดท้ายแล้ว... มีภาพถ่ายสถานที่จริงเพื่อเป็น 'หลักฐาน' สนับสนุนสิ่งที่เราคุยกันไหมครับ? 📸 (ถ้าไม่สะดวก กดข้ามได้เลยครับ)",
+      "options": [
+        { "label": "📸 ถ่ายรูปส่ง", "action_type": "camera", "next_question_id": null },
+        { "label": "⏭️ ข้ามขั้นตอนนี้", "action_type": "message", "value": "__skip__", "next_question_id": null }
+      ]
+    }
+  },
+  "flow": {
+    "onstart": "q_socratic_implication"
+  }
+}

@@ -1,7 +1,5 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, Depends
-from fastapi.responses import JSONResponse
-import traceback
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import time
@@ -18,29 +16,24 @@ from app.utils.survey_loader import survey_manager
 from app.routes.dashboard import router as dashboard_router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from mangum import Mangum
 import os
 
-# Detect if running in AWS Lambda
-is_lambda = os.environ.get("AWS_LAMBDA_FUNCTION_NAME") is not None
-UPLOAD_DIR = "/tmp/uploads" if is_lambda else "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# Ensure uploads directory exists BEFORE mounting StaticFiles
+if not os.path.exists("uploads"):
+    os.makedirs("uploads")
 
 # NEW: The "lifespan" context manager is how FastAPI runs code BEFORE the server starts accepting requests
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. จัดการ Database
-    try:
-        async with engine.begin() as conn:
-            # Enable PostGIS extension if not exists
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
-            
-            # Create tables if not exist
-            await conn.run_sync(Base.metadata.create_all)
-            
-            print("✅ Database tables checked/created with Bangkok timezone defaults!")
-    except Exception as e:
-        print(f"⚠️ Database initialization warning (likely concurrent start): {e}")
+    async with engine.begin() as conn:
+        # Enable PostGIS extension if not exists
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        
+        # Create tables if not exist
+        await conn.run_sync(Base.metadata.create_all)
+        
+        print("✅ Database tables checked/created with Bangkok timezone defaults!")
 
     # 2. จัดการโหลด Survey JSON ทั้งโฟลเดอร์
     try:
@@ -76,15 +69,6 @@ app.add_middleware(
 # Include Routers
 app.include_router(dashboard_router)
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    error_msg = f"Unhandled Exception: {str(exc)}\n{traceback.format_exc()}"
-    print(error_msg)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal Server Error", "traceback": error_msg}
-    )
-
 # Simple Rate Limiting for Health Check
 health_check_limits = defaultdict(float)
 
@@ -101,7 +85,7 @@ async def health_check(request: Request):
     return {"status": "ok"}
 
 # Mount Static Files
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 parser = WebhookParser(CHANNEL_SECRET)
@@ -136,5 +120,3 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
                     await handle_image_message(event, line_bot_api, db)
 
     return 'OK'
-
-handler = Mangum(app)

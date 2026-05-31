@@ -36,11 +36,7 @@ engine = create_async_engine(
     ASYNC_DATABASE_URL, 
     echo=False,
     json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False),
-    connect_args=connect_args,
-    pool_size=1,
-    max_overflow=0,
-    pool_pre_ping=True,
-    pool_recycle=300
+    connect_args=connect_args
 )
 
 # async_sessionmaker returns an AsyncSession

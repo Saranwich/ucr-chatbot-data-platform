@@ -4,7 +4,9 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
-import app.config_loader
+from dotenv import load_dotenv
+
+load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-change-me")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")

@@ -13,6 +13,7 @@ from linebot.v3.messaging import (
 from app.models import User, SurveySession, CompletedReport
 from app.utils.survey_loader import survey_manager
 from app.services.routing import compute_next_state, compute_go_back_state, compute_multi_select_state
+from app.config import GO_BACK_KEYWORD, CONFIRM_KEYWORD
 
 
 async def start_survey_session(user_id: str, survey_version: str, reply_token: str, line_bot_api, db: AsyncSession):
@@ -79,7 +80,7 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
     survey = survey_manager.get_survey(survey_version)
 
     # 2. Handle go-back before touching the payload
-    if answer_data == "__go_back__":
+    if answer_data == GO_BACK_KEYWORD:
         go_back = compute_go_back_state(
             active_session.current_route_id,
             active_session.current_step,
@@ -117,6 +118,7 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
             pending=pending_this,
             new_answer=answer_data,
             max_selections=current_question.max_selections or 99,
+            confirm_keyword=CONFIRM_KEYWORD,
         )
 
         if ms_result["action"] == "ignore":
@@ -241,11 +243,11 @@ async def send_question(
     if multi_select_pending is not None:
         count = len(multi_select_pending)
         confirm_label = f"✅ ยืนยัน ({count}/{multi_select_max})"
-        confirm_action = MessageAction(label=confirm_label, text="__confirm_multi__")
+        confirm_action = MessageAction(label=confirm_label, text=CONFIRM_KEYWORD)
         quick_reply_items.append(QuickReplyItem(action=confirm_action))
 
     if show_go_back:
-        go_back_action = MessageAction(label="◀️ ย้อนกลับ", text="__go_back__")
+        go_back_action = MessageAction(label="◀️ ย้อนกลับ", text=GO_BACK_KEYWORD)
         quick_reply_items.append(QuickReplyItem(action=go_back_action))
 
     # Build question text — show selected items as a running list

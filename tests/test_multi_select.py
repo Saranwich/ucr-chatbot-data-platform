@@ -6,7 +6,7 @@ from app.services.routing import compute_multi_select_state
 
 def test_first_selection_accumulates():
     result = compute_multi_select_state(
-        pending=[], new_answer="อยู่ลำบาก", max_selections=2
+        pending=[], new_answer="อยู่ลำบาก", max_selections=2, confirm_keyword="ยืนยัน"
     )
     assert result["action"] == "accumulate"
     assert result["pending"] == ["อยู่ลำบาก"]
@@ -16,7 +16,7 @@ def test_first_selection_accumulates():
 
 def test_reaching_max_auto_confirms():
     result = compute_multi_select_state(
-        pending=["อยู่ลำบาก"], new_answer="ไม่ปลอดภัย", max_selections=2
+        pending=["อยู่ลำบาก"], new_answer="ไม่ปลอดภัย", max_selections=2, confirm_keyword="ยืนยัน"
     )
     assert result["action"] == "confirm"
     assert result["answers"] == ["อยู่ลำบาก", "ไม่ปลอดภัย"]
@@ -26,7 +26,7 @@ def test_reaching_max_auto_confirms():
 
 def test_explicit_confirm_saves_partial():
     result = compute_multi_select_state(
-        pending=["อยู่ลำบาก"], new_answer="__confirm_multi__", max_selections=3
+        pending=["อยู่ลำบาก"], new_answer="ยืนยัน", max_selections=3, confirm_keyword="ยืนยัน"
     )
     assert result["action"] == "confirm"
     assert result["answers"] == ["อยู่ลำบาก"]
@@ -36,7 +36,7 @@ def test_explicit_confirm_saves_partial():
 
 def test_confirm_with_empty_pending_is_ignored():
     result = compute_multi_select_state(
-        pending=[], new_answer="__confirm_multi__", max_selections=2
+        pending=[], new_answer="ยืนยัน", max_selections=2, confirm_keyword="ยืนยัน"
     )
     assert result["action"] == "ignore"
 
@@ -45,7 +45,7 @@ def test_confirm_with_empty_pending_is_ignored():
 
 def test_duplicate_selection_is_deduplicated():
     result = compute_multi_select_state(
-        pending=["อยู่ลำบาก"], new_answer="อยู่ลำบาก", max_selections=2
+        pending=["อยู่ลำบาก"], new_answer="อยู่ลำบาก", max_selections=2, confirm_keyword="ยืนยัน"
     )
     assert result["action"] == "accumulate"
     assert result["pending"].count("อยู่ลำบาก") == 1

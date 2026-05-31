@@ -1,5 +1,5 @@
 {
-  "version": "socratic_community_report",
+  "version": "socratic_community_report_v2_deep",
   "questions": {
 
     "q_socratic_implication": {
@@ -7,19 +7,43 @@
       "type": "quick_reply",
       "text": "สวัสดีครับ 🏡 ช่วงนี้สภาพแวดล้อมในพื้นที่ มีเรื่องไหนที่สร้างความลำบากหรือกระทบการใช้ชีวิตของคุณมากที่สุดครับ?",
       "options": [
-        { "label": "แดดร้อนจัดจนอยู่ลำบาก 🌡️", "action_type": "message", "value": "heat", "next_question_id": "q_socratic_evidence" },
-        { "label": "น้ำขัง/ท่วม เดินทางยาก 🌊", "action_type": "message", "value": "flood", "next_question_id": "q_socratic_evidence" }
+        { "label": "แดดร้อนจัดจนอยู่ลำบาก 🌡️", "action_type": "message", "value": "heat", "next_question_id": "q_socratic_root_heat" },
+        { "label": "น้ำขัง/ท่วม เดินทางยาก 🌊", "action_type": "message", "value": "flood", "next_question_id": "q_socratic_root_flood" }
+      ]
+    },
+
+    "q_socratic_root_heat": {
+      "id": "q_socratic_root_heat",
+      "type": "quick_reply",
+      "text": "พอจะสังเกตไหมครับว่าที่ร้อนจนอยู่ลำบาก สาเหตุหลักๆ ในจุดนั้นมาจากอะไร?",
+      "options": [
+        { "label": "บ้านทึบ / อากาศไม่ถ่ายเท", "action_type": "message", "value": "poor_ventilation", "next_question_id": "q_socratic_evidence" },
+        { "label": "หลังคารับความร้อน / ไม่มีฉนวน", "action_type": "message", "value": "hot_roof", "next_question_id": "q_socratic_evidence" },
+        { "label": "บริเวณนั้นไม่มีร่มเงาต้นไม้เลย", "action_type": "message", "value": "no_shade", "next_question_id": "q_socratic_evidence" }
+      ]
+    },
+
+    "q_socratic_root_flood": {
+      "id": "q_socratic_root_flood",
+      "type": "quick_reply",
+      "text": "สำหรับเรื่องน้ำท่วม/ขัง อะไรคือสาเหตุ หรือสิ่งที่คุณกังวลที่สุดในจุดนั้นครับ?",
+      "options": [
+        { "label": "น้ำเน่าเหม็น / กลัวเชื้อโรค", "action_type": "message", "value": "polluted_water", "next_question_id": "q_socratic_evidence" },
+        { "label": "ท่อตัน / ขยะอุดตัน / ระบายไม่ทัน", "action_type": "message", "value": "clogged_drain", "next_question_id": "q_socratic_evidence" },
+        { "label": "กลัวสัตว์มีพิษ / ไฟฟ้ารั่ว", "action_type": "message", "value": "flood_dangers", "next_question_id": "q_socratic_evidence" }
       ]
     },
 
     "q_socratic_evidence": {
       "id": "q_socratic_evidence",
-      "type": "quick_reply",
-      "text": "เข้าใจเลยครับ แล้วจากปัญหาที่เจอ มันทำให้ส่วนไหนของการใช้ชีวิตสะดุด หรือน่าเป็นห่วงที่สุดครับ?",
+      "type": "multi_select",
+      "max_selections": 2,
+      "text": "เข้าใจเลยครับ แล้วจากปัญหาที่เจอ มันทำให้ส่วนไหนของการใช้ชีวิตสะดุด หรือน่าเป็นห่วงที่สุดครับ? (เลือกได้สูงสุด 2 ข้อ)",
       "options": [
+        { "label": "กระทบสุขภาพ (ฮีทสโตรก/น้ำกัดเท้า)", "action_type": "message", "value": "health_impact", "next_question_id": "q_socratic_alternative" },
+        { "label": "ห่วงความปลอดภัยของคนแก่/เด็ก", "action_type": "message", "value": "vulnerable_safety", "next_question_id": "q_socratic_alternative" },
         { "label": "ทำมาหากิน/ทำงานลำบาก", "action_type": "message", "value": "economic_impact", "next_question_id": "q_socratic_alternative" },
-        { "label": "ห่วงคนแก่/เด็ก/ผู้ป่วย", "action_type": "message", "value": "vulnerable_groups", "next_question_id": "q_socratic_alternative" },
-        { "label": "เสี่ยงอันตราย/อุบัติเหตุ", "action_type": "message", "value": "safety_risk", "next_question_id": "q_socratic_alternative" }
+        { "label": "เสี่ยงเกิดอุบัติเหตุ/ลื่นล้ม", "action_type": "message", "value": "accident_risk", "next_question_id": "q_socratic_alternative" }
       ]
     },
 
@@ -27,10 +51,10 @@
       "id": "q_socratic_alternative",
       "type": "multi_select",
       "max_selections": 2,
-      "text": "ถ้าเราสามารถร่วมกันปรับพื้นที่ตรงนี้ได้ คุณมองว่า 'จุดเริ่มต้น' แบบไหนที่จะช่วยแก้ปัญหาให้คนส่วนใหญ่ได้จริงครับ? (เลือกได้ 2 ข้อ)",
+      "text": "ถ้าเราสามารถร่วมกันปรับพื้นที่ตรงนี้ได้ คุณมองว่า 'จุดเริ่มต้น' แบบไหนที่จะช่วยแก้ปัญหาให้คนส่วนใหญ่ได้จริงครับ? (เลือกได้สูงสุด 2 ข้อ)",
       "options": [
-        { "label": "เพิ่มร่มเงา / หลังคา / พัดลม", "action_type": "message", "value": "shade_cooling", "next_question_id": "q_location" },
-        { "label": "ปรับพื้น / ลอกท่อ / ทำทางเดิน", "action_type": "message", "value": "infrastructure", "next_question_id": "q_location" },
+        { "label": "เพิ่มร่มเงา / หลังคากันแดด / พัดลม", "action_type": "message", "value": "shade_cooling", "next_question_id": "q_location" },
+        { "label": "ลอกท่อ / จัดการขยะ / ปรับทางเดิน", "action_type": "message", "value": "infrastructure_drainage", "next_question_id": "q_location" },
         { "label": "เพิ่มไฟส่องสว่าง / จุดนั่งพัก", "action_type": "message", "value": "lighting_resting", "next_question_id": "q_location" }
       ]
     },
@@ -40,7 +64,8 @@
       "type": "location",
       "text": "เพื่อให้ทีมงานเห็นภาพและวิเคราะห์พื้นที่ได้แม่นยำขึ้น รบกวนแชร์พิกัดที่เกิดปัญหาหน่อยนะครับ 📍",
       "options": [
-        { "label": "📍 ส่งพิกัดตำแหน่ง", "action_type": "location", "next_question_id": "q_photo" }
+        { "label": "📍 ส่งพิกัดตำแหน่ง", "action_type": "location", "next_question_id": "q_photo" },
+        { "label": "✍️ พิมพ์ชื่อจุด", "action_type": "message", "value": "__free_text__", "next_question_id": "q_photo" }
       ]
     },
 
@@ -54,6 +79,7 @@
       ]
     }
   },
+  
   "flow": {
     "onstart": "q_socratic_implication"
   }

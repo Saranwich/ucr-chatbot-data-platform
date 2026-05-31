@@ -6,17 +6,13 @@ if str(root_dir) not in sys.path:
 
 import requests
 import json
-from app.config import IMAGES_DIR, CHANNEL_ACCESS_TOKEN, LIFF_REPORT_URL
+from app.config import IMAGES_DIR, CHANNEL_ACCESS_TOKEN
 
 # ดึง Path รูปมาจาก config
 IMAGE_PATH = IMAGES_DIR / "rich_menu.jpg"
 
 if not CHANNEL_ACCESS_TOKEN:
     print("❌ Error: ไม่พบ CHANNEL_ACCESS_TOKEN ในไฟล์ .env")
-    exit()
-
-if not LIFF_REPORT_URL:
-    print("❌ Error: ไม่พบ LIFF_REPORT_URL ในไฟล์ .env")
     exit()
 
 if not IMAGE_PATH.exists():
@@ -44,15 +40,11 @@ def create_and_deploy_richmenu():
             },
             {
                 "bounds": {"x": 625, "y": 0, "width": 625, "height": 843},
-                "action": {
-                    "type": "uri",
-                    "uri": LIFF_REPORT_URL,
-                    "label": "รายงานปัญหา"
-                }
+                "action": {"type": "message", "text": "แจ้งปัญหา"} # ปุ่ม 2
             },
             {
                 "bounds": {"x": 1250, "y": 0, "width": 625, "height": 843},
-                "action": {"type": "message", "text": "ข้อมูลโครงการ"} # ปุ่ม 3
+                "action": {"type": "message", "text": "ติดต่อ"} # ปุ่ม 3
             },
             {
                 "bounds": {"x": 1875, "y": 0, "width": 625, "height": 843},

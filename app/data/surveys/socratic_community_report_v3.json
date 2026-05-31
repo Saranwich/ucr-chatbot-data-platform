@@ -7,8 +7,8 @@
       "type": "quick_reply",
       "text": "สวัสดีครับ 🏡 ช่วงนี้สภาพแวดล้อมในพื้นที่ มีเรื่องไหนที่สร้างความลำบากหรือกระทบการใช้ชีวิตของคุณมากที่สุดครับ?",
       "options": [
-        { "label": "แดดร้อนจัดจนอยู่ลำบาก 🌡️", "action_type": "message", "value": "อากาศร้อนจัด", "next_question_id": null },
-        { "label": "น้ำขัง/ท่วม เดินทางยาก 🌊", "action_type": "message", "value": "น้ำท่วม/น้ำขัง", "next_question_id": null }
+        { "label": "🌡️ ร้อน/แดดจัด", "action_type": "message", "value": "อากาศร้อนจัด", "next_question_id": null },
+        { "label": "🌊 น้ำท่วม/น้ำขัง", "action_type": "message", "value": "น้ำท่วม/น้ำขัง", "next_question_id": null }
       ]
     },
 
@@ -17,7 +17,7 @@
       "type": "quick_reply",
       "text": "พอจะสังเกตไหมครับว่าที่ร้อนจนอยู่ลำบาก สาเหตุหลักๆ ในจุดนั้นมาจากอะไร?",
       "options": [
-        { "label": "บ้านทึบ/อากาศไม่ถ่ายเท", "action_type": "message", "value": "บ้านทึบ", "next_question_id": null },
+        { "label": "บ้านทึบ/ไม่ถ่ายเท", "action_type": "message", "value": "บ้านทึบ", "next_question_id": null },
         { "label": "หลังคาร้อน/ไม่มีฉนวน", "action_type": "message", "value": "หลังคาร้อน", "next_question_id": null },
         { "label": "ไม่มีร่มเงาต้นไม้เลย", "action_type": "message", "value": "ไม่มีร่มเงา", "next_question_id": null },
         { "label": "อื่น ๆ / ไม่แน่ใจ", "action_type": "message", "value": "ไม่แน่ใจ", "next_question_id": null }
@@ -29,9 +29,9 @@
       "type": "quick_reply",
       "text": "สำหรับเรื่องน้ำท่วม/ขัง อะไรคือสาเหตุ หรือสิ่งที่คุณกังวลที่สุดในจุดนั้นครับ?",
       "options": [
-        { "label": "น้ำเน่าเหม็น/เชื้อโรค", "action_type": "message", "value": "น้ำเน่าเหม็น", "next_question_id": null },
+        { "label": "น้ำเน่า/เชื้อโรค", "action_type": "message", "value": "น้ำเน่าเหม็น", "next_question_id": null },
         { "label": "ท่อตัน/ขยะอุดตัน", "action_type": "message", "value": "ท่อตัน", "next_question_id": null },
-        { "label": "กลัวสัตว์มีพิษ/ไฟฟ้ารั่ว", "action_type": "message", "value": "สัตว์มีพิษ", "next_question_id": null },
+        { "label": "สัตว์มีพิษ/ไฟรั่ว", "action_type": "message", "value": "สัตว์มีพิษ", "next_question_id": null },
         { "label": "อื่น ๆ / ไม่แน่ใจ", "action_type": "message", "value": "ไม่แน่ใจ", "next_question_id": null }
       ]
     },
@@ -42,10 +42,10 @@
       "max_selections": 2,
       "text": "เข้าใจเลยครับ แล้วจากปัญหาที่เจอ มันทำให้ส่วนไหนของการใช้ชีวิตสะดุด หรือน่าเป็นห่วงที่สุดครับ? (เลือกได้ไม่เกิน 2 ข้อ)",
       "options": [
-        { "label": "กระทบสุขภาพ (ฮีทสโตรก/น้ำกัดเท้า)", "action_type": "message", "value": "กระทบสุขภาพ", "next_question_id": null },
-        { "label": "ห่วงความปลอดภัยของคนแก่/เด็ก", "action_type": "message", "value": "ห่วงกลุ่มเปราะบาง", "next_question_id": null },
-        { "label": "ทำมาหากิน/ทำงานลำบาก", "action_type": "message", "value": "กระทบรายได้", "next_question_id": null },
-        { "label": "เสี่ยงเกิดอุบัติเหตุ/ลื่นล้ม", "action_type": "message", "value": "อุบัติเหตุ", "next_question_id": null }
+        { "label": "กระทบสุขภาพ", "action_type": "message", "value": "กระทบสุขภาพ", "next_question_id": null },
+        { "label": "ห่วงคนแก่/เด็ก", "action_type": "message", "value": "ห่วงกลุ่มเปราะบาง", "next_question_id": null },
+        { "label": "ทำมาหากินลำบาก", "action_type": "message", "value": "กระทบรายได้", "next_question_id": null },
+        { "label": "เสี่ยงอุบัติเหตุ", "action_type": "message", "value": "อุบัติเหตุ", "next_question_id": null }
       ]
     },
 
@@ -55,9 +55,9 @@
       "max_selections": 2,
       "text": "ถ้าเราสามารถร่วมกันปรับพื้นที่ตรงนี้ได้ คุณมองว่า 'จุดเริ่มต้น' แบบไหนที่จะช่วยแก้ปัญหาให้คนส่วนใหญ่ได้จริงครับ? (เลือกได้ไม่เกิน 2 ข้อ)",
       "options": [
-        { "label": "เพิ่มร่มเงา/หลังคา/พัดลม", "action_type": "message", "value": "ร่มเงาและระบายอากาศ", "next_question_id": null },
-        { "label": "ลอกท่อ/จัดการขยะ/ปรับทางเดิน", "action_type": "message", "value": "จัดการขยะและท่อระบาย", "next_question_id": null },
-        { "label": "เพิ่มไฟส่องสว่าง/จุดนั่งพัก", "action_type": "message", "value": "ไฟสว่างและจุดพัก", "next_question_id": null }
+        { "label": "ร่มเงา/หลังคา/พัดลม", "action_type": "message", "value": "ร่มเงาและระบายอากาศ", "next_question_id": null },
+        { "label": "ลอกท่อ/จัดการขยะ", "action_type": "message", "value": "จัดการขยะและท่อระบาย", "next_question_id": null },
+        { "label": "เพิ่มไฟ/จุดนั่งพัก", "action_type": "message", "value": "ไฟสว่างและจุดพัก", "next_question_id": null }
       ]
     },
 

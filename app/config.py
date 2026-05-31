@@ -14,7 +14,7 @@ IMAGES_DIR = BASE_DIR / "app" / "data" / "images"
 
 #add question file path here
 SURVEY_TRIGGER_MAP = {
-    "เริ่มทำแบบสำรวจ": "community_report_v1",
+    "เริ่มทำแบบสำรวจ": "socratic_community_report_v3",
     "devtest": "devtest",
     # อนาคตถ้ามีโปรเจกต์ใหม่ แค่มาเพิ่มตรงนี้ เช่น "รายงานน้ำท่วม": "flood_v2"
 }

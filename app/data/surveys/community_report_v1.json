@@ -246,7 +246,7 @@
         { "label": "ทุกครั้งที่ฝนตก",   "action_type": "message", "value": "ทุกครั้งที่ฝนตก",   "next_question_id": null },
         { "label": "เดือนละหลายครั้ง",   "action_type": "message", "value": "เดือนละหลายครั้ง",   "next_question_id": null },
         { "label": "ปีละหลายครั้ง",      "action_type": "message", "value": "ปีละหลายครั้ง",      "next_question_id": null },
-        { "label": "ปีละครั้งหรือน้อยกว่า", "action_type": "message", "value": "ปีละครั้ง",       "next_question_id": null },
+        { "label": "ปีละครั้ง/น้อยกว่า", "action_type": "message", "value": "ปีละครั้ง",       "next_question_id": null },
         { "label": "ครั้งแรกที่เจอ",     "action_type": "message", "value": "ครั้งแรก",           "next_question_id": null }
       ]
     },

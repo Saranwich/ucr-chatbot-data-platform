@@ -14,17 +14,17 @@ class User(Base):
     __tablename__ = "users"
     lineuser_id = Column(String, primary_key=True, index=True)
     display_name = Column(String)
-    has_completed_profile = Column(Integer, default=0, nullable=False)  # 0=false, 1=true
     created_at = Column(DateTime, default=get_bangkok_now, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))
 
 class SurveySession(Base):
     __tablename__ = "survey_sessions"
+    # ใช้ lineuser_id เป็น Primary Key ได้เลย เพราะ 1 คนควรมีแค่ 1 Session ที่กำลังทำอยู่
     lineuser_id = Column(String, ForeignKey("users.lineuser_id"), primary_key=True)
-    survey_version = Column(String, nullable=False)
-    current_route_id = Column(String, nullable=True)   # which route the user is in
-    current_step = Column(Integer, default=0)          # step index within current_route_id
-    route_history = Column(JSON, default=list, nullable=False)  # stack: [{"route_id": str, "step": int}]
-    payload = Column(JSON, default=dict, nullable=False)
+    survey_version = Column(String, nullable=False)  # เช่น "v1"
+    current_step = Column(Integer, default=0)        # ตอนนี้กำลังตอบคำถาม index ที่เท่าไหร่
+    payload = Column(JSON, default=dict, nullable=False) 
+    
+    # เวลาเอาไว้เช็ค Timeout (ถ้าเกิน 1 ชม. ค่อยย้ายไปลงตาราง Incomplete)
     updated_at = Column(DateTime, default=get_bangkok_now, onupdate=get_bangkok_now, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))
 
 class CompletedReport(Base):
@@ -52,8 +52,7 @@ class IncompleteReport(Base):
     location_data = Column(Geometry('POINT', srid=4326), nullable=True)
     
     # จุดที่คนเทงาน (เอาไว้วิเคราะห์ว่าคำถามข้อไหนคนหนีเยอะสุด)
-    drop_off_route_id = Column(String, nullable=True)
-    drop_off_step = Column(Integer, nullable=True)
+    drop_off_step = Column(Integer, nullable=False)
     
     payload = Column(JSON, nullable=False)
     image_path = Column(String, nullable=True)

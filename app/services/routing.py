@@ -98,17 +98,20 @@ def compute_go_back_state(
     return {"action": "at_beginning"}
 
 
-def compute_multi_select_state(pending: list, new_answer: str, max_selections: int) -> dict:
+def compute_multi_select_state(pending: list, new_answer: str, max_selections: int, confirm_keyword: str) -> dict:
     """
     Pure function — no DB, no LINE API.
 
     Handles one user tap during a multi_select question:
 
     action="accumulate" — answer added to pending list, not ready to advance yet
-    action="confirm"    — answers are final (max reached or user tapped __confirm_multi__)
+    action="confirm"    — answers are final (max reached or user sent confirm_keyword)
     action="ignore"     — user confirmed with nothing selected; do nothing
+
+    confirm_keyword is injected by the caller (survey_service passes CONFIRM_KEYWORD
+    from config) so this module stays import-clean and unit-testable.
     """
-    if new_answer == "__confirm_multi__":
+    if new_answer == confirm_keyword:
         if not pending:
             return {"action": "ignore"}
         return {"action": "confirm", "answers": list(pending)}

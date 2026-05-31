@@ -136,7 +136,7 @@
         {
           "label": "✍️ พิมพ์ชื่อจุด",
           "action_type": "message",
-          "value": "__free_text__"
+          "value": "พิมพ์เอง"
         }
       ]
     },
@@ -152,7 +152,7 @@
         {
           "label": "ข้ามได้",
           "action_type": "message",
-          "value": "__skip__"
+          "value": "ข้าม"
         }
       ]
     }

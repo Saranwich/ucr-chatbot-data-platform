@@ -20,6 +20,12 @@ SURVEY_TRIGGER_MAP = {
     # อนาคตถ้ามีโปรเจกต์ใหม่ แค่มาเพิ่มตรงนี้ เช่น "รายงานน้ำท่วม": "flood_v2"
 }
 
+# Control keywords ที่ปุ่ม quick-reply ส่งกลับมา (และรับได้เมื่อผู้ใช้พิมพ์เอง)
+# ⚠️ ชั่วคราว: ดู docs/adr/0001-rename-sentinels-to-action-words.md
+# ปลายทางคือย้ายไปเป็น PostbackAction data token (issue #18)
+GO_BACK_KEYWORD = "ย้อนกลับ"
+CONFIRM_KEYWORD = "ยืนยัน"
+
 # Static Reply Messages
 PROJECT_INFO_TEXT = (
     "🏢 โครงการ UCR Smart City Chatbot\n"

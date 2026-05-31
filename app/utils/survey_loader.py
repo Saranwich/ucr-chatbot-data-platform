@@ -9,7 +9,6 @@ class SurveyOption(BaseModel):
     label: str
     action_type: str
     value: Optional[str] = None
-    next_question_id: Optional[str] = None  # None=end, "__dynamic__"=use dispatcher
 
 
 class SurveyQuestion(BaseModel):
@@ -20,24 +19,42 @@ class SurveyQuestion(BaseModel):
     max_selections: Optional[int] = None  # only for multi_select
 
 
-class Dispatcher(BaseModel):
-    type: str  # always "dispatcher"
-    look_up_answer_of: str
-    map: Dict[str, Optional[str]]
-    default: Optional[str] = None  # route to use when answer doesn't match any map key
+class Condition(BaseModel):
+    """One branch of an orchestrator.
+
+    If every field in `when` matches the saved answer (logical AND),
+    this condition wins and the walker jumps to `goto`.
+    """
+    when: Dict[str, str]        # field -> expected value; ALL must match
+    goto: Optional[str] = None  # route id to go to (None = end the survey)
 
 
-class SurveyFlow(BaseModel):
-    onstart: str
-    after: Dict[str, Optional[Union[Dispatcher, str]]]
-    forks: Dict[str, Dict[str, str]] = {}
+class Orchestrator(BaseModel):
+    """A route's branching exit: the first condition whose `when` matches wins.
+
+    If no condition matches, `default` is used (None = end the survey).
+    """
+    conditions: List[Condition] = []
+    default: Optional[str] = None
+
+
+class Route(BaseModel):
+    """A node in the survey graph: an ordered list of questions plus an exit.
+
+    `next` is where the walker goes once `questions` is exhausted:
+        None          -> end the survey
+        "route_id"    -> go straight to that route (unconditional)
+        Orchestrator  -> evaluate conditions to pick the next route
+    """
+    questions: List[str] = []
+    next: Optional[Union[str, Orchestrator]] = None
 
 
 class Survey(BaseModel):
     version: str
+    onstart: str                          # route id where walking begins
     questions: Dict[str, SurveyQuestion]
-    routes: Dict[str, List[str]]
-    flow: SurveyFlow
+    routes: Dict[str, Route]
 
 
 class SurveyManager:
@@ -72,16 +89,10 @@ class SurveyManager:
             return survey.questions.get(question_id)
         return None
 
-    def get_route(self, version: str, route_id: str) -> Optional[List[str]]:
+    def get_route(self, version: str, route_id: str) -> Optional[Route]:
         survey = self.get_survey(version)
         if survey:
             return survey.routes.get(route_id)
-        return None
-
-    def get_flow(self, version: str) -> Optional[SurveyFlow]:
-        survey = self.get_survey(version)
-        if survey:
-            return survey.flow
         return None
 
 

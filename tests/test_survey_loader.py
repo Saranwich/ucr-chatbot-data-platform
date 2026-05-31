@@ -5,14 +5,15 @@ from app.utils.survey_loader import SurveyManager
 
 MINIMAL_SURVEY = {
     "version": "test_v1",
+    "onstart": "main_route",
     "questions": {
         "q_topic": {
             "id": "q_topic",
             "type": "quick_reply",
             "text": "What to report?",
             "options": [
-                {"label": "Heat", "action_type": "message", "value": "heat", "next_question_id": "q_location"},
-                {"label": "Flood", "action_type": "message", "value": "flood", "next_question_id": "q_location"}
+                {"label": "Heat", "action_type": "message", "value": "heat"},
+                {"label": "Flood", "action_type": "message", "value": "flood"}
             ]
         },
         "q_location": {
@@ -20,17 +21,12 @@ MINIMAL_SURVEY = {
             "type": "location",
             "text": "Where is the problem?",
             "options": [
-                {"label": "Send location", "action_type": "location", "next_question_id": None}
+                {"label": "Send location", "action_type": "location"}
             ]
         }
     },
     "routes": {
-        "main_route": ["q_topic", "q_location"]
-    },
-    "flow": {
-        "onstart": "main_route",
-        "after": {"main_route": None},
-        "forks": {}
+        "main_route": {"questions": ["q_topic", "q_location"], "next": None}
     }
 }
 
@@ -63,7 +59,7 @@ def test_get_question_returns_correct_question(manager):
 
 def test_malformed_json_raises_on_load(tmp_path):
     bad = tmp_path / "bad.json"
-    bad.write_text(json.dumps({"version": "bad_v1"}))  # missing questions/routes/flow
+    bad.write_text(json.dumps({"version": "bad_v1"}))  # missing onstart/questions/routes
     m = SurveyManager()
     with pytest.raises(Exception):
         m.load_from_file(str(bad))
@@ -75,49 +71,45 @@ def test_get_question_returns_none_for_unknown_id(manager):
     assert manager.get_question("test_v1", "does_not_exist") is None
 
 
-# --- Behavior 4: get_route returns questions in correct order ---
+# --- Behavior 4: get_route returns the Route with questions in correct order ---
 
 def test_get_route_returns_ordered_question_ids(manager):
     route = manager.get_route("test_v1", "main_route")
-    assert route == ["q_topic", "q_location"]
+    assert route.questions == ["q_topic", "q_location"]
+    assert route.next is None
 
 
-# --- Behavior 5: dispatcher in flow is correctly parsed ---
+# --- Behavior 5: an orchestrator in a route's `next` is correctly parsed ---
 
-def test_get_flow_parses_dispatcher(tmp_path):
-    survey_with_dispatcher = {
-        "version": "dispatch_v1",
+def test_route_next_parses_orchestrator(tmp_path):
+    survey_with_orchestrator = {
+        "version": "orch_v1",
+        "onstart": "main_route",
         "questions": {
             "q_topic": {"id": "q_topic", "type": "quick_reply", "text": "Topic?",
-                        "options": [{"label": "Heat", "action_type": "message", "value": "heat", "next_question_id": None}]},
+                        "options": [{"label": "Heat", "action_type": "message", "value": "heat"}]},
         },
         "routes": {
-            "main_route": ["q_topic"],
-            "heat_route": []
-        },
-        "flow": {
-            "onstart": "main_route",
-            "after": {
-                "main_route": {
-                    "type": "dispatcher",
-                    "look_up_answer_of": "q_topic",
-                    "map": {"heat": "heat_route"}
+            "main_route": {
+                "questions": ["q_topic"],
+                "next": {
+                    "conditions": [{"when": {"q_topic": "heat"}, "goto": "heat_route"}],
+                    "default": None,
                 },
-                "heat_route": None
             },
-            "forks": {}
-        }
+            "heat_route": {"questions": [], "next": None},
+        },
     }
-    f = tmp_path / "dispatch_v1.json"
-    f.write_text(json.dumps(survey_with_dispatcher))
+    f = tmp_path / "orch_v1.json"
+    f.write_text(json.dumps(survey_with_orchestrator))
     m = SurveyManager()
     m.load_from_file(str(f))
 
-    flow = m.get_flow("dispatch_v1")
-    dispatcher = flow.after["main_route"]
-    assert dispatcher.type == "dispatcher"
-    assert dispatcher.look_up_answer_of == "q_topic"
-    assert dispatcher.map["heat"] == "heat_route"
+    orchestrator = m.get_route("orch_v1", "main_route").next
+    condition = orchestrator.conditions[0]
+    assert condition.when == {"q_topic": "heat"}
+    assert condition.goto == "heat_route"
+    assert orchestrator.default is None
 
 
 # --- Behavior 6: two versions loaded independently ---
@@ -125,12 +117,12 @@ def test_get_flow_parses_dispatcher(tmp_path):
 def test_two_versions_do_not_bleed(tmp_path):
     v2 = {
         "version": "test_v2",
+        "onstart": "route_a",
         "questions": {
             "q_only_in_v2": {"id": "q_only_in_v2", "type": "quick_reply", "text": "V2 only",
                               "options": []}
         },
-        "routes": {"route_a": ["q_only_in_v2"]},
-        "flow": {"onstart": "route_a", "after": {"route_a": None}, "forks": {}}
+        "routes": {"route_a": {"questions": ["q_only_in_v2"], "next": None}}
     }
     v2_file = tmp_path / "test_v2.json"
     v2_file.write_text(json.dumps(v2))

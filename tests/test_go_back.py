@@ -4,31 +4,25 @@ from app.services.routing import compute_go_back_state
 
 SURVEY_DATA = {
     "version": "goback_test",
+    "onstart": "start_route",
     "questions": {
         "q1": {"id": "q1", "type": "quick_reply", "text": "Q1?",
-               "options": [{"label": "A", "action_type": "message", "value": "heat", "next_question_id": None}]},
+               "options": [{"label": "A", "action_type": "message", "value": "heat"}]},
         "q2": {"id": "q2", "type": "quick_reply", "text": "Q2?",
-               "options": [{"label": "B", "action_type": "message", "value": "B", "next_question_id": None}]},
+               "options": [{"label": "B", "action_type": "message", "value": "B"}]},
         "q_heat": {"id": "q_heat", "type": "quick_reply", "text": "Heat Q?",
-                   "options": [{"label": "C", "action_type": "message", "value": "C", "next_question_id": None}]},
+                   "options": [{"label": "C", "action_type": "message", "value": "C"}]},
     },
     "routes": {
-        "start_route": ["q1", "q2"],
-        "heat_route":  ["q_heat"],
-    },
-    "flow": {
-        "onstart": "start_route",
-        "after": {
-            "start_route": {
-                "type": "dispatcher",
-                "look_up_answer_of": "q1",
-                "map": {"heat": "heat_route"},
+        "start_route": {
+            "questions": ["q1", "q2"],
+            "next": {
+                "conditions": [{"when": {"q1": "heat"}, "goto": "heat_route"}],
                 "default": None,
             },
-            "heat_route": None,
         },
-        "forks": {}
-    }
+        "heat_route": {"questions": ["q_heat"], "next": None},
+    },
 }
 
 

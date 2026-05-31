@@ -33,14 +33,14 @@ async def start_survey_session(user_id: str, survey_version: str, reply_token: s
 
     # 3. Decide which route to start at
     survey = survey_manager.get_survey(survey_version)
-    flow = survey.flow
 
     if user.has_completed_profile:
-        # Returning user: skip profile route, start at what comes after it
-        after_profile = flow.after.get(flow.onstart)
-        start_route_id = after_profile if isinstance(after_profile, str) else flow.onstart
+        # Returning user: skip the profile route (onstart), start at what comes after it.
+        # Only skip when the onstart route has a plain route id as its exit.
+        after_profile = survey.routes[survey.onstart].next
+        start_route_id = after_profile if isinstance(after_profile, str) else survey.onstart
     else:
-        start_route_id = flow.onstart
+        start_route_id = survey.onstart
 
     # 4. Create new session
     new_session = SurveySession(
@@ -55,7 +55,7 @@ async def start_survey_session(user_id: str, survey_version: str, reply_token: s
     await db.commit()
 
     # 5. Send first question of the starting route (no go-back on first question)
-    first_question_id = survey.routes[start_route_id][0]
+    first_question_id = survey.routes[start_route_id].questions[0]
     first_question = survey_manager.get_question(survey_version, first_question_id)
     if first_question:
         await send_question(reply_token, first_question, line_bot_api, show_go_back=False)
@@ -100,13 +100,13 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
         await db.commit()
 
         prev_question = survey_manager.get_question(survey_version, go_back["question_id"])
-        is_first = (go_back["route_id"] == survey.flow.onstart and go_back["step"] == 0)
+        is_first = (go_back["route_id"] == survey.onstart and go_back["step"] == 0)
         await send_question(reply_token, prev_question, line_bot_api, show_go_back=not is_first)
         return
 
     # 3. Identify the question the user just answered
     current_route = survey.routes[active_session.current_route_id]
-    current_question_id = current_route[active_session.current_step]
+    current_question_id = current_route.questions[active_session.current_step]
     current_question = survey_manager.get_question(survey_version, current_question_id)
 
     # 4. Handle multi_select accumulation
@@ -170,7 +170,7 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
 
     elif result["action"] == "next_route":
         # If we just finished the profile route, mark the user as profiled
-        if active_session.current_route_id == survey.flow.onstart:
+        if active_session.current_route_id == survey.onstart:
             user_result = await db.execute(select(User).where(User.lineuser_id == user_id))
             user = user_result.scalars().first()
             if user:

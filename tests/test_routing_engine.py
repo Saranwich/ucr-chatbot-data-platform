@@ -1,40 +1,36 @@
 import pytest
-from app.utils.survey_loader import Survey, SurveyQuestion, SurveyOption, SurveyFlow, Dispatcher
+from app.utils.survey_loader import Survey
 from app.services.routing import compute_next_state
 
 # Shared fixture survey used across all tests:
-# start_route: [q1, q2] → dispatcher → heat_route or flood_route → complete
+# start_route: [q1, q2] → orchestrator → heat_route or flood_route → complete
 SURVEY_DATA = {
     "version": "routing_test",
+    "onstart": "start_route",
     "questions": {
         "q1": {"id": "q1", "type": "quick_reply", "text": "Q1?",
-               "options": [{"label": "A", "action_type": "message", "value": "heat", "next_question_id": None}]},
+               "options": [{"label": "A", "action_type": "message", "value": "heat"}]},
         "q2": {"id": "q2", "type": "quick_reply", "text": "Q2?",
-               "options": [{"label": "B", "action_type": "message", "value": "B", "next_question_id": None}]},
+               "options": [{"label": "B", "action_type": "message", "value": "B"}]},
         "q_heat": {"id": "q_heat", "type": "quick_reply", "text": "Heat Q?",
-                   "options": [{"label": "C", "action_type": "message", "value": "C", "next_question_id": None}]},
+                   "options": [{"label": "C", "action_type": "message", "value": "C"}]},
         "q_flood": {"id": "q_flood", "type": "quick_reply", "text": "Flood Q?",
-                    "options": [{"label": "D", "action_type": "message", "value": "D", "next_question_id": None}]},
+                    "options": [{"label": "D", "action_type": "message", "value": "D"}]},
     },
     "routes": {
-        "start_route": ["q1", "q2"],
-        "heat_route":  ["q_heat"],
-        "flood_route": ["q_flood"],
-    },
-    "flow": {
-        "onstart": "start_route",
-        "after": {
-            "start_route": {
-                "type": "dispatcher",
-                "look_up_answer_of": "q1",
-                "map": {"heat": "heat_route", "flood": "flood_route"},
-                "default": None
+        "start_route": {
+            "questions": ["q1", "q2"],
+            "next": {
+                "conditions": [
+                    {"when": {"q1": "heat"}, "goto": "heat_route"},
+                    {"when": {"q1": "flood"}, "goto": "flood_route"},
+                ],
+                "default": None,
             },
-            "heat_route":  None,
-            "flood_route": None,
         },
-        "forks": {}
-    }
+        "heat_route":  {"questions": ["q_heat"], "next": None},
+        "flood_route": {"questions": ["q_flood"], "next": None},
+    },
 }
 
 
@@ -64,15 +60,11 @@ def test_mid_route_answer_advances_step(survey):
 def test_last_question_fixed_next_moves_to_next_route():
     fixed_survey = Survey(**{
         **SURVEY_DATA,
-        "flow": {
-            "onstart": "start_route",
-            "after": {
-                "start_route": "heat_route",
-                "heat_route": None,
-                "flood_route": None,
-            },
-            "forks": {}
-        }
+        "routes": {
+            "start_route": {"questions": ["q1", "q2"], "next": "heat_route"},
+            "heat_route":  {"questions": ["q_heat"], "next": None},
+            "flood_route": {"questions": ["q_flood"], "next": None},
+        },
     })
     result = compute_next_state(
         current_route_id="start_route",
@@ -88,9 +80,9 @@ def test_last_question_fixed_next_moves_to_next_route():
     assert {"route_id": "start_route", "step": 1} in result["route_history"]
 
 
-# --- Behavior 3: last question of route with dispatcher → picks route from payload ---
+# --- Behavior 3: last question of route with orchestrator → picks route from payload ---
 
-def test_last_question_dispatcher_picks_correct_route(survey):
+def test_last_question_orchestrator_picks_correct_route(survey):
     result = compute_next_state(
         current_route_id="start_route",
         current_step=1,  # last step of start_route
@@ -117,9 +109,9 @@ def test_last_question_of_last_route_completes_survey(survey):
     assert result["next_question_id"] is None
 
 
-# --- Behavior 5: dispatcher with unrecognised answer falls back to default ---
+# --- Behavior 5: orchestrator with unrecognised answer falls back to default ---
 
-def test_dispatcher_unknown_answer_uses_default(survey):
+def test_orchestrator_unknown_answer_uses_default(survey):
     result = compute_next_state(
         current_route_id="start_route",
         current_step=1,
@@ -130,3 +122,30 @@ def test_dispatcher_unknown_answer_uses_default(survey):
     # default is None → complete
     assert result["action"] == "complete"
     assert result["next_question_id"] is None
+
+
+# --- Behavior 6: a condition with two fields only matches when BOTH hold (AND) ---
+
+def test_multi_field_condition_requires_all_to_match():
+    survey = Survey(**{
+        **SURVEY_DATA,
+        "routes": {
+            "start_route": {
+                "questions": ["q1", "q2"],
+                "next": {
+                    "conditions": [
+                        {"when": {"q1": "heat", "q2": "B"}, "goto": "heat_route"},
+                    ],
+                    "default": "flood_route",
+                },
+            },
+            "heat_route":  {"questions": ["q_heat"], "next": None},
+            "flood_route": {"questions": ["q_flood"], "next": None},
+        },
+    })
+    # both match → heat_route
+    both = compute_next_state("start_route", 1, [], {"q1": "heat", "q2": "B"}, survey)
+    assert both["current_route_id"] == "heat_route"
+    # only one matches → falls through to default (flood_route)
+    one = compute_next_state("start_route", 1, [], {"q1": "heat", "q2": "X"}, survey)
+    assert one["current_route_id"] == "flood_route"

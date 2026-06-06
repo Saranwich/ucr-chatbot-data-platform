@@ -1,6 +1,6 @@
 import pytest
 from app.utils.survey_loader import Survey
-from app.services.routing import compute_next_state
+from app.services.routing import compute_next_state, compute_start_route
 
 # Shared fixture survey used across all tests:
 # start_route: [q1, q2] → orchestrator → heat_route or flood_route → complete
@@ -149,3 +149,27 @@ def test_multi_field_condition_requires_all_to_match():
     # only one matches → falls through to default (flood_route)
     one = compute_next_state("start_route", 1, [], {"q1": "heat", "q2": "X"}, survey)
     assert one["current_route_id"] == "flood_route"
+
+
+# --- compute_start_route: where a new session begins ---
+
+def test_start_route_new_user_starts_at_onstart(survey):
+    # survey's onstart exit is an orchestrator (not a plain route id)
+    assert compute_start_route(survey, has_completed_profile=0) == "start_route"
+
+
+def test_start_route_returning_user_skips_onstart_when_exit_is_plain_route():
+    fixed_survey = Survey(**{
+        **SURVEY_DATA,
+        "routes": {
+            "start_route": {"questions": ["q1", "q2"], "next": "heat_route"},
+            "heat_route":  {"questions": ["q_heat"], "next": None},
+            "flood_route": {"questions": ["q_flood"], "next": None},
+        },
+    })
+    assert compute_start_route(fixed_survey, has_completed_profile=1) == "heat_route"
+
+
+def test_start_route_returning_user_stays_at_onstart_when_exit_is_orchestrator(survey):
+    # onstart exit is an orchestrator → can't skip, so returning users start at onstart too
+    assert compute_start_route(survey, has_completed_profile=1) == "start_route"

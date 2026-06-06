@@ -6,7 +6,7 @@ from linebot.v3.messaging import (
 )
 
 from app.utils.survey_loader import SurveyQuestion, SurveyOption
-from app.services.survey_service import build_question_message
+from app.services.survey_messages import build_question_message
 from app.config import GO_BACK_KEYWORD, CONFIRM_KEYWORD
 
 

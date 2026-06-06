@@ -1,19 +1,12 @@
-# UCR Chatbot Data Platform
+# UCR Smart City — Community Survey Chatbot
 
-A data collection platform built on the LINE Messaging API, designed for daily community data surveys. This chatbot engages with local residents to gather hyper-local environmental and infrastructure data to assist in the redesign and mapping of community areas via the GAMA platform.
+A LINE chatbot that crowdsources situational and environmental data from local community residents. Survey responses are stored in a PostgreSQL database with geospatial support. This chatbot is one data-collection component within the larger UCR Smart City platform.
 
 ## Concept & Purpose
 
-This project is a LINE Chatbot built to conduct daily surveys with local people. The primary goal is to collect valuable, localized data to help in redesigning community maps and planning the locations of new facilities.
+This project is a LINE chatbot that conducts surveys with local residents in community areas. Users interact through LINE's familiar chat interface — answering questions, sharing their GPS location, and sending photos. Every completed response is saved to the database along with the respondent's location, so the data can be traced back to which community it came from.
 
-The bot collects various types of data from users, including:
-- Temperature & Humidity
-- Sunlight levels
-- Sound/Noise levels
-- Trash and waste reporting (via Image IDs)
-- Location data (Coordinates) for mapping facilities and issues
-
-By crowdsourcing this data directly from the community via a familiar chat interface, we can build a comprehensive and dynamic map of the area's current state and needs.
+The exact survey questions depend on the situation being measured and are managed through JSON configuration files. The survey engine currently uses static JSON files to define the question flow. Dynamic branching — where follow-up questions change based on earlier answers — is under active development.
 
 ## Tech Stack
 
@@ -25,22 +18,23 @@ By crowdsourcing this data directly from the community via a familiar chat inter
 ## Core Features
 
 - **User Onboarding:** Registers LINE users upon first interaction.
-- **Survey Engine:** Loads survey sequences from JSON files (e.g., `devtest_message_01.json`) without database migrations.
+- **Survey Engine:** Loads survey sequences from JSON files at startup — no database migrations needed to add new surveys.
 - **Data Collection:** Processes text responses, LINE Location events, and Image messages.
-- **State Management:** Tracks survey progress using temporary database sessions and JSONB payloads.
+- **State Management:** Tracks each user's survey progress using temporary database sessions and JSONB payloads.
 - **Structure:** Separates routing (`main.py`), controllers (`handlers/`), and business logic (`services/`).
 
 ## Project Structure
 
 ```text
-ucr-chatbot-data-platform/
+ucr-smartcity_chatbot/
 ├── app/
 │   ├── data/             # Survey JSON files and static assets
 │   ├── database/         # Database connection and session management
 │   ├── handlers/         # LINE message processing logic
 │   ├── models/           # SQLAlchemy models
+│   ├── routes/           # REST API routes (dashboard)
 │   ├── services/         # Core business logic & State Machine
-│   ├── utils/            # Utilities (survey_loader, config)
+│   ├── utils/            # Utilities (survey_loader, auth)
 │   └── main.py           # FastAPI entry point & Webhook callback
 ├── requirements.txt      # Python dependencies
 └── .env.example          # Environment variables template
@@ -65,7 +59,7 @@ ucr-chatbot-data-platform/
 ### 2. Clone the repository
 ```bash
 git clone <repository-url>
-cd ucr-chatbot-data-platform
+cd ucr-smartcity_chatbot
 ```
 
 ### 3. Virtual Environment
@@ -95,6 +89,8 @@ Edit `.env`:
 CHANNEL_SECRET=your_line_channel_secret
 CHANNEL_ACCESS_TOKEN=your_line_channel_access_token
 DATABASE_URL=postgresql://user:password@localhost/dbname
+LIFF_REPORT_URL=your_liff_url
+SECRET_KEY=your_jwt_secret_key
 # RICHMENU_ID=richmenu-....
 ```
 *(Note: The application automatically replaces `postgresql://` with `postgresql+asyncpg://`)*
@@ -103,7 +99,7 @@ DATABASE_URL=postgresql://user:password@localhost/dbname
 ```bash
 uvicorn app.main:app --reload
 ```
-*(Note: The application automatically creates the `users`, `survey_sessions`, and `completed_reports` tables upon startup.)*
+*(Note: The application automatically creates the database tables upon startup.)*
 
 ## Webhook Configuration (Local Development)
 

@@ -1,9 +1,7 @@
 import asyncio
 import os
 from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingApiBlob
-from dotenv import load_dotenv
-
-load_dotenv()
+import app.config_loader
 
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
 

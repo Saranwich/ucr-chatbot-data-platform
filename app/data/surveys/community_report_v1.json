@@ -1,0 +1,791 @@
+{
+  "version": "community_report_v1",
+  "onstart": "profile_route",
+  "questions": {
+    "q_profile_community": {
+      "id": "q_profile_community",
+      "type": "quick_reply",
+      "text": "สวัสดีครับ! ขอสอบถามข้อมูลพื้นฐานเล็กน้อย เพื่อช่วยให้ทีมเข้าใจว่าข้อมูลมาจากพื้นที่ใด (สามารถเลือก 'ไม่สะดวกตอบ' ได้ทุกข้อ)\n\nท่านเกี่ยวข้องกับชุมชนใด?",
+      "options": [
+        {
+          "label": "คนรักถิ่น",
+          "action_type": "message",
+          "value": "คนรักถิ่น"
+        },
+        {
+          "label": "หลังแฟลต",
+          "action_type": "message",
+          "value": "หลังแฟลต"
+        },
+        {
+          "label": "ชุมชนอื่นในคลองเปรม",
+          "action_type": "message",
+          "value": "ชุมชนอื่นในคลองเปรม"
+        },
+        {
+          "label": "ไม่สะดวกตอบ",
+          "action_type": "message",
+          "value": "ไม่สะดวกตอบ"
+        }
+      ]
+    },
+    "q_profile_role": {
+      "id": "q_profile_role",
+      "type": "quick_reply",
+      "text": "ท่านเกี่ยวข้องกับพื้นที่นี้ในฐานะใด?",
+      "options": [
+        {
+          "label": "ผู้อยู่อาศัย",
+          "action_type": "message",
+          "value": "ผู้อยู่อาศัย"
+        },
+        {
+          "label": "ผู้เช่า",
+          "action_type": "message",
+          "value": "ผู้เช่า"
+        },
+        {
+          "label": "ผู้นำ/กรรมการชุมชน",
+          "action_type": "message",
+          "value": "ผู้นำ/กรรมการชุมชน"
+        },
+        {
+          "label": "คนทำงาน/ค้าขาย",
+          "action_type": "message",
+          "value": "คนทำงาน/ค้าขาย"
+        },
+        {
+          "label": "ผู้ดูแลเด็ก/ผู้ป่วย",
+          "action_type": "message",
+          "value": "ผู้ดูแลเด็ก/ผู้ป่วย"
+        },
+        {
+          "label": "ผู้ใช้ทาง/เดินผ่าน",
+          "action_type": "message",
+          "value": "ผู้ใช้ทาง/เดินผ่าน"
+        },
+        {
+          "label": "อื่น ๆ",
+          "action_type": "message",
+          "value": "อื่น ๆ"
+        },
+        {
+          "label": "ไม่สะดวกตอบ",
+          "action_type": "message",
+          "value": "ไม่สะดวกตอบ"
+        }
+      ]
+    },
+    "q_profile_age": {
+      "id": "q_profile_age",
+      "type": "quick_reply",
+      "text": "ช่วงอายุของท่าน?",
+      "options": [
+        {
+          "label": "18–30 ปี",
+          "action_type": "message",
+          "value": "18–30"
+        },
+        {
+          "label": "31–45 ปี",
+          "action_type": "message",
+          "value": "31–45"
+        },
+        {
+          "label": "46–59 ปี",
+          "action_type": "message",
+          "value": "46–59"
+        },
+        {
+          "label": "60 ปีขึ้นไป",
+          "action_type": "message",
+          "value": "60+"
+        },
+        {
+          "label": "ไม่สะดวกตอบ",
+          "action_type": "message",
+          "value": "ไม่สะดวกตอบ"
+        }
+      ]
+    },
+    "q_profile_gender": {
+      "id": "q_profile_gender",
+      "type": "quick_reply",
+      "text": "เพศของท่าน?",
+      "options": [
+        {
+          "label": "หญิง",
+          "action_type": "message",
+          "value": "หญิง"
+        },
+        {
+          "label": "ชาย",
+          "action_type": "message",
+          "value": "ชาย"
+        },
+        {
+          "label": "อื่น ๆ / ไม่ระบุ",
+          "action_type": "message",
+          "value": "ไม่ระบุ"
+        },
+        {
+          "label": "ไม่สะดวกตอบ",
+          "action_type": "message",
+          "value": "ไม่สะดวกตอบ"
+        }
+      ]
+    },
+    "q_topic": {
+      "id": "q_topic",
+      "type": "quick_reply",
+      "text": "วันนี้ต้องการแจ้งเรื่องใดคะ/ครับ?",
+      "options": [
+        {
+          "label": "อากาศร้อนจัด 🌡️",
+          "action_type": "message",
+          "value": "อากาศร้อนจัด"
+        },
+        {
+          "label": "น้ำท่วม / น้ำขัง 🌊",
+          "action_type": "message",
+          "value": "น้ำท่วม/น้ำขัง"
+        }
+      ]
+    },
+    "q_location": {
+      "id": "q_location",
+      "type": "location",
+      "text": "จุดที่เกิดปัญหาคือที่ไหนครับ?\n(ส่งพิกัด หรือพิมพ์ชื่อจุด/ซอย/บ้านใกล้เคียงก็ได้)",
+      "options": [
+        {
+          "label": "📍 ส่งพิกัดตำแหน่ง",
+          "action_type": "location"
+        },
+        {
+          "label": "✍️ พิมพ์ชื่อจุด",
+          "action_type": "message",
+          "value": "พิมพ์เอง"
+        }
+      ]
+    },
+    "q_time": {
+      "id": "q_time",
+      "type": "quick_reply",
+      "text": "ปัญหานี้เกิดหรือกระทบช่วงเวลาไหน?",
+      "options": [
+        {
+          "label": "เช้า",
+          "action_type": "message",
+          "value": "เช้า"
+        },
+        {
+          "label": "กลางวัน",
+          "action_type": "message",
+          "value": "กลางวัน"
+        },
+        {
+          "label": "บ่าย",
+          "action_type": "message",
+          "value": "บ่าย"
+        },
+        {
+          "label": "เย็น",
+          "action_type": "message",
+          "value": "เย็น"
+        },
+        {
+          "label": "กลางคืน",
+          "action_type": "message",
+          "value": "กลางคืน"
+        },
+        {
+          "label": "ตอน/หลังฝนตก",
+          "action_type": "message",
+          "value": "ตอน/หลังฝนตก"
+        },
+        {
+          "label": "ไม่แน่นอน",
+          "action_type": "message",
+          "value": "ไม่แน่นอน"
+        }
+      ]
+    },
+    "q_duration": {
+      "id": "q_duration",
+      "type": "quick_reply",
+      "text": "โดยปกติเกิดนานประมาณเท่าไร?",
+      "options": [
+        {
+          "label": "น้อยกว่า 1 ชม.",
+          "action_type": "message",
+          "value": "<1ชม"
+        },
+        {
+          "label": "1–3 ชั่วโมง",
+          "action_type": "message",
+          "value": "1-3ชม"
+        },
+        {
+          "label": "4–6 ชั่วโมง",
+          "action_type": "message",
+          "value": "4-6ชม"
+        },
+        {
+          "label": "8–12 ชั่วโมง",
+          "action_type": "message",
+          "value": "8-12ชม"
+        },
+        {
+          "label": "ข้ามวัน",
+          "action_type": "message",
+          "value": "ข้ามวัน"
+        },
+        {
+          "label": "ไม่แน่ใจ",
+          "action_type": "message",
+          "value": "ไม่แน่ใจ"
+        }
+      ]
+    },
+    "q_affected_who": {
+      "id": "q_affected_who",
+      "type": "quick_reply",
+      "text": "ใครได้รับผลกระทบมากที่สุด?",
+      "options": [
+        {
+          "label": "เด็ก",
+          "action_type": "message",
+          "value": "เด็ก"
+        },
+        {
+          "label": "ผู้สูงอายุ",
+          "action_type": "message",
+          "value": "ผู้สูงอายุ"
+        },
+        {
+          "label": "ผู้หญิง",
+          "action_type": "message",
+          "value": "ผู้หญิง"
+        },
+        {
+          "label": "ผู้ดูแล",
+          "action_type": "message",
+          "value": "ผู้ดูแล"
+        },
+        {
+          "label": "ผู้ป่วย/ผู้พิการ",
+          "action_type": "message",
+          "value": "ผู้ป่วย/ผู้พิการ"
+        },
+        {
+          "label": "คนทำงาน/ค้าขาย",
+          "action_type": "message",
+          "value": "คนทำงาน/ค้าขาย"
+        },
+        {
+          "label": "คนเดินผ่าน",
+          "action_type": "message",
+          "value": "คนเดินผ่าน"
+        },
+        {
+          "label": "ทุกคน",
+          "action_type": "message",
+          "value": "ทุกคน"
+        }
+      ]
+    },
+    "q_impact": {
+      "id": "q_impact",
+      "type": "multi_select",
+      "max_selections": 2,
+      "text": "กระทบอย่างไร? (เลือกได้ไม่เกิน 2 ข้อ)",
+      "options": [
+        {
+          "label": "อยู่ลำบาก/ต้องย้าย",
+          "action_type": "message",
+          "value": "อยู่ลำบาก"
+        },
+        {
+          "label": "เดินผ่านลำบาก",
+          "action_type": "message",
+          "value": "เดินลำบาก"
+        },
+        {
+          "label": "เข้าออกยาก",
+          "action_type": "message",
+          "value": "เข้าออกยาก"
+        },
+        {
+          "label": "ไม่ปลอดภัย",
+          "action_type": "message",
+          "value": "ไม่ปลอดภัย"
+        },
+        {
+          "label": "สื่อสารไม่ได้",
+          "action_type": "message",
+          "value": "สื่อสารไม่ได้"
+        },
+        {
+          "label": "ชาร์จมือถือไม่ได้",
+          "action_type": "message",
+          "value": "ชาร์จไม่ได้"
+        },
+        {
+          "label": "ทำงาน/ค้าขายลำบาก",
+          "action_type": "message",
+          "value": "ค้าขายลำบาก"
+        },
+        {
+          "label": "น้ำเข้าบ้าน",
+          "action_type": "message",
+          "value": "น้ำเข้าบ้าน"
+        },
+        {
+          "label": "กลุ่มเปราะบาง",
+          "action_type": "message",
+          "value": "กลุ่มเปราะบาง"
+        },
+        {
+          "label": "อื่น ๆ",
+          "action_type": "message",
+          "value": "อื่น ๆ"
+        }
+      ]
+    },
+    "q_priority": {
+      "id": "q_priority",
+      "type": "multi_select",
+      "max_selections": 3,
+      "text": "ถ้าทำได้ไม่ครบ ควรเริ่มจากอะไร 3 อย่างแรก? (เลือกได้ไม่เกิน 3 ข้อ)",
+      "options": [
+        {
+          "label": "ร่มเงา/หลังคา",
+          "action_type": "message",
+          "value": "ร่มเงา"
+        },
+        {
+          "label": "ที่นั่งพัก",
+          "action_type": "message",
+          "value": "ที่นั่งพัก"
+        },
+        {
+          "label": "ไฟส่องสว่าง",
+          "action_type": "message",
+          "value": "ไฟสว่าง"
+        },
+        {
+          "label": "ติดพัดลม",
+          "action_type": "message",
+          "value": "พัดลม"
+        },
+        {
+          "label": "ติดแอร์",
+          "action_type": "message",
+          "value": "แอร์"
+        },
+        {
+          "label": "จุดชาร์จมือถือ",
+          "action_type": "message",
+          "value": "จุดชาร์จ"
+        },
+        {
+          "label": "Wi-Fi/สื่อสาร",
+          "action_type": "message",
+          "value": "Wi-Fi"
+        },
+        {
+          "label": "ทางเดินปลอดภัย",
+          "action_type": "message",
+          "value": "ทางเดินปลอดภัย"
+        },
+        {
+          "label": "ปรับพื้น/สิ่งกีดขวาง",
+          "action_type": "message",
+          "value": "ปรับพื้น"
+        },
+        {
+          "label": "พื้นที่รวมตัว",
+          "action_type": "message",
+          "value": "พื้นที่รวมตัว"
+        },
+        {
+          "label": "ตู้เย็นยา/ของจำเป็น",
+          "action_type": "message",
+          "value": "ตู้เย็นยา"
+        },
+        {
+          "label": "ยังไม่แน่ใจ",
+          "action_type": "message",
+          "value": "ยังไม่แน่ใจ"
+        }
+      ]
+    },
+    "q_urgency": {
+      "id": "q_urgency",
+      "type": "quick_reply",
+      "text": "ความเร่งด่วนของเรื่องนี้?",
+      "options": [
+        {
+          "label": "ด่วนมาก 🚨",
+          "action_type": "message",
+          "value": "ด่วนมาก"
+        },
+        {
+          "label": "ปานกลาง ⚠️",
+          "action_type": "message",
+          "value": "ปานกลาง"
+        },
+        {
+          "label": "บันทึกทั่วไป 📝",
+          "action_type": "message",
+          "value": "บันทึก"
+        },
+        {
+          "label": "ไม่แน่ใจ",
+          "action_type": "message",
+          "value": "ไม่แน่ใจ"
+        }
+      ]
+    },
+    "q_heat_area_type": {
+      "id": "q_heat_area_type",
+      "type": "quick_reply",
+      "text": "พื้นที่นี้เป็นพื้นที่แบบไหน?",
+      "options": [
+        {
+          "label": "ในบ้าน",
+          "action_type": "message",
+          "value": "ในบ้าน"
+        },
+        {
+          "label": "ทางเดิน",
+          "action_type": "message",
+          "value": "ทางเดิน"
+        },
+        {
+          "label": "พื้นที่ส่วนกลาง",
+          "action_type": "message",
+          "value": "พื้นที่ส่วนกลาง"
+        },
+        {
+          "label": "ศูนย์ชุมชน/บ้านกลาง",
+          "action_type": "message",
+          "value": "ศูนย์ชุมชน"
+        },
+        {
+          "label": "จุดนั่งพัก/จุดรอ",
+          "action_type": "message",
+          "value": "จุดนั่งพัก"
+        },
+        {
+          "label": "พื้นที่ทำงาน/ค้าขาย",
+          "action_type": "message",
+          "value": "พื้นที่ทำงาน"
+        }
+      ]
+    },
+    "q_heat_shade": {
+      "id": "q_heat_shade",
+      "type": "quick_reply",
+      "text": "บริเวณนี้มีต้นไม้หรือร่มเงาเพียงพอหรือไม่?\n(ข้อมูลนี้ช่วยให้ทีมวางแผนปลูกต้นไม้หรือสร้างหลังคากันแดดได้ถูกจุดครับ)",
+      "options": [
+        {
+          "label": "มีต้นไม้พอ",
+          "action_type": "message",
+          "value": "มีต้นไม้พอ"
+        },
+        {
+          "label": "ต้นไม้น้อยมาก",
+          "action_type": "message",
+          "value": "ต้นไม้น้อยมาก"
+        },
+        {
+          "label": "ไม่มีเลย",
+          "action_type": "message",
+          "value": "ไม่มีเลย"
+        },
+        {
+          "label": "มีหลังคา/ผ้าใบ",
+          "action_type": "message",
+          "value": "มีหลังคา/ผ้าใบ"
+        }
+      ]
+    },
+    "q_heat_coping": {
+      "id": "q_heat_coping",
+      "type": "quick_reply",
+      "text": "เวลาร้อนมาก ปกติรับมืออย่างไร?",
+      "options": [
+        {
+          "label": "เปิดพัดลม",
+          "action_type": "message",
+          "value": "เปิดพัดลม"
+        },
+        {
+          "label": "เปิดแอร์",
+          "action_type": "message",
+          "value": "เปิดแอร์"
+        },
+        {
+          "label": "ไปที่ร่มรอบบ้าน",
+          "action_type": "message",
+          "value": "ไปที่ร่ม"
+        },
+        {
+          "label": "ไปพื้นที่อื่น",
+          "action_type": "message",
+          "value": "ไปพื้นที่อื่น"
+        },
+        {
+          "label": "ไปเดินห้าง",
+          "action_type": "message",
+          "value": "ไปเดินห้าง"
+        },
+        {
+          "label": "กางมุ้ง/ผ้ากันแดด",
+          "action_type": "message",
+          "value": "กางผ้ากันแดด"
+        },
+        {
+          "label": "ทนอยู่ในบ้าน",
+          "action_type": "message",
+          "value": "ทนในบ้าน"
+        },
+        {
+          "label": "อื่น ๆ",
+          "action_type": "message",
+          "value": "อื่น ๆ"
+        }
+      ]
+    },
+    "q_heat_photo": {
+      "id": "q_heat_photo",
+      "type": "image",
+      "text": "ถ่ายรูปจุดที่ร้อนส่งให้ทีมได้เลยครับ รูปจะช่วยให้เห็นสภาพจริงของพื้นที่\n(ถ้าไม่สะดวกกด 'ข้ามได้')",
+      "options": [
+        {
+          "label": "📸 ถ่ายรูปส่ง",
+          "action_type": "camera"
+        },
+        {
+          "label": "ข้ามได้",
+          "action_type": "message",
+          "value": "ข้าม"
+        }
+      ]
+    },
+    "q_flood_level": {
+      "id": "q_flood_level",
+      "type": "quick_reply",
+      "text": "ระดับน้ำประมาณไหน?",
+      "options": [
+        {
+          "label": "น้ำขังเล็กน้อย",
+          "action_type": "message",
+          "value": "น้ำขังเล็กน้อย"
+        },
+        {
+          "label": "ถึงข้อเท้า",
+          "action_type": "message",
+          "value": "ถึงข้อเท้า"
+        },
+        {
+          "label": "ถึงหน้าแข้ง",
+          "action_type": "message",
+          "value": "ถึงหน้าแข้ง"
+        },
+        {
+          "label": "ถึงเข่า",
+          "action_type": "message",
+          "value": "ถึงเข่า"
+        },
+        {
+          "label": "สูงกว่านั้น",
+          "action_type": "message",
+          "value": "สูงกว่านั้น"
+        },
+        {
+          "label": "ไม่แน่ใจ",
+          "action_type": "message",
+          "value": "ไม่แน่ใจ"
+        }
+      ]
+    },
+    "q_flood_frequency": {
+      "id": "q_flood_frequency",
+      "type": "quick_reply",
+      "text": "น้ำท่วมที่บริเวณนี้บ่อยแค่ไหน?",
+      "options": [
+        {
+          "label": "ทุกครั้งที่ฝนตก",
+          "action_type": "message",
+          "value": "ทุกครั้งที่ฝนตก"
+        },
+        {
+          "label": "เดือนละหลายครั้ง",
+          "action_type": "message",
+          "value": "เดือนละหลายครั้ง"
+        },
+        {
+          "label": "ปีละหลายครั้ง",
+          "action_type": "message",
+          "value": "ปีละหลายครั้ง"
+        },
+        {
+          "label": "ปีละครั้ง/น้อยกว่า",
+          "action_type": "message",
+          "value": "ปีละครั้ง"
+        },
+        {
+          "label": "ครั้งแรกที่เจอ",
+          "action_type": "message",
+          "value": "ครั้งแรก"
+        }
+      ]
+    },
+    "q_flood_drain_time": {
+      "id": "q_flood_drain_time",
+      "type": "quick_reply",
+      "text": "ปกติน้ำจะลดภายในเวลาเท่าไร?",
+      "options": [
+        {
+          "label": "น้อยกว่า 1 ชม.",
+          "action_type": "message",
+          "value": "<1ชม"
+        },
+        {
+          "label": "1–3 ชั่วโมง",
+          "action_type": "message",
+          "value": "1-3ชม"
+        },
+        {
+          "label": "4–12 ชั่วโมง",
+          "action_type": "message",
+          "value": "4-12ชม"
+        },
+        {
+          "label": "ข้ามวัน",
+          "action_type": "message",
+          "value": "ข้ามวัน"
+        },
+        {
+          "label": "ไม่แน่ใจ",
+          "action_type": "message",
+          "value": "ไม่แน่ใจ"
+        }
+      ]
+    },
+    "q_flood_coping": {
+      "id": "q_flood_coping",
+      "type": "quick_reply",
+      "text": "เวลาน้ำท่วม/น้ำขัง ปกติรับมืออย่างไร?",
+      "options": [
+        {
+          "label": "เอาไม้พาดเดิน",
+          "action_type": "message",
+          "value": "เอาไม้พาด"
+        },
+        {
+          "label": "ไปพื้นที่อื่น",
+          "action_type": "message",
+          "value": "ไปพื้นที่อื่น"
+        },
+        {
+          "label": "ติดอยู่ในบ้าน",
+          "action_type": "message",
+          "value": "ติดในบ้าน"
+        },
+        {
+          "label": "วางถุงทราย",
+          "action_type": "message",
+          "value": "วางถุงทราย"
+        },
+        {
+          "label": "ยกของขึ้นที่สูง",
+          "action_type": "message",
+          "value": "ยกของขึ้นสูง"
+        },
+        {
+          "label": "อื่น ๆ",
+          "action_type": "message",
+          "value": "อื่น ๆ"
+        }
+      ]
+    },
+    "q_flood_photo": {
+      "id": "q_flood_photo",
+      "type": "image",
+      "text": "ถ่ายรูปจุดน้ำท่วมส่งให้ทีมได้เลยครับ รูปจะช่วยให้เห็นระดับน้ำและสภาพจริงของพื้นที่\n(ถ้าไม่สะดวกกด 'ข้ามได้')",
+      "options": [
+        {
+          "label": "📸 ถ่ายรูปส่ง",
+          "action_type": "camera"
+        },
+        {
+          "label": "ข้ามได้",
+          "action_type": "message",
+          "value": "ข้าม"
+        }
+      ]
+    }
+  },
+  "routes": {
+    "profile_route": {
+      "questions": [
+        "q_profile_community",
+        "q_profile_role",
+        "q_profile_age",
+        "q_profile_gender"
+      ],
+      "next": "main_route"
+    },
+    "main_route": {
+      "questions": [
+        "q_topic",
+        "q_location",
+        "q_time",
+        "q_duration",
+        "q_affected_who",
+        "q_impact",
+        "q_priority",
+        "q_urgency"
+      ],
+      "next": {
+        "conditions": [
+          {
+            "when": {
+              "q_topic": "อากาศร้อนจัด"
+            },
+            "goto": "heat_route"
+          },
+          {
+            "when": {
+              "q_topic": "น้ำท่วม/น้ำขัง"
+            },
+            "goto": "flood_route"
+          }
+        ],
+        "default": null
+      }
+    },
+    "heat_route": {
+      "questions": [
+        "q_heat_area_type",
+        "q_heat_shade",
+        "q_heat_coping",
+        "q_heat_photo"
+      ],
+      "next": null
+    },
+    "flood_route": {
+      "questions": [
+        "q_flood_level",
+        "q_flood_frequency",
+        "q_flood_drain_time",
+        "q_flood_coping",
+        "q_flood_photo"
+      ],
+      "next": null
+    }
+  }
+}

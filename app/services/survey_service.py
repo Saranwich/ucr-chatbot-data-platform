@@ -1,84 +1,38 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from linebot.v3.messaging import (
-    ReplyMessageRequest,
-    TextMessage,
-    QuickReply,
-    QuickReplyItem,
-    MessageAction,
-    LocationAction,
-    CameraAction,
-    FlexMessage,
-    FlexBubble,
-    FlexBox,
-    FlexText,
-    FlexButton,
-)
 
-from app.models import User, SurveySession, CompletedReport
 from app.utils.survey_loader import survey_manager
-from app.services.routing import compute_next_state, compute_go_back_state, compute_multi_select_state
+from app.services.routing import (
+    compute_next_state,
+    compute_go_back_state,
+    compute_multi_select_state,
+    compute_start_route,
+)
+from app.services import survey_repository as repo
+from app.services import survey_messages as messages
 from app.config import GO_BACK_KEYWORD, CONFIRM_KEYWORD
 
 
 async def start_survey_session(user_id: str, survey_version: str, reply_token: str, line_bot_api, db: AsyncSession):
-    # 1. Get or create user
-    user_result = await db.execute(select(User).where(User.lineuser_id == user_id))
-    user = user_result.scalars().first()
-    if not user:
-        user = User(lineuser_id=user_id)
-        db.add(user)
-        await db.flush()
+    user = await repo.get_or_create_user(db, user_id)
+    await repo.clear_session(db, user_id)
 
-    # 2. Clear any existing session (start fresh)
-    session_result = await db.execute(select(SurveySession).where(SurveySession.lineuser_id == user_id))
-    existing = session_result.scalars().first()
-    if existing:
-        await db.delete(existing)
-        await db.flush()
-
-    # 3. Decide which route to start at
     survey = survey_manager.get_survey(survey_version)
+    start_route_id = compute_start_route(survey, user.has_completed_profile)
 
-    if user.has_completed_profile:
-        # Returning user: skip the profile route (onstart), start at what comes after it.
-        # Only skip when the onstart route has a plain route id as its exit.
-        after_profile = survey.routes[survey.onstart].next
-        start_route_id = after_profile if isinstance(after_profile, str) else survey.onstart
-    else:
-        start_route_id = survey.onstart
+    await repo.create_session(db, user_id, survey_version, start_route_id)
 
-    # 4. Create new session
-    new_session = SurveySession(
-        lineuser_id=user_id,
-        survey_version=survey_version,
-        current_route_id=start_route_id,
-        current_step=0,
-        route_history=[],
-        payload={}
-    )
-    db.add(new_session)
-    await db.commit()
-
-    # 5. Send first question of the starting route (no go-back on first question)
+    # Send the first question of the starting route (no go-back on the first question)
     first_question_id = survey.routes[start_route_id].questions[0]
     first_question = survey_manager.get_question(survey_version, first_question_id)
     if first_question:
-        await send_question(reply_token, first_question, line_bot_api, show_go_back=False)
+        await messages.send_question(reply_token, first_question, line_bot_api, show_go_back=False)
 
 
 async def process_survey_answer(user_id: str, answer_data, reply_token: str, line_bot_api, db: AsyncSession):
     # 1. Load active session
-    session_result = await db.execute(select(SurveySession).where(SurveySession.lineuser_id == user_id))
-    active_session = session_result.scalars().first()
-
+    active_session = await repo.load_session(db, user_id)
     if not active_session:
-        await line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=reply_token,
-                messages=[TextMessage(text="กรุณากดปุ่มเมนูเพื่อเริ่มแบบสำรวจครับ")]
-            )
-        )
+        await messages.send_text(reply_token, "กรุณากดปุ่มเมนูเพื่อเริ่มแบบสำรวจครับ", line_bot_api)
         return
 
     survey_version = active_session.survey_version
@@ -103,11 +57,11 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
         active_session.current_step = go_back["step"]
         if "route_history" in go_back:
             active_session.route_history = list(go_back["route_history"])
-        await db.commit()
+        await repo.save_session(db)
 
         prev_question = survey_manager.get_question(survey_version, go_back["question_id"])
         is_first = (go_back["route_id"] == survey.onstart and go_back["step"] == 0)
-        await send_question(reply_token, prev_question, line_bot_api, show_go_back=not is_first)
+        await messages.send_question(reply_token, prev_question, line_bot_api, show_go_back=not is_first)
         return
 
     # 3. Identify the question the user just answered
@@ -132,10 +86,9 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
         if ms_result["action"] == "accumulate":
             pending_all[current_question_id] = ms_result["pending"]
             active_session.pending_multi_select = pending_all
-            await db.commit()
-            selected_count = len(ms_result["pending"])
+            await repo.save_session(db)
             max_sel = current_question.max_selections or 99
-            await send_question(
+            await messages.send_question(
                 reply_token, current_question, line_bot_api,
                 show_go_back=True,
                 multi_select_pending=ms_result["pending"],
@@ -157,7 +110,7 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
     payload[current_question_id] = answer_data
     active_session.payload = payload
 
-    # 5. Ask the routing engine where to go next
+    # 7. Ask the routing engine where to go next
     result = compute_next_state(
         current_route_id=active_session.current_route_id,
         current_step=active_session.current_step,
@@ -166,138 +119,27 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
         survey=survey,
     )
 
-    # 6. Act on the routing decision
+    # 8. Act on the routing decision
     if result["action"] == "next_question":
         active_session.current_route_id = result["current_route_id"]
         active_session.current_step = result["current_step"]
         active_session.route_history = list(result["route_history"])
-        await db.commit()
+        await repo.save_session(db)
         next_question = survey_manager.get_question(survey_version, result["next_question_id"])
-        await send_question(reply_token, next_question, line_bot_api, show_go_back=True)
+        await messages.send_question(reply_token, next_question, line_bot_api, show_go_back=True)
 
     elif result["action"] == "next_route":
         # If we just finished the profile route, mark the user as profiled
         if active_session.current_route_id == survey.onstart:
-            user_result = await db.execute(select(User).where(User.lineuser_id == user_id))
-            user = user_result.scalars().first()
-            if user:
-                user.has_completed_profile = 1
+            await repo.mark_profile_completed(db, user_id)
 
         active_session.current_route_id = result["current_route_id"]
         active_session.current_step = result["current_step"]
         active_session.route_history = list(result["route_history"])
-        await db.commit()
+        await repo.save_session(db)
         next_question = survey_manager.get_question(survey_version, result["next_question_id"])
-        await send_question(reply_token, next_question, line_bot_api, show_go_back=True)
+        await messages.send_question(reply_token, next_question, line_bot_api, show_go_back=True)
 
     elif result["action"] == "complete":
-        # Find the location answer anywhere in the payload
-        loc_data = next(
-            (v for v in payload.values() if isinstance(v, dict) and "lat" in v and "lng" in v),
-            None
-        )
-        postgis_point = None
-        if loc_data:
-            postgis_point = f"SRID=4326;POINT({loc_data['lng']} {loc_data['lat']})"
-
-        completed_report = CompletedReport(
-            lineuser_id=user_id,
-            survey_version=survey_version,
-            payload=payload,
-            location_data=postgis_point
-        )
-        db.add(completed_report)
-        await db.delete(active_session)
-        await db.commit()
-
-        await line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=reply_token,
-                messages=[TextMessage(text="ขอบคุณที่ร่วมรายงานข้อมูลครับ")]
-            )
-        )
-
-
-def build_question_message(
-    question_obj,
-    show_go_back: bool = True,
-    multi_select_pending: list = None,
-    multi_select_max: int = None,
-):
-    """Build the LINE message for a survey question.
-
-    Every question renders as a Flex bubble: the prompt plus all message-action
-    options (choices, multi-select confirm, go-back) as card buttons. Native
-    location / camera options can't live in a Flex button, so they go in the
-    bubble's attached quick-reply bar instead.
-    """
-    already_selected = set(multi_select_pending or [])
-
-    footer_buttons = []
-    quick_reply_items = []
-
-    for opt in question_obj.options:
-        # Skip options the user already picked
-        if opt.value and opt.value in already_selected:
-            continue
-
-        if opt.action_type == "location":
-            quick_reply_items.append(QuickReplyItem(action=LocationAction(label=opt.label)))
-        elif opt.action_type == "camera":
-            quick_reply_items.append(QuickReplyItem(action=CameraAction(label=opt.label)))
-        else:  # "message"
-            action = MessageAction(label=opt.label, text=opt.value if opt.value else opt.label)
-            footer_buttons.append(FlexButton(action=action, style="secondary"))
-
-    if multi_select_pending is not None:
-        count = len(multi_select_pending)
-        confirm_label = f"✅ ยืนยัน ({count}/{multi_select_max})"
-        footer_buttons.append(FlexButton(
-            action=MessageAction(label=confirm_label, text=CONFIRM_KEYWORD),
-            style="primary",
-        ))
-
-    if show_go_back:
-        footer_buttons.append(FlexButton(
-            action=MessageAction(label="◀️ ย้อนกลับ", text=GO_BACK_KEYWORD),
-            style="link",
-        ))
-
-    body_contents = [FlexText(text=question_obj.text, wrap=True, weight="bold", size="md")]
-    if multi_select_pending:
-        selected_labels = ", ".join(multi_select_pending)
-        body_contents.append(FlexText(
-            text=f"เลือกแล้ว: {selected_labels}",
-            wrap=True, size="sm", color="#888888", margin="md",
-        ))
-
-    bubble = FlexBubble(
-        body=FlexBox(layout="vertical", contents=body_contents, spacing="md"),
-        footer=FlexBox(layout="vertical", contents=footer_buttons, spacing="sm") if footer_buttons else None,
-    )
-    return FlexMessage(
-        alt_text=_alt_text(question_obj.text),
-        contents=bubble,
-        quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items else None,
-    )
-
-
-def _alt_text(text: str) -> str:
-    """LINE caps altText at 400 chars."""
-    return text if len(text) <= 400 else text[:397] + "..."
-
-
-async def send_question(
-    reply_token: str,
-    question_obj,
-    line_bot_api,
-    show_go_back: bool = True,
-    multi_select_pending: list = None,
-    multi_select_max: int = None,
-):
-    message = build_question_message(
-        question_obj, show_go_back, multi_select_pending, multi_select_max
-    )
-    await line_bot_api.reply_message(
-        ReplyMessageRequest(reply_token=reply_token, messages=[message])
-    )
+        await repo.finalize_report(db, active_session)
+        await messages.send_text(reply_token, "ขอบคุณที่ร่วมรายงานข้อมูลครับ", line_bot_api)

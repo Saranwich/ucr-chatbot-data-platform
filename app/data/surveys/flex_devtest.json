@@ -1,0 +1,57 @@
+{
+  "version": "flex_devtest",
+  "onstart": "main",
+  "questions": {
+    "q_flex_single": {
+      "id": "q_flex_single",
+      "type": "quick_reply",
+      "text": "ทดสอบการ์ด Flex 🧪 ช่วงนี้อากาศในชุมชนคุณเป็นยังไงบ้างครับ?",
+      "options": [
+        { "label": "🌡️ ร้อนมาก", "action_type": "message", "value": "ร้อนมาก" },
+        { "label": "😌 กำลังดี", "action_type": "message", "value": "กำลังดี" },
+        { "label": "🥶 เย็นสบาย", "action_type": "message", "value": "เย็นสบาย" }
+      ]
+    },
+    "q_flex_multi": {
+      "id": "q_flex_multi",
+      "type": "multi_select",
+      "text": "เลือกปัญหาที่เจอได้สูงสุด 2 ข้อ (กดยืนยันเมื่อเลือกเสร็จ)",
+      "max_selections": 2,
+      "options": [
+        { "label": "ฝุ่น/ควัน", "action_type": "message", "value": "ฝุ่น" },
+        { "label": "เสียงดัง", "action_type": "message", "value": "เสียง" },
+        { "label": "ขยะ", "action_type": "message", "value": "ขยะ" },
+        { "label": "น้ำเสีย", "action_type": "message", "value": "น้ำเสีย" }
+      ]
+    },
+    "q_flex_location": {
+      "id": "q_flex_location",
+      "type": "location",
+      "text": "รบกวนแชร์พิกัดจุดที่เจอปัญหาหน่อยนะครับ 📍 (ข้อนี้ใช้ปุ่มแชร์ตำแหน่งของ LINE — ไม่ใช่การ์ด Flex)",
+      "options": [
+        { "label": "📍 ส่งพิกัดตำแหน่ง", "action_type": "location" },
+        { "label": "ข้าม", "action_type": "message", "value": "ข้าม" }
+      ]
+    },
+    "q_flex_image": {
+      "id": "q_flex_image",
+      "type": "image",
+      "text": "คำถามสุดท้าย ถ่ายรูปจุดนั้นส่งมาหน่อยได้ไหมครับ? 📸 (ข้อนี้ใช้ปุ่มกล้องของ LINE — ไม่ใช่การ์ด Flex)",
+      "options": [
+        { "label": "📸 ถ่ายรูปส่ง", "action_type": "camera" },
+        { "label": "ข้าม", "action_type": "message", "value": "ข้าม" }
+      ]
+    }
+  },
+  "routes": {
+    "main": {
+      "questions": [
+        "q_flex_single",
+        "q_flex_multi",
+        "q_flex_location",
+        "q_flex_image"
+      ],
+      "next": null
+    }
+  }
+}

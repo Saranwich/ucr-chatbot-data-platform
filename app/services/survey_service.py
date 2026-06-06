@@ -7,7 +7,12 @@ from linebot.v3.messaging import (
     QuickReplyItem,
     MessageAction,
     LocationAction,
-    CameraAction
+    CameraAction,
+    FlexMessage,
+    FlexBubble,
+    FlexBox,
+    FlexText,
+    FlexButton,
 )
 
 from app.models import User, SurveySession, CompletedReport
@@ -213,14 +218,77 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
         )
 
 
-async def send_question(
-    reply_token: str,
+def build_question_message(
     question_obj,
-    line_bot_api,
     show_go_back: bool = True,
     multi_select_pending: list = None,
     multi_select_max: int = None,
 ):
+    """Build the LINE message for a survey question.
+
+    Choice questions (every option is a MessageAction) render as a Flex bubble
+    with the options as buttons. Questions whose options need native location or
+    camera buttons fall back to a TextMessage + QuickReply, because Flex buttons
+    cannot host LocationAction / CameraAction.
+    """
+    needs_native_action = any(
+        opt.action_type in ("location", "camera") for opt in question_obj.options
+    )
+    if needs_native_action:
+        return _build_quick_reply_message(
+            question_obj, show_go_back, multi_select_pending, multi_select_max
+        )
+    return _build_flex_message(
+        question_obj, show_go_back, multi_select_pending, multi_select_max
+    )
+
+
+def _alt_text(text: str) -> str:
+    """LINE caps altText at 400 chars."""
+    return text if len(text) <= 400 else text[:397] + "..."
+
+
+def _build_flex_message(question_obj, show_go_back, multi_select_pending, multi_select_max):
+    already_selected = set(multi_select_pending or [])
+
+    buttons = []
+    for opt in question_obj.options:
+        # Skip options the user already picked
+        if opt.value and opt.value in already_selected:
+            continue
+        action = MessageAction(label=opt.label, text=opt.value if opt.value else opt.label)
+        buttons.append(FlexButton(action=action, style="secondary"))
+
+    if multi_select_pending is not None:
+        count = len(multi_select_pending)
+        confirm_label = f"✅ ยืนยัน ({count}/{multi_select_max})"
+        buttons.append(FlexButton(
+            action=MessageAction(label=confirm_label, text=CONFIRM_KEYWORD),
+            style="primary",
+        ))
+
+    if show_go_back:
+        buttons.append(FlexButton(
+            action=MessageAction(label="◀️ ย้อนกลับ", text=GO_BACK_KEYWORD),
+            style="link",
+        ))
+
+    body_contents = [FlexText(text=question_obj.text, wrap=True, weight="bold", size="md")]
+    if multi_select_pending:
+        selected_labels = ", ".join(multi_select_pending)
+        body_contents.append(FlexText(
+            text=f"เลือกแล้ว: {selected_labels}",
+            wrap=True, size="sm", color="#888888", margin="md",
+        ))
+
+    bubble = FlexBubble(
+        body=FlexBox(layout="vertical", contents=body_contents, spacing="md"),
+        footer=FlexBox(layout="vertical", contents=buttons, spacing="sm"),
+    )
+    return FlexMessage(alt_text=_alt_text(question_obj.text), contents=bubble)
+
+
+def _build_quick_reply_message(question_obj, show_go_back, multi_select_pending, multi_select_max):
     quick_reply_items = []
     already_selected = set(multi_select_pending or [])
 
@@ -256,14 +324,23 @@ async def send_question(
         selected_labels = ", ".join(multi_select_pending)
         text = f"{text}\n\nเลือกแล้ว: {selected_labels}"
 
-    message = TextMessage(
+    return TextMessage(
         text=text,
-        quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items else None
+        quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items else None,
     )
 
+
+async def send_question(
+    reply_token: str,
+    question_obj,
+    line_bot_api,
+    show_go_back: bool = True,
+    multi_select_pending: list = None,
+    multi_select_max: int = None,
+):
+    message = build_question_message(
+        question_obj, show_go_back, multi_select_pending, multi_select_max
+    )
     await line_bot_api.reply_message(
-        ReplyMessageRequest(
-            reply_token=reply_token,
-            messages=[message]
-        )
+        ReplyMessageRequest(reply_token=reply_token, messages=[message])
     )

@@ -1,0 +1,83 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram name="Chatbot Internals" id="chatbot-internals">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ===== Legend ===== -->
+        <mxCell id="legend" value="สี = บทบาท&#10;เทา-ฟ้า = ประตู/คัดแยก   ส้ม = ทำ (DB+LINE)&#10;ฟ้า = คิด (pure)   เขียว = กติกา (อ่าน)   ม่วง = จำ (DB)&#10;เหลือง = ของนอกระบบ" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#555555;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="300" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ===== Nodes ===== -->
+        <mxCell id="LINE" value="LINE Messaging API&#10;(ของนอก)" style="shape=cloud;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#7a5c12;" vertex="1" parent="1">
+          <mxGeometry x="470" y="40" width="180" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="main" value="main.py&#10;FastAPI · POST /callback&#10;เช็คลายเซ็น · แยกชนิด event" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="455" y="160" width="210" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="msg" value="message_handler.py&#10;คัดแยก: ปุ่มเมนู หรือ chat" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="455" y="260" width="210" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="oneshot" value="info / stat / report_handler.py&#10;ตอบข้อความสำเร็จรูป (ไม่แตะ DB)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="740" y="262" width="230" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="chat" value="chatbot_handler.py&#10;trigger word? → เริ่มใหม่&#10;ไม่ใช่ → คำตอบระหว่างทำ" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="455" y="360" width="210" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="config" value="config.py&#10;SURVEY_TRIGGER_MAP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="170" y="365" width="170" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="svc" value="survey_service.py  — ทำ (มือ)&#10;start_survey_session · process_survey_answer · send_question&#10;อ่าน/เขียน DB + ตอบกลับ LINE" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="410" y="480" width="300" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="route" value="routing.py  — คิด (pure)&#10;compute_next_state&#10;compute_go_back_state&#10;compute_multi_select_state&#10;❌ ไม่แตะ DB/LINE" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="70" y="470" width="220" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="loader" value="survey_loader.py  — กติกา&#10;SurveyManager (อ่านไฟล์ครั้งเดียว)&#10;schema: Survey/Route/Orchestrator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="770" y="470" width="250" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="json" value="surveys/*.json&#10;นิยามแบบสำรวจ" style="shape=document;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#7a5c12;" vertex="1" parent="1">
+          <mxGeometry x="820" y="600" width="150" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="models" value="models/__init__.py  — จำ&#10;User · SurveySession (ระหว่างทำ)&#10;CompletedReport (จบแล้ว)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="410" y="630" width="300" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="db" value="database/__init__.py&#10;engine · async session" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="450" y="730" width="220" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pg" value="PostgreSQL + PostGIS&#10;(ของนอก)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#7a5c12;" vertex="1" parent="1">
+          <mxGeometry x="480" y="810" width="160" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ===== Edges (orthogonal, rounded bends) ===== -->
+        <mxCell id="ed1" value="webhook" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="LINE" target="main"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="main" target="msg"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed3" value="ปุ่มเมนู" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;dashed=1;" edge="1" parent="1" source="msg" target="oneshot"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed4" value="chat อื่น ๆ" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="msg" target="chat"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed5" value="อ่าน trigger" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;dashed=1;" edge="1" parent="1" source="chat" target="config"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed6" value="start / answer" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="chat" target="svc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed7" value="ไปไหนต่อ?" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="svc" target="route"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed8" value="เปิดกติกา" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="svc" target="loader"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed9" value="อ่านครั้งแรก" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;dashed=1;" edge="1" parent="1" source="loader" target="json"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed10" value="เซฟคำตอบ" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="svc" target="models"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="models" target="db"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="db" target="pg"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed13" value="ตอบกลับ (reply)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;dashed=1;strokeColor=#d79b00;fontColor=#d79b00;exitX=1;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="svc" target="LINE"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,7 +1,6 @@
 import pytest
 from linebot.v3.messaging import (
     FlexMessage,
-    TextMessage,
     LocationAction,
     CameraAction,
 )
@@ -83,9 +82,11 @@ def test_multi_select_filters_selected_and_adds_confirm():
     assert any("dust" in t for t in body_texts(msg))
 
 
-# --- location / image keep the legacy QuickReply (Flex can't host them) ------
+# --- location / image render as Flex with the native action in quick-reply ---
+# Flex buttons can't host LocationAction/CameraAction, so those live in the
+# attached quick-reply bar while the prompt + skip/go-back stay in the card.
 
-def test_location_question_uses_quick_reply_not_flex():
+def test_location_question_is_flex_with_location_in_quick_reply():
     q = SurveyQuestion(
         id="ql",
         type="location",
@@ -95,12 +96,15 @@ def test_location_question_uses_quick_reply_not_flex():
             SurveyOption(label="ข้าม", action_type="message", value="ข้าม"),
         ],
     )
-    msg = build_question_message(q)
-    assert isinstance(msg, TextMessage)
+    msg = build_question_message(q, show_go_back=False)
+    assert isinstance(msg, FlexMessage)
+    # native location button sits in the quick-reply bar
     assert any(isinstance(a, LocationAction) for a in quick_reply_actions(msg))
+    # the message-type "skip" option stays as a card button
+    assert "ข้าม" in [a.text for a in footer_actions(msg)]
 
 
-def test_image_question_uses_camera_quick_reply():
+def test_image_question_is_flex_with_camera_in_quick_reply():
     q = SurveyQuestion(
         id="qi",
         type="image",
@@ -110,6 +114,7 @@ def test_image_question_uses_camera_quick_reply():
             SurveyOption(label="ข้าม", action_type="message", value="ข้าม"),
         ],
     )
-    msg = build_question_message(q)
-    assert isinstance(msg, TextMessage)
+    msg = build_question_message(q, show_go_back=False)
+    assert isinstance(msg, FlexMessage)
     assert any(isinstance(a, CameraAction) for a in quick_reply_actions(msg))
+    assert "ข้าม" in [a.text for a in footer_actions(msg)]

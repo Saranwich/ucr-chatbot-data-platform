@@ -226,49 +226,39 @@ def build_question_message(
 ):
     """Build the LINE message for a survey question.
 
-    Choice questions (every option is a MessageAction) render as a Flex bubble
-    with the options as buttons. Questions whose options need native location or
-    camera buttons fall back to a TextMessage + QuickReply, because Flex buttons
-    cannot host LocationAction / CameraAction.
+    Every question renders as a Flex bubble: the prompt plus all message-action
+    options (choices, multi-select confirm, go-back) as card buttons. Native
+    location / camera options can't live in a Flex button, so they go in the
+    bubble's attached quick-reply bar instead.
     """
-    needs_native_action = any(
-        opt.action_type in ("location", "camera") for opt in question_obj.options
-    )
-    if needs_native_action:
-        return _build_quick_reply_message(
-            question_obj, show_go_back, multi_select_pending, multi_select_max
-        )
-    return _build_flex_message(
-        question_obj, show_go_back, multi_select_pending, multi_select_max
-    )
-
-
-def _alt_text(text: str) -> str:
-    """LINE caps altText at 400 chars."""
-    return text if len(text) <= 400 else text[:397] + "..."
-
-
-def _build_flex_message(question_obj, show_go_back, multi_select_pending, multi_select_max):
     already_selected = set(multi_select_pending or [])
 
-    buttons = []
+    footer_buttons = []
+    quick_reply_items = []
+
     for opt in question_obj.options:
         # Skip options the user already picked
         if opt.value and opt.value in already_selected:
             continue
-        action = MessageAction(label=opt.label, text=opt.value if opt.value else opt.label)
-        buttons.append(FlexButton(action=action, style="secondary"))
+
+        if opt.action_type == "location":
+            quick_reply_items.append(QuickReplyItem(action=LocationAction(label=opt.label)))
+        elif opt.action_type == "camera":
+            quick_reply_items.append(QuickReplyItem(action=CameraAction(label=opt.label)))
+        else:  # "message"
+            action = MessageAction(label=opt.label, text=opt.value if opt.value else opt.label)
+            footer_buttons.append(FlexButton(action=action, style="secondary"))
 
     if multi_select_pending is not None:
         count = len(multi_select_pending)
         confirm_label = f"✅ ยืนยัน ({count}/{multi_select_max})"
-        buttons.append(FlexButton(
+        footer_buttons.append(FlexButton(
             action=MessageAction(label=confirm_label, text=CONFIRM_KEYWORD),
             style="primary",
         ))
 
     if show_go_back:
-        buttons.append(FlexButton(
+        footer_buttons.append(FlexButton(
             action=MessageAction(label="◀️ ย้อนกลับ", text=GO_BACK_KEYWORD),
             style="link",
         ))
@@ -283,51 +273,18 @@ def _build_flex_message(question_obj, show_go_back, multi_select_pending, multi_
 
     bubble = FlexBubble(
         body=FlexBox(layout="vertical", contents=body_contents, spacing="md"),
-        footer=FlexBox(layout="vertical", contents=buttons, spacing="sm"),
+        footer=FlexBox(layout="vertical", contents=footer_buttons, spacing="sm") if footer_buttons else None,
     )
-    return FlexMessage(alt_text=_alt_text(question_obj.text), contents=bubble)
-
-
-def _build_quick_reply_message(question_obj, show_go_back, multi_select_pending, multi_select_max):
-    quick_reply_items = []
-    already_selected = set(multi_select_pending or [])
-
-    for opt in question_obj.options:
-        # Skip options the user already picked
-        if opt.value and opt.value in already_selected:
-            continue
-
-        action = None
-        if opt.action_type == "message":
-            action = MessageAction(label=opt.label, text=opt.value if opt.value else opt.label)
-        elif opt.action_type == "location":
-            action = LocationAction(label=opt.label)
-        elif opt.action_type == "camera":
-            action = CameraAction(label=opt.label)
-
-        if action:
-            quick_reply_items.append(QuickReplyItem(action=action))
-
-    if multi_select_pending is not None:
-        count = len(multi_select_pending)
-        confirm_label = f"✅ ยืนยัน ({count}/{multi_select_max})"
-        confirm_action = MessageAction(label=confirm_label, text=CONFIRM_KEYWORD)
-        quick_reply_items.append(QuickReplyItem(action=confirm_action))
-
-    if show_go_back:
-        go_back_action = MessageAction(label="◀️ ย้อนกลับ", text=GO_BACK_KEYWORD)
-        quick_reply_items.append(QuickReplyItem(action=go_back_action))
-
-    # Build question text — show selected items as a running list
-    text = question_obj.text
-    if multi_select_pending:
-        selected_labels = ", ".join(multi_select_pending)
-        text = f"{text}\n\nเลือกแล้ว: {selected_labels}"
-
-    return TextMessage(
-        text=text,
+    return FlexMessage(
+        alt_text=_alt_text(question_obj.text),
+        contents=bubble,
         quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items else None,
     )
+
+
+def _alt_text(text: str) -> str:
+    """LINE caps altText at 400 chars."""
+    return text if len(text) <= 400 else text[:397] + "..."
 
 
 async def send_question(

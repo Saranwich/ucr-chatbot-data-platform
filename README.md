@@ -62,7 +62,7 @@ ucr-smartcity_chatbot/
 
 ### 2. Clone the repository
 ```bash
-git clone <repository-url>
+git clone https://github.com/tonkitcstu/ucr-smartcity_chatbot.git
 cd ucr-smartcity_chatbot
 ```
 
@@ -103,10 +103,30 @@ ENV=development                       # set to 'production' to hide /docs & /red
 *(Note: The application automatically replaces `postgresql://` with `postgresql+asyncpg://`.)*
 
 ### 6. Run the application
+**Linux/macOS:**
 ```bash
-uvicorn app.main:app --reload
+uvicorn --reload app.main:app
+```
+**Windows:**
+```cmd
+python -m uvicorn app.main:app --reload
 ```
 *(Note: The application automatically creates the database tables upon startup.)*
+
+### 7. Upload the Rich Menu
+
+The Rich Menu is what users tap to trigger the survey and other actions. A script creates it, uploads its image, and sets it as the default menu for everyone who adds the bot.
+
+1. Place the menu image at `app/data/images/rich_menu_v2.jpg` (size **2500 × 843** px).
+2. Make sure `CHANNEL_ACCESS_TOKEN` and `LIFF_REPORT_URL` are set in `.env`.
+3. Run:
+   ```bash
+   python scripts/setup_richmenu.py
+   ```
+
+The script prints the new menu's id (`✅ ... ได้ ID: richmenu-xxxx`) and sets it as the default for everyone — so you don't need to copy the id anywhere for normal use. (The `RICHMENU_ID` line in `.env` is optional and not read by the app; it's just a handy place to note the id.) To list menus later, call LINE's API: `GET https://api.line.me/v2/bot/richmenu/list` with your channel token.
+
+The four buttons map to: `เริ่มทำแบบสำรวจ` (start survey), `รายงานปัญหา` (report — opens `LIFF_REPORT_URL`), `ข้อมูลโครงการ` (project info), `สรุปผล` (summary). To change the layout or button actions, edit `scripts/setup_richmenu.py`.
 
 ## Data API (`/api/dashboard`)
 

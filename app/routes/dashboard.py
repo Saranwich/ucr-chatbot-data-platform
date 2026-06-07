@@ -14,6 +14,27 @@ from datetime import datetime
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
+
+def extract_images(payload: dict) -> list:
+    """ดึงรูปทั้งหมดออกมาจาก payload JSONB.
+
+    รูปถูกเก็บใน payload ใต้ key ของคำถาม (ชื่อต่างกันทุก survey เช่น q_photo,
+    q_flood_photo) เป็น dict {image_id, image_url}. ฟังก์ชันนี้สแกนหาทุกตัวที่
+    เป็น dict มี image_id แล้วรวมเป็นลิสต์เดียว — รองรับ 0, 1, หรือหลายรูป.
+    """
+    if not isinstance(payload, dict):
+        return []
+    images = []
+    for question_id, value in payload.items():
+        if isinstance(value, dict) and value.get("image_id"):
+            image_id = value["image_id"]
+            images.append({
+                "question_id": question_id,
+                "image_id": image_id,
+                "image_url": value.get("image_url") or f"/api/dashboard/image/{image_id}",
+            })
+    return images
+
 @router.get("/stats", response_model=DashboardStats)
 async def get_dashboard_stats(
     db: AsyncSession = Depends(get_db),
@@ -52,23 +73,24 @@ async def get_completed_reports(
         CompletedReport.lineuser_id,
         CompletedReport.survey_version,
         CompletedReport.payload,
-        CompletedReport.image_path,
         CompletedReport.created_at,
         ST_X(CompletedReport.location_data).label("longitude"),
         ST_Y(CompletedReport.location_data).label("latitude")
     )
-    
+
     if date:
         try:
             target_date = datetime.strptime(date, "%Y-%m-%d").date()
             query = query.where(func.date(CompletedReport.created_at) == target_date)
         except ValueError:
             pass # Invalid date format, skip filtering
-            
+
     result = await db.execute(query)
     reports = []
     for row in result.mappings():
-        reports.append(row)
+        item = dict(row)
+        item["images"] = extract_images(item.get("payload"))
+        reports.append(item)
     return reports
 
 @router.get("/reports/{report_id}", response_model=CompletedReportSchema)
@@ -82,21 +104,25 @@ async def get_report_detail(
         CompletedReport.lineuser_id,
         CompletedReport.survey_version,
         CompletedReport.payload,
-        CompletedReport.image_path,
         CompletedReport.created_at,
         ST_X(CompletedReport.location_data).label("longitude"),
         ST_Y(CompletedReport.location_data).label("latitude")
     ).where(CompletedReport.report_id == report_id)
-    
+
     result = await db.execute(query)
     report = result.mappings().first()
     if not report:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Report not found")
-    return report
+    item = dict(report)
+    item["images"] = extract_images(item.get("payload"))
+    return item
 
 @router.get("/image/{image_id}")
-async def get_line_image(image_id: str):
+async def get_line_image(
+    image_id: str,
+    current_user: dict = Depends(get_current_user)
+):
     configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
     async with AsyncApiClient(configuration) as api_client:
         blob_api = AsyncMessagingApiBlob(api_client)

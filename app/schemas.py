@@ -11,6 +11,11 @@ class ReportLocation(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
+class ReportImage(BaseModel):
+    question_id: str          # คำถามที่รูปนี้มาจาก (เช่น q_photo, q_flood_photo)
+    image_id: str             # LINE message content id
+    image_url: str            # proxy URL ที่ดึงรูปได้ (/api/dashboard/image/{id})
+
 class CompletedReportSchema(BaseModel):
     report_id: int
     lineuser_id: str
@@ -18,7 +23,7 @@ class CompletedReportSchema(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     payload: Any
-    image_path: Optional[str] = None
+    images: List[ReportImage] = []   # ดึงออกมาจาก payload — รองรับ 0, 1, หรือหลายรูป
     created_at: datetime
 
     class Config:

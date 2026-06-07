@@ -119,7 +119,10 @@ async def get_report_detail(
     return item
 
 @router.get("/image/{image_id}")
-async def get_line_image(image_id: str):
+async def get_line_image(
+    image_id: str,
+    current_user: dict = Depends(get_current_user)
+):
     configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
     async with AsyncApiClient(configuration) as api_client:
         blob_api = AsyncMessagingApiBlob(api_client)

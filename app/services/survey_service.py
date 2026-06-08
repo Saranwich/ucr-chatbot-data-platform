@@ -12,6 +12,22 @@ from app.services import survey_messages as messages
 from app.config import GO_BACK_KEYWORD, CONFIRM_KEYWORD
 
 
+def session_position_is_valid(survey, route_id: str, step: int) -> bool:
+    """Can the session's saved (route, step) still be resolved against this survey?
+
+    Survey definitions are loaded fresh from JSON at startup, but a session's
+    position lives in the DB. If the file was renamed/deleted/shortened while a
+    user was mid-survey, the saved position may now point at something that no
+    longer exists. Return False so the caller can clear the stale session.
+    """
+    if survey is None:
+        return False
+    route = survey.routes.get(route_id)
+    if route is None:
+        return False
+    return 0 <= step < len(route.questions)
+
+
 async def start_survey_session(user_id: str, survey_version: str, reply_token: str, line_bot_api, db: AsyncSession):
     user = await repo.get_or_create_user(db, user_id)
     await repo.clear_session(db, user_id)
@@ -37,6 +53,14 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
 
     survey_version = active_session.survey_version
     survey = survey_manager.get_survey(survey_version)
+
+    # 1b. Guard against a survey file that changed since this session started.
+    #     If the saved position no longer resolves, clear it and ask for a restart
+    #     instead of crashing on a missing version / route / out-of-range step.
+    if not session_position_is_valid(survey, active_session.current_route_id, active_session.current_step):
+        await repo.clear_session(db, user_id)
+        await messages.send_text(reply_token, "เกิดข้อผิดพลาด กรุณาเริ่มทำแบบสำรวจใหม่อีกครั้ง", line_bot_api)
+        return
 
     # 2. Handle go-back before touching the payload
     if answer_data == GO_BACK_KEYWORD:

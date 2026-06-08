@@ -38,11 +38,7 @@ class CompletedReport(Base):
     
     # ข้อมูลคำตอบทั่วไป (Text, Choice) จะถูกย้ายจาก Session มากองรวมกันในนี้
     payload = Column(JSON, nullable=False)
-    
-    
-    # แยกลิงก์รูปภาพออกมาเก็บเป็นคอลัมน์ จะจัดการไฟล์ง่ายกว่ายัดลง JSON
-    image_path = Column(String, nullable=True)
-    
+
     created_at = Column(DateTime, default=get_bangkok_now, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))
 
 class IncompleteReport(Base):
@@ -57,7 +53,6 @@ class IncompleteReport(Base):
     drop_off_step = Column(Integer, nullable=True)
     
     payload = Column(JSON, nullable=False)
-    image_path = Column(String, nullable=True)
-    
+
     status = Column(String, default="timeout") # สถานะ (เช่น timeout, cancelled)
     created_at = Column(DateTime, default=get_bangkok_now, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))

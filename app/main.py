@@ -15,14 +15,8 @@ from app.handlers.message_handler import route_message_event
 from app.utils.survey_loader import survey_manager
 from app.routes.dashboard import router as dashboard_router
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from mangum import Mangum
 import os
-
-# Detect if running in AWS Lambda
-is_lambda = os.environ.get("AWS_LAMBDA_FUNCTION_NAME") is not None
-UPLOAD_DIR = "/tmp/uploads" if is_lambda else "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # NEW: The "lifespan" context manager is how FastAPI runs code BEFORE the server starts accepting requests
 @asynccontextmanager
@@ -86,9 +80,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
-
-# Mount Static Files
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 parser = WebhookParser(CHANNEL_SECRET)

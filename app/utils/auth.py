@@ -6,7 +6,9 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 import app.config_loader
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-change-me")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY is not set — refusing to start. Set it in .env.")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")

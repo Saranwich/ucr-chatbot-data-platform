@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, HTTPException
 from app.utils.auth import get_current_user
 from fastapi.responses import StreamingResponse
 from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingApiBlob
@@ -34,6 +34,20 @@ def extract_images(payload: dict) -> list:
                 "image_url": value.get("image_url") or f"/api/dashboard/image/{image_id}",
             })
     return images
+
+
+def parse_date_filter(date: Optional[str]):
+    """แปลงค่า filter ?date=YYYY-MM-DD.
+
+    คืน None ถ้าไม่ได้ส่งมา (ไม่กรอง), คืน date ถ้ารูปแบบถูก,
+    โยน HTTP 400 ถ้ารูปแบบผิด — แทนที่จะเงียบๆ แล้วคืนทุก record.
+    """
+    if not date:
+        return None
+    try:
+        return datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
 
 @router.get("/stats", response_model=DashboardStats)
 async def get_dashboard_stats(
@@ -78,12 +92,9 @@ async def get_completed_reports(
         ST_Y(CompletedReport.location_data).label("latitude")
     )
 
-    if date:
-        try:
-            target_date = datetime.strptime(date, "%Y-%m-%d").date()
-            query = query.where(func.date(CompletedReport.created_at) == target_date)
-        except ValueError:
-            pass # Invalid date format, skip filtering
+    target_date = parse_date_filter(date)
+    if target_date:
+        query = query.where(func.date(CompletedReport.created_at) == target_date)
 
     result = await db.execute(query)
     reports = []

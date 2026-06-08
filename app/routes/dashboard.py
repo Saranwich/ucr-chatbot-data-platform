@@ -129,6 +129,17 @@ async def get_report_detail(
     item["images"] = extract_images(item.get("payload"))
     return item
 
+async def fetch_image_content(blob_api, image_id: str) -> bytes:
+    """ดึง bytes รูปจาก LINE CDN.
+
+    รูปถูก proxy สดจาก LINE ซึ่งลบทิ้งหลังผ่านไปสักพัก. ถ้ารูปหมดอายุ/หาไม่เจอ
+    โยน HTTP 404 แทนที่จะปล่อยให้ exception หลุดไปเป็น 500.
+    """
+    try:
+        return await blob_api.get_message_content(image_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Image not found or expired")
+
 @router.get("/image/{image_id}")
 async def get_line_image(
     image_id: str,
@@ -137,6 +148,6 @@ async def get_line_image(
     configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
     async with AsyncApiClient(configuration) as api_client:
         blob_api = AsyncMessagingApiBlob(api_client)
-        content = await blob_api.get_message_content(image_id)
+        content = await fetch_image_content(blob_api, image_id)
         # Returns the image as a standard response with correct media type
         return Response(content=content, media_type="image/jpeg")

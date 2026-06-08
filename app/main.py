@@ -76,11 +76,11 @@ app.include_router(dashboard_router)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    error_msg = f"Unhandled Exception: {str(exc)}\n{traceback.format_exc()}"
-    print(error_msg)
+    # Full detail is logged for us only — never returned to the caller.
+    print(f"Unhandled Exception: {exc}\n{traceback.format_exc()}")
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal Server Error", "traceback": error_msg}
+        content={"detail": "Internal Server Error"}
     )
 
 @app.get("/api/health")

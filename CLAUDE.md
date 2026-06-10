@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A LINE Messaging API chatbot that crowdsources hyper-local environmental and infrastructure data from community residents. Survey responses (temperature, humidity, noise, trash, GPS location, photos) feed into the GAMA urban planning platform to assist in redesigning community maps and facility placement.
+A LINE Messaging API chatbot that crowdsources hyper-local environmental and infrastructure data from community residents. Survey responses (temperature, humidity, noise, trash, GPS location, photos) are collected and surfaced through a JWT-protected admin dashboard with a map view, to assist in redesigning community maps and facility placement.
 
 ---
 

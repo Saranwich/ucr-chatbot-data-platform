@@ -28,6 +28,19 @@ _HTML_FILE = Path(__file__).resolve().parent.parent / "static" / "report_form.ht
 _UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
 
 
+def point_wkt(latitude, longitude):
+    """PostGIS WKT for a lat/lng pair, or None if either is missing."""
+    if latitude is None or longitude is None:
+        return None
+    return f"SRID=4326;POINT({longitude} {latitude})"
+
+
+def unique_image_name(original_filename):
+    """A collision-proof stored filename: random uuid + the original extension (default .jpg)."""
+    ext = os.path.splitext(original_filename or "")[1] or ".jpg"
+    return f"{uuid.uuid4().hex}{ext}"
+
+
 @router.get("/report", response_class=HTMLResponse)
 async def report_page():
     """Serve the LIFF report form, injecting the LIFF id (empty = anonymous dev mode)."""
@@ -57,16 +70,13 @@ async def submit_form_report(
     # image — POC: save bytes under uploads/, store the filename only (ADR 0005 → S3)
     image_path = None
     if image is not None and image.filename:
-        ext = os.path.splitext(image.filename)[1] or ".jpg"
-        fname = f"{uuid.uuid4().hex}{ext}"
+        fname = unique_image_name(image.filename)
         _UPLOAD_DIR.mkdir(exist_ok=True)
         (_UPLOAD_DIR / fname).write_bytes(await image.read())
         image_path = fname
 
     # location — same WKT shape survey_repository uses for PostGIS
-    location_data = None
-    if latitude is not None and longitude is not None:
-        location_data = f"SRID=4326;POINT({longitude} {latitude})"
+    location_data = point_wkt(latitude, longitude)
 
     report = FormReport(
         lineuser_id=lineuser_id,

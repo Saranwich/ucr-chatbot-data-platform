@@ -161,3 +161,6 @@ cython_debug/
 .DS_Store
 
 GEMINI.md
+
+# Report-form uploaded images (POC local store; ADR 0005 moves these to S3)
+uploads/

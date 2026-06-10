@@ -9,6 +9,7 @@ CHANNEL_SECRET = os.getenv("CHANNEL_SECRET")
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 LIFF_REPORT_URL = os.getenv("LIFF_REPORT_URL")
+LIFF_ID = os.getenv("LIFF_ID")  # LIFF app id (from a LINE Login channel, same provider as the bot)
 SURVEYS_DIR = BASE_DIR / "app" / "data" / "surveys"
 IMAGES_DIR = BASE_DIR / "app" / "data" / "images"
 

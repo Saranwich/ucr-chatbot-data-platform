@@ -4,6 +4,7 @@ from app.handlers.info_handler import handle_info_request
 from app.handlers.stat_handler import handle_stat_request
 from app.handlers.report_handler import handle_report_request
 from app.handlers.chatbot_handler import handle_chatbot_chat, handle_chatbot_location, handle_chatbot_image
+from app.handlers.manual_handler import handle_manual_request
 
 
 async def route_message_event(event, line_bot_api, db: AsyncSession):
@@ -34,6 +35,11 @@ async def handle_text_message(event, line_bot_api, db: AsyncSession):
     # 3. Route to Report Handler (Fallback for 'รายงานปัญหา' text)
     if text == "รายงานปัญหา":
         await handle_report_request(event, line_bot_api)
+        return
+
+    # 4. Route to Manual Handler
+    if text == "คู่มือการใช้งาน":
+        await handle_manual_request(event, line_bot_api)
         return
 
     # 4. Route to Chatbot Handler (Default for other text/surveys)

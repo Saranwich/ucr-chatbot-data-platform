@@ -9,7 +9,7 @@ import json
 from app.config import IMAGES_DIR, CHANNEL_ACCESS_TOKEN, LIFF_REPORT_URL
 
 # ดึง Path รูปมาจาก config
-IMAGE_PATH = IMAGES_DIR / "rich_menu_v2.jpg"
+IMAGE_PATH = IMAGES_DIR / "rich_menu_v3.jpg"
 
 if not CHANNEL_ACCESS_TOKEN:
     print("❌ Error: ไม่พบ CHANNEL_ACCESS_TOKEN ในไฟล์ .env")
@@ -29,34 +29,31 @@ HEADERS_JSON = {
 }
 
 def create_and_deploy_richmenu():
-    print("🚀 เริ่มขั้นตอนการสร้าง Custom Rich Menu (4 ปุ่ม)...")
+    print("🚀 เริ่มขั้นตอนการสร้าง Custom Rich Menu (1+3 ปุ่ม)...")
 
     # 1. กำหนดโครงสร้าง Rich Menu
+    # Layout: แถวบน 1 ปุ่มเต็มความกว้าง, แถวล่าง 3 ปุ่มเท่ากัน (2500x1686)
     rich_menu_data = {
-        "size": {"width": 2500, "height": 843},
+        "size": {"width": 2500, "height": 1686},
         "selected": True,
-        "name": "Custom 4-Button Menu",
+        "name": "Large Rich Menu 1+3",
         "chatBarText": "เปิดเมนู",
         "areas": [
             {
-                "bounds": {"x": 0, "y": 0, "width": 625, "height": 843},
-                "action": {"type": "message", "text": "เริ่มทำแบบสำรวจ"} # ปุ่ม 1
+                "bounds": {"x": 0, "y": 0, "width": 2500, "height": 843},
+                "action": {"type": "message", "text": "เริ่มทำแบบสำรวจ"}
             },
             {
-                "bounds": {"x": 625, "y": 0, "width": 625, "height": 843},
-                "action": {
-                    "type": "uri",
-                    "uri": LIFF_REPORT_URL,
-                    "label": "รายงานปัญหา"
-                }
+                "bounds": {"x": 0, "y": 843, "width": 833, "height": 843},
+                "action": {"type": "uri", "uri": LIFF_REPORT_URL, "label": "แจ้งปัญหา"}
             },
             {
-                "bounds": {"x": 1250, "y": 0, "width": 625, "height": 843},
-                "action": {"type": "message", "text": "ข้อมูลโครงการ"} # ปุ่ม 3
+                "bounds": {"x": 833, "y": 843, "width": 834, "height": 843},
+                "action": {"type": "message", "text": "คู่มือการใช้งาน"}
             },
             {
-                "bounds": {"x": 1875, "y": 0, "width": 625, "height": 843},
-                "action": {"type": "message", "text": "สรุปผล"} # ปุ่ม 4
+                "bounds": {"x": 1667, "y": 843, "width": 833, "height": 843},
+                "action": {"type": "uri", "uri": "https://line.me", "label": "แก้ไขข้อมูล"}
             }
         ]
     }

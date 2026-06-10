@@ -37,6 +37,17 @@ PROJECT_INFO_TEXT = (
 REPORT_DEVELOPMENT_TEXT = "📝 ระบบรายงานปัญหา (Report) กำลังอยู่ระหว่างการพัฒนาเป็นรูปแบบ Website (LIFF) ครับ"
 SUMMARY_PLACEHOLDER_TEXT = "📊 ระบบสรุปผลกำลังอยู่ระหว่างการพัฒนา จะพร้อมให้ใช้งานเร็วๆ นี้ครับ"
 
+MANUAL_TEXT = (
+    "📖 คู่มือการใช้งาน\n\n"
+    "วิธีใช้งาน UCR Smart City Chatbot:\n\n"
+    "1️⃣ กดปุ่ม 'สำรวจ' เพื่อเริ่มทำแบบสอบถามชุมชน\n"
+    "2️⃣ ตอบคำถามแต่ละข้อตามที่ระบบถาม\n"
+    "3️⃣ กดปุ่ม 'แจ้งปัญหา' หากพบปัญหาในพื้นที่\n"
+    "4️⃣ กดปุ่ม 'แก้ไขข้อมูล' เพื่อแก้ไขข้อมูลส่วนตัว\n\n"
+    "💡 พิมพ์ 'ย้อนกลับ' หากต้องการยกเลิกแบบสอบถาม\n\n"
+    "* เนื้อหาคู่มือฉบับเต็มจะอัปเดตเร็วๆ นี้"
+)
+
 #if forget add .env
 if not CHANNEL_SECRET or not CHANNEL_ACCESS_TOKEN:
     raise ValueError("CHANNEL_SECRET or CHANNEL_ACCESS_TOKEN not found in .env")

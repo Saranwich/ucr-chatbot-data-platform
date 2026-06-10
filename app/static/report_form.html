@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>แจ้งปัญหา — UCR Smart City</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; margin: 0; background: #eef3f8; color: #1c2e3e; font-size: 17px; }
+    .wrap { max-width: 480px; margin: 0 auto; padding: 20px; }
+    h1 { font-size: 25px; }
+    label { display: block; font-weight: 600; margin: 20px 0 9px; font-size: 17px; }
+    textarea { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #ccdff0; border-radius: 8px; font-size: 18px; min-height: 110px; resize: vertical; }
+
+    .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .choice { display: flex; align-items: center; gap: 8px; padding: 14px; border: 1px solid #ccdff0; border-radius: 10px; background: #fff; font-size: 17px; cursor: pointer; }
+    .choice .emoji { font-size: 23px; }
+    .choice.active { border-color: #4A90C4; background: #e8f2fb; font-weight: 600; }
+
+    #map { height: 240px; border-radius: 10px; border: 1px solid #ccdff0; margin-top: 4px; }
+    .coords { margin-top: 8px; font-size: 15px; color: #555; }
+    .coords.set { color: #1c7a45; font-weight: 600; }
+
+    input[type=file] { font-size: 16px; }
+    #preview { margin-top: 10px; max-width: 100%; border-radius: 10px; display: none; }
+
+    button.submit { width: 100%; margin-top: 24px; padding: 16px; border: 0; border-radius: 10px; background: #4A90C4; color: #fff; font-size: 19px; font-weight: 600; }
+    button.submit:disabled { background: #b8d8f0; }
+    .msg { margin-top: 16px; padding: 13px; border-radius: 8px; font-size: 16px; display: none; }
+    .msg.ok { background: #e3f6ec; color: #1c7a45; display: block; }
+    .msg.err { background: #fde8e8; color: #c0392b; display: block; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>📝 แจ้งปัญหาในชุมชน</h1>
+
+    <label>ประเภทปัญหา</label>
+    <div class="choices" id="choices">
+      <div class="choice" data-value="ขยะ"><span class="emoji">🗑️</span> ขยะ</div>
+      <div class="choice" data-value="ไฟส่องสว่าง"><span class="emoji">💡</span> ไฟส่องสว่าง</div>
+      <div class="choice" data-value="ถนน/ทางเดิน"><span class="emoji">🛣️</span> ถนน/ทางเดิน</div>
+      <div class="choice" data-value="น้ำท่วม/น้ำขัง"><span class="emoji">🌊</span> น้ำท่วม/น้ำขัง</div>
+      <div class="choice" data-value="ท่อ/ระบายน้ำ"><span class="emoji">🚰</span> ท่อ/ระบายน้ำ</div>
+      <div class="choice" data-value="สายไฟ/เสาไฟ"><span class="emoji">⚡</span> สายไฟ/เสาไฟ</div>
+      <div class="choice" data-value="เสียงรบกวน"><span class="emoji">🔊</span> เสียงรบกวน</div>
+      <div class="choice" data-value="สัตว์/แมลง"><span class="emoji">🐕</span> สัตว์/แมลง</div>
+      <div class="choice" data-value="ต้นไม้/พื้นที่สีเขียว"><span class="emoji">🌳</span> ต้นไม้/สีเขียว</div>
+      <div class="choice" data-value="จุดเสี่ยง/ความปลอดภัย"><span class="emoji">⚠️</span> จุดเสี่ยง</div>
+      <div class="choice" data-value="อื่น ๆ"><span class="emoji">📌</span> อื่น ๆ</div>
+    </div>
+
+    <label for="description">รายละเอียด</label>
+    <textarea id="description" placeholder="อธิบายปัญหาที่พบ..."></textarea>
+
+    <label>ตำแหน่ง (แตะหรือลากหมุดให้ตรงจุด)</label>
+    <div id="map"></div>
+    <div class="coords" id="coords">⏳ กำลังหาตำแหน่งปัจจุบัน…</div>
+
+    <!-- DEFERRED: image upload — re-enable when durable storage (Supabase/S3) is ready.
+         Backend already accepts an optional image, so just restore these 3 lines + the
+         JS preview block + the fd.append("image", ...) line to turn it back on.
+    <label for="image">รูปภาพ (ไม่บังคับ)</label>
+    <input type="file" id="image" accept="image/*" />
+    <img id="preview" alt="ตัวอย่างรูป" />
+    -->
+
+    <button class="submit" id="submit">ส่งรายงาน</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+  const LIFF_ID = "__LIFF_ID__";   // injected at serve time; empty = anonymous dev mode
+  const msg = document.getElementById("msg");
+  const btn = document.getElementById("submit");
+  function show(text, ok) { msg.textContent = text; msg.className = "msg " + (ok ? "ok" : "err"); }
+
+  // --- LIFF identity (degrades to anonymous when outside LINE / no LIFF_ID) ---
+  let accessToken = null;
+  async function initLiff() {
+    if (!LIFF_ID || !window.liff) return;
+    try {
+      await liff.init({ liffId: LIFF_ID });
+      if (liff.isLoggedIn()) accessToken = liff.getAccessToken();
+    } catch (e) { console.warn("LIFF init failed, continuing anonymously:", e); }
+  }
+
+  // --- map with a draggable pin (Leaflet + OpenStreetMap, no API key) ---
+  let lat = null, lng = null, marker = null;
+  const coordsEl = document.getElementById("coords");
+  const FALLBACK = [13.7563, 100.5018]; // Bangkok, until we get a real fix
+  const map = L.map("map").setView(FALLBACK, 15);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "© OpenStreetMap",
+  }).addTo(map);
+
+  function setPin(la, ln) {
+    lat = la; lng = ln;
+    if (!marker) {
+      marker = L.marker([la, ln], { draggable: true }).addTo(map);
+      marker.on("dragend", () => { const p = marker.getLatLng(); lat = p.lat; lng = p.lng; showCoords(); });
+    } else { marker.setLatLng([la, ln]); }
+    showCoords();
+  }
+  function showCoords() {
+    coordsEl.textContent = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    coordsEl.classList.add("set");
+  }
+  map.on("click", (e) => setPin(e.latlng.lat, e.latlng.lng));
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { map.setView([pos.coords.latitude, pos.coords.longitude], 17); setPin(pos.coords.latitude, pos.coords.longitude); },
+      () => { coordsEl.textContent = "แตะบนแผนที่เพื่อปักหมุด"; }
+    );
+  } else { coordsEl.textContent = "แตะบนแผนที่เพื่อปักหมุด"; }
+
+  // --- category buttons ---
+  let category = null;
+  document.querySelectorAll(".choice").forEach((el) => {
+    el.addEventListener("click", () => {
+      document.querySelectorAll(".choice").forEach((c) => c.classList.remove("active"));
+      el.classList.add("active");
+      category = el.dataset.value;
+    });
+  });
+
+  // DEFERRED: image preview — re-enable together with the image field above.
+
+  // --- submit (multipart) ---
+  btn.addEventListener("click", async () => {
+    const description = document.getElementById("description").value.trim();
+    if (!category) { show("กรุณาเลือกประเภทปัญหา", false); return; }
+    if (!description) { show("กรุณากรอกรายละเอียด", false); return; }
+    if (lat === null) { show("กรุณาปักหมุดตำแหน่งบนแผนที่", false); return; }
+
+    const fd = new FormData();
+    fd.append("description", description);
+    fd.append("category", category);
+    fd.append("latitude", lat);
+    fd.append("longitude", lng);
+    // DEFERRED: image attach — re-enable with the image field.
+
+    const headers = {};
+    if (accessToken) headers["Authorization"] = "Bearer " + accessToken;
+
+    btn.disabled = true; btn.textContent = "กำลังส่ง…";
+    try {
+      const res = await fetch("/api/form-reports", { method: "POST", headers, body: fd });
+      if (res.ok) {
+        show("✅ ส่งรายงานสำเร็จ ขอบคุณครับ", true);
+        if (window.liff && LIFF_ID && liff.isInClient()) setTimeout(() => liff.closeWindow(), 1200);
+      } else {
+        show("❌ ส่งรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", false);
+      }
+    } catch (e) {
+      // Never surface internal errors/status/report number to the user — just fail.
+      show("❌ ส่งรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", false);
+    } finally {
+      btn.disabled = false; btn.textContent = "ส่งรายงาน";
+    }
+  });
+
+  initLiff();
+  </script>
+</body>
+</html>

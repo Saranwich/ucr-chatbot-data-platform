@@ -14,6 +14,7 @@ from app.database import engine, Base, get_db
 from app.handlers.message_handler import route_message_event
 from app.utils.survey_loader import survey_manager
 from app.routes.dashboard import router as dashboard_router
+from app.routes.report import router as report_router
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 import os
@@ -67,6 +68,7 @@ app.add_middleware(
 
 # Include Routers
 app.include_router(dashboard_router)
+app.include_router(report_router)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

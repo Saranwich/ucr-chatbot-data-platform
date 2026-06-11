@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Response, HTTPException
 from app.utils.auth import get_current_user
 from app.utils import storage
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import FileResponse
 from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingApiBlob
 from app.config import CHANNEL_ACCESS_TOKEN
 from sqlalchemy.ext.asyncio import AsyncSession

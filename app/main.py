@@ -18,7 +18,6 @@ from app.routes.dashboard import router as dashboard_router
 from app.routes.report import router as report_router
 from app.routes.userdata import router as userdata_router
 from fastapi.middleware.cors import CORSMiddleware
-from mangum import Mangum
 import os
 
 # NEW: The "lifespan" context manager is how FastAPI runs code BEFORE the server starts accepting requests
@@ -116,5 +115,3 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
                 await handle_follow(event, line_bot_api, db)
 
     return 'OK'
-
-handler = Mangum(app)

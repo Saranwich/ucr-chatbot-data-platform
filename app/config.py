@@ -8,7 +8,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 CHANNEL_SECRET = os.getenv("CHANNEL_SECRET")
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-LIFF_REPORT_URL = os.getenv("LIFF_REPORT_URL")
 LIFF_ID = os.getenv("LIFF_ID")  # LIFF app id (from a LINE Login channel, same provider as the bot)
 LIFF_USERDATA_ID = os.getenv("LIFF_USERDATA_ID")  # LIFF app id ของหน้าแก้ไขข้อมูลส่วนตัว (channel เดียวกัน คนละ app)
 SURVEYS_DIR = BASE_DIR / "app" / "data" / "surveys"
@@ -64,6 +63,3 @@ if not CHANNEL_SECRET or not CHANNEL_ACCESS_TOKEN:
 
 if not DATABASE_URL:
     raise ValueError("ลืมใส่ DATABASE_URL ในไฟล์ .env")
-
-if not LIFF_REPORT_URL:
-    print("⚠️ Warning: LIFF_REPORT_URL not found in .env. Report button will not work.")

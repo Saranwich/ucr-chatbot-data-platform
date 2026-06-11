@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Response, HTTPException
 from app.utils.auth import get_current_user
-from fastapi.responses import StreamingResponse
+from app.utils import storage
+from fastapi.responses import StreamingResponse, FileResponse
 from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingApiBlob
 from app.config import CHANNEL_ACCESS_TOKEN
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -145,6 +146,12 @@ async def get_line_image(
     image_id: str,
     current_user: dict = Depends(get_current_user)
 ):
+    # รูปที่เก็บถาวรแล้ว (survey/<image_id>.jpg) เสิร์ฟจาก store ตรง ๆ —
+    # ของเก่าก่อนมีระบบเก็บค่อย fallback ไป proxy สดจาก LINE CDN จนกว่าจะหมดอายุ
+    stored = storage.local_file(f"survey/{image_id}.jpg")
+    if stored:
+        return FileResponse(stored, media_type="image/jpeg")
+
     configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
     async with AsyncApiClient(configuration) as api_client:
         blob_api = AsyncMessagingApiBlob(api_client)

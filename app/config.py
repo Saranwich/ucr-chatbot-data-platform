@@ -8,8 +8,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 CHANNEL_SECRET = os.getenv("CHANNEL_SECRET")
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-LIFF_REPORT_URL = os.getenv("LIFF_REPORT_URL")
-LIFF_ID = os.getenv("LIFF_ID")  # LIFF app id (from a LINE Login channel, same provider as the bot)
+# LIFF apps (อยู่บน LINE Login channel, provider เดียวกับบอท — ชื่อ key ตรงกับ .env)
+LIFF_REPORT_ID = os.getenv("LIFF_REPORT_ID")    # หน้าแจ้งปัญหา (/report)
+LIFF_REPORT_URL = os.getenv("LIFF_REPORT_URL")  # ลิงก์เปิดหน้าแจ้งปัญหา (ใช้ในปุ่ม rich menu)
+EDIT_PROFILE_ID = os.getenv("EDIT_PROFILE_ID")    # หน้าแก้ไขข้อมูลส่วนตัว (/userdata)
+EDIT_PROFILE_URL = os.getenv("EDIT_PROFILE_URL")  # ลิงก์เปิดหน้าแก้ไขข้อมูล (ใช้ในปุ่ม rich menu)
 SURVEYS_DIR = BASE_DIR / "app" / "data" / "surveys"
 IMAGES_DIR = BASE_DIR / "app" / "data" / "images"
 
@@ -36,6 +39,14 @@ PROJECT_INFO_TEXT = (
 )
 
 REPORT_DEVELOPMENT_TEXT = "📝 ระบบรายงานปัญหา (Report) กำลังอยู่ระหว่างการพัฒนาเป็นรูปแบบ Website (LIFF) ครับ"
+
+WELCOME_TEXT = (
+    "สวัสดีครับ ยินดีต้อนรับสู่ UCR Smart City Chatbot 🏙️\n"
+    "ร่วมรายงานข้อมูลสิ่งแวดล้อมและปัญหาในชุมชนของคุณ "
+    "เพื่อนำไปออกแบบผังชุมชนให้น่าอยู่ขึ้น\n\n"
+    "เริ่มจากกรอกข้อมูลส่วนตัวสั้น ๆ กันก่อนครับ 👇"
+)
+WELCOME_BACK_TEXT = "ยินดีต้อนรับกลับครับ 👋 เริ่มทำแบบสำรวจหรือแจ้งปัญหาได้จากเมนูด้านล่างเลยครับ"
 SUMMARY_PLACEHOLDER_TEXT = "📊 ระบบสรุปผลกำลังอยู่ระหว่างการพัฒนา จะพร้อมให้ใช้งานเร็วๆ นี้ครับ"
 
 MANUAL_TEXT = (
@@ -55,6 +66,3 @@ if not CHANNEL_SECRET or not CHANNEL_ACCESS_TOKEN:
 
 if not DATABASE_URL:
     raise ValueError("ลืมใส่ DATABASE_URL ในไฟล์ .env")
-
-if not LIFF_REPORT_URL:
-    print("⚠️ Warning: LIFF_REPORT_URL not found in .env. Report button will not work.")

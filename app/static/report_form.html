@@ -57,13 +57,9 @@
     <div id="map"></div>
     <div class="coords" id="coords">⏳ กำลังหาตำแหน่งปัจจุบัน…</div>
 
-    <!-- DEFERRED: image upload — re-enable when durable storage (Supabase/S3) is ready.
-         Backend already accepts an optional image, so just restore these 3 lines + the
-         JS preview block + the fd.append("image", ...) line to turn it back on.
     <label for="image">รูปภาพ (ไม่บังคับ)</label>
     <input type="file" id="image" accept="image/*" />
     <img id="preview" alt="ตัวอย่างรูป" />
-    -->
 
     <button class="submit" id="submit">ส่งรายงาน</button>
     <div class="msg" id="msg"></div>
@@ -127,7 +123,15 @@
     });
   });
 
-  // DEFERRED: image preview — re-enable together with the image field above.
+  // --- image preview ---
+  const fileInput = document.getElementById("image");
+  const preview = document.getElementById("preview");
+  fileInput.addEventListener("change", () => {
+    const f = fileInput.files[0];
+    if (!f) { preview.style.display = "none"; return; }
+    preview.src = URL.createObjectURL(f);
+    preview.style.display = "block";
+  });
 
   // --- submit (multipart) ---
   btn.addEventListener("click", async () => {
@@ -141,7 +145,8 @@
     fd.append("category", category);
     fd.append("latitude", lat);
     fd.append("longitude", lng);
-    // DEFERRED: image attach — re-enable with the image field.
+    const imageFile = fileInput.files[0];
+    if (imageFile) fd.append("image", imageFile);
 
     const headers = {};
     if (accessToken) headers["Authorization"] = "Bearer " + accessToken;

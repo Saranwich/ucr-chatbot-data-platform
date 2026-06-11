@@ -6,17 +6,18 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from linebot.v3 import WebhookParser
 from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingApi
-from linebot.v3.webhooks import MessageEvent
+from linebot.v3.webhooks import MessageEvent, FollowEvent
 from linebot.v3.exceptions import InvalidSignatureError
 
 from app.config import CHANNEL_SECRET, CHANNEL_ACCESS_TOKEN, SURVEYS_DIR
 from app.database import engine, Base, get_db
 from app.handlers.message_handler import route_message_event
+from app.handlers.follow_handler import handle_follow
 from app.utils.survey_loader import survey_manager
 from app.routes.dashboard import router as dashboard_router
 from app.routes.report import router as report_router
+from app.routes.userdata import router as userdata_router
 from fastapi.middleware.cors import CORSMiddleware
-from mangum import Mangum
 import os
 
 # NEW: The "lifespan" context manager is how FastAPI runs code BEFORE the server starts accepting requests
@@ -30,7 +31,12 @@ async def lifespan(app: FastAPI):
             
             # Create tables if not exist
             await conn.run_sync(Base.metadata.create_all)
-            
+
+            # users gained profile columns after the table first shipped;
+            # create_all never ALTERs existing tables, so add them idempotently here.
+            for col in ("nickname", "age_range", "gender", "community"):
+                await conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
+
             print("✅ Database tables checked/created with Bangkok timezone defaults!")
     except Exception as e:
         print(f"⚠️ Database initialization warning (likely concurrent start): {e}")
@@ -69,6 +75,7 @@ app.add_middleware(
 # Include Routers
 app.include_router(dashboard_router)
 app.include_router(report_router)
+app.include_router(userdata_router)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -104,7 +111,7 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
         for event in events:
             if isinstance(event, MessageEvent):
                 await route_message_event(event, line_bot_api, db)
+            elif isinstance(event, FollowEvent):
+                await handle_follow(event, line_bot_api, db)
 
     return 'OK'
-
-handler = Mangum(app)

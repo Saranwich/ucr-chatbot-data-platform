@@ -49,14 +49,6 @@ async def save_session(db: AsyncSession):
     await db.commit()
 
 
-async def mark_profile_completed(db: AsyncSession, user_id: str):
-    """Flag the user as profiled. Does not commit — the caller's save_session does."""
-    result = await db.execute(select(User).where(User.lineuser_id == user_id))
-    user = result.scalars().first()
-    if user:
-        user.has_completed_profile = 1
-
-
 async def finalize_report(db: AsyncSession, session: SurveySession):
     """Turn a finished session into a CompletedReport and delete the session."""
     postgis_point = build_location_point(session.payload)

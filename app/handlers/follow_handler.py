@@ -14,12 +14,15 @@ from app.services.survey_repository import get_or_create_user
 
 async def handle_follow(event, line_bot_api, db: AsyncSession):
     user = await get_or_create_user(db, event.source.user_id)
+    # อ่านธงก่อน commit — หลัง commit attribute จะ expired แล้วการแตะมันจะ
+    # trigger lazy load แบบ sync ใน async session → MissingGreenlet
+    has_profile = user.has_completed_profile
     await db.commit()
 
-    invite = None if user.has_completed_profile else build_profile_invite()
+    invite = None if has_profile else build_profile_invite()
     if invite:
         messages = [TextMessage(text=WELCOME_TEXT), invite]
-    elif user.has_completed_profile:
+    elif has_profile:
         messages = [TextMessage(text=WELCOME_BACK_TEXT)]
     else:
         # ยังไม่มี LIFF_USERDATA_ID (dev) — ทักอย่างเดียว ปุ่มชวนกรอกยังสร้างไม่ได้

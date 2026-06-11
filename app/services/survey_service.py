@@ -5,7 +5,6 @@ from app.services.routing import (
     compute_next_state,
     compute_go_back_state,
     compute_multi_select_state,
-    compute_start_route,
 )
 from app.services import survey_repository as repo
 from app.services import survey_messages as messages
@@ -30,11 +29,12 @@ def session_position_is_valid(survey, route_id: str, step: int) -> bool:
 
 
 async def start_survey_session(user_id: str, survey_version: str, reply_token: str, line_bot_api, db: AsyncSession):
-    user = await repo.get_or_create_user(db, user_id)
+    await repo.get_or_create_user(db, user_id)  # ensure the FK target exists
     await repo.clear_session(db, user_id)
 
+    # Profile ไม่อยู่ใน survey แล้ว (กรอกผ่าน Userdata LIFF) — ทุกคนเริ่มที่ onstart
     survey = survey_manager.get_survey(survey_version)
-    start_route_id = compute_start_route(survey, user.has_completed_profile)
+    start_route_id = survey.onstart
 
     await repo.create_session(db, user_id, survey_version, start_route_id)
 
@@ -154,10 +154,6 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
         await messages.send_question(reply_token, next_question, line_bot_api, show_go_back=True)
 
     elif result["action"] == "next_route":
-        # If we just finished the profile route, mark the user as profiled
-        if active_session.current_route_id == survey.onstart:
-            await repo.mark_profile_completed(db, user_id)
-
         active_session.current_route_id = result["current_route_id"]
         active_session.current_step = result["current_step"]
         active_session.route_history = list(result["route_history"])

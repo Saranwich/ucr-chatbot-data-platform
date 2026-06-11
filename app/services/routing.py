@@ -57,21 +57,6 @@ def compute_next_state(
     }
 
 
-def compute_start_route(survey: Survey, has_completed_profile) -> str:
-    """
-    Pure function — no DB, no LINE API.
-
-    Decides which route a new session begins at. A returning user (profile
-    already completed) skips the onstart route when its exit is a plain route
-    id; otherwise everyone — new or returning — starts at onstart.
-    """
-    if has_completed_profile:
-        after_profile = survey.routes[survey.onstart].next
-        if isinstance(after_profile, str):
-            return after_profile
-    return survey.onstart
-
-
 def compute_go_back_state(
     current_route_id: str,
     current_step: int,

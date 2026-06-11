@@ -34,13 +34,13 @@ def test_require_lineuser_id_rejects_anonymous_with_401():
 
 def test_profile_invite_is_none_without_liff_userdata_id(monkeypatch):
     import app.services.profile_messages as pm
-    monkeypatch.setattr(pm, "LIFF_USERDATA_ID", None)
+    monkeypatch.setattr(pm, "EDIT_PROFILE_ID", None)
     assert pm.build_profile_invite() is None
 
 
 def test_profile_invite_links_to_userdata_liff(monkeypatch):
     import app.services.profile_messages as pm
-    monkeypatch.setattr(pm, "LIFF_USERDATA_ID", "1234-abcd")
+    monkeypatch.setattr(pm, "EDIT_PROFILE_ID", "1234-abcd")
     invite = pm.build_profile_invite()
     assert invite is not None
     button = invite.contents.footer.contents[0]

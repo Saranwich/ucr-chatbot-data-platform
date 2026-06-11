@@ -71,7 +71,7 @@ storage key เช่น survey/<image_id>.jpg, reports/<uuid>.jpg; จุดเ
 - Swagger/ReDoc disabled when `ENV=production`.
 
 ### `app/config.py`
-- Loads env vars: `CHANNEL_SECRET`, `CHANNEL_ACCESS_TOKEN`, `DATABASE_URL`, `LIFF_ID`, `LIFF_USERDATA_ID`.
+- Loads env vars: `CHANNEL_SECRET`, `CHANNEL_ACCESS_TOKEN`, `DATABASE_URL`, `LIFF_REPORT_ID`/`LIFF_REPORT_URL`, `EDIT_PROFILE_ID`/`EDIT_PROFILE_URL`.
 - `SURVEY_TRIGGER_MAP`: dict mapping Thai keyword → survey version key (e.g. `"เริ่มทำแบบสำรวจ" → "socratic_community_report_v3"`). **Add new surveys here.**
 - Static reply text constants: `PROJECT_INFO_TEXT`, `REPORT_DEVELOPMENT_TEXT`, `SUMMARY_PLACEHOLDER_TEXT`, `MANUAL_TEXT`, `WELCOME_TEXT`, `WELCOME_BACK_TEXT`.
 
@@ -166,8 +166,10 @@ Profile is **not** part of any survey — it is filled/edited only in the Userda
 CHANNEL_SECRET=           # LINE channel secret
 CHANNEL_ACCESS_TOKEN=     # LINE channel access token
 DATABASE_URL=postgresql://user:pass@host/db
-LIFF_ID=                  # LIFF app id ของหน้าแจ้งปัญหา (/report) — LINE Login channel, provider เดียวกับบอท
-LIFF_USERDATA_ID=         # LIFF app id ของหน้าข้อมูลส่วนตัว (/userdata) — channel เดียวกัน คนละ app
+LIFF_REPORT_ID=           # LIFF app id ของหน้าแจ้งปัญหา (/report) — LINE Login channel, provider เดียวกับบอท
+LIFF_REPORT_URL=          # https://liff.line.me/<LIFF_REPORT_ID> — ใช้ในปุ่ม rich menu
+EDIT_PROFILE_ID=          # LIFF app id ของหน้าข้อมูลส่วนตัว (/userdata) — channel เดียวกัน คนละ app
+EDIT_PROFILE_URL=         # https://liff.line.me/<EDIT_PROFILE_ID> — ใช้ในปุ่ม rich menu
 SECRET_KEY=               # JWT signing key for dashboard auth
 ALGORITHM=HS256           # JWT algorithm (default HS256)
 FRONTEND_URL=             # Angular dashboard origin for CORS (default http://localhost:4200)

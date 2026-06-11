@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.config import LIFF_ID
+from app.config import LIFF_REPORT_ID
 from app.database import get_db
 from app.models import FormReport, User
 from app.utils.liff_auth import resolve_lineuser_id
@@ -37,7 +37,7 @@ def point_wkt(latitude, longitude):
 async def report_page():
     """Serve the LIFF report form, injecting the LIFF id (empty = anonymous dev mode)."""
     html = _HTML_FILE.read_text(encoding="utf-8")
-    return HTMLResponse(html.replace("__LIFF_ID__", LIFF_ID or ""))
+    return HTMLResponse(html.replace("__LIFF_ID__", LIFF_REPORT_ID or ""))
 
 
 @router.post("/api/form-reports")

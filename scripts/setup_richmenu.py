@@ -6,7 +6,7 @@ if str(root_dir) not in sys.path:
 
 import requests
 import json
-from app.config import IMAGES_DIR, CHANNEL_ACCESS_TOKEN, LIFF_REPORT_URL
+from app.config import IMAGES_DIR, CHANNEL_ACCESS_TOKEN, LIFF_REPORT_URL, EDIT_PROFILE_URL
 
 # ดึง Path รูปมาจาก config
 IMAGE_PATH = IMAGES_DIR / "rich_menu_v3.jpg"
@@ -17,6 +17,10 @@ if not CHANNEL_ACCESS_TOKEN:
 
 if not LIFF_REPORT_URL:
     print("❌ Error: ไม่พบ LIFF_REPORT_URL ในไฟล์ .env")
+    exit()
+
+if not EDIT_PROFILE_URL:
+    print("❌ Error: ไม่พบ EDIT_PROFILE_URL ในไฟล์ .env")
     exit()
 
 if not IMAGE_PATH.exists():
@@ -53,7 +57,7 @@ def create_and_deploy_richmenu():
             },
             {
                 "bounds": {"x": 1667, "y": 843, "width": 833, "height": 843},
-                "action": {"type": "uri", "uri": "https://line.me", "label": "แก้ไขข้อมูล"}
+                "action": {"type": "uri", "uri": EDIT_PROFILE_URL, "label": "แก้ไขข้อมูล"}
             }
         ]
     }

@@ -14,15 +14,15 @@ from linebot.v3.messaging import (
     URIAction,
 )
 
-from app.config import LIFF_USERDATA_ID
+from app.config import EDIT_PROFILE_ID
 
 
 def build_profile_invite() -> Optional[FlexMessage]:
     """Flex bubble พร้อมปุ่มเปิดหน้าแก้ไขข้อมูลส่วนตัว
 
-    คืน None เมื่อยังไม่ได้ตั้ง LIFF_USERDATA_ID (dev) — ผู้เรียกข้ามการแนบได้เลย
+    คืน None เมื่อยังไม่ได้ตั้ง EDIT_PROFILE_ID (dev) — ผู้เรียกข้ามการแนบได้เลย
     """
-    if not LIFF_USERDATA_ID:
+    if not EDIT_PROFILE_ID:
         return None
 
     bubble = FlexBubble(
@@ -49,7 +49,7 @@ def build_profile_invite() -> Optional[FlexMessage]:
                     color="#1E88E5",
                     action=URIAction(
                         label="กรอกข้อมูลส่วนตัว",
-                        uri=f"https://liff.line.me/{LIFF_USERDATA_ID}",
+                        uri=f"https://liff.line.me/{EDIT_PROFILE_ID}",
                     ),
                 )
             ],

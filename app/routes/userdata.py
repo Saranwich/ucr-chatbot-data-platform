@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.config import LIFF_USERDATA_ID
+from app.config import EDIT_PROFILE_ID
 from app.database import get_db
 from app.models import User
 from app.utils.liff_auth import resolve_lineuser_id
@@ -44,7 +44,7 @@ async def _require_lineuser_id(authorization: Optional[str]) -> str:
 async def userdata_page():
     """Serve the profile LIFF page, injecting the LIFF id (empty = dev mode)."""
     html = _HTML_FILE.read_text(encoding="utf-8")
-    return HTMLResponse(html.replace("__LIFF_ID__", LIFF_USERDATA_ID or ""))
+    return HTMLResponse(html.replace("__LIFF_ID__", EDIT_PROFILE_ID or ""))
 
 
 @router.get("/api/userdata/profile")

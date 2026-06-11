@@ -27,7 +27,7 @@ def _run_follow(monkeypatch, profiled: bool, liff_id):
 
     monkeypatch.setattr(fh, "get_or_create_user", fake_get_or_create_user)
     import app.services.profile_messages as pm
-    monkeypatch.setattr(pm, "LIFF_USERDATA_ID", liff_id)
+    monkeypatch.setattr(pm, "EDIT_PROFILE_ID", liff_id)
 
     api = FakeApi()
     asyncio.run(fh.handle_follow(_event(), api, FakeDb()))
@@ -46,6 +46,6 @@ def test_profiled_user_gets_welcome_back_only(monkeypatch):
 
 
 def test_new_user_without_liff_id_still_gets_welcome(monkeypatch):
-    # dev: LIFF_USERDATA_ID ยังไม่ตั้ง — ต้องไม่พังและยังทักทายได้
+    # dev: EDIT_PROFILE_ID ยังไม่ตั้ง — ต้องไม่พังและยังทักทายได้
     sent = _run_follow(monkeypatch, profiled=False, liff_id=None)
     assert len(sent) == 1

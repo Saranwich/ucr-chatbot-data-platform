@@ -25,7 +25,7 @@ async def handle_follow(event, line_bot_api, db: AsyncSession):
     elif has_profile:
         messages = [TextMessage(text=WELCOME_BACK_TEXT)]
     else:
-        # ยังไม่มี LIFF_USERDATA_ID (dev) — ทักอย่างเดียว ปุ่มชวนกรอกยังสร้างไม่ได้
+        # ยังไม่มี EDIT_PROFILE_ID (dev) — ทักอย่างเดียว ปุ่มชวนกรอกยังสร้างไม่ได้
         messages = [TextMessage(text=WELCOME_TEXT)]
 
     await line_bot_api.reply_message(

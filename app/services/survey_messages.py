@@ -106,3 +106,13 @@ async def send_text(reply_token: str, text: str, line_bot_api):
     await line_bot_api.reply_message(
         ReplyMessageRequest(reply_token=reply_token, messages=[TextMessage(text=text)])
     )
+
+
+async def send_text_with_extras(reply_token: str, text: str, extras: list, line_bot_api):
+    """Reply with a text message followed by extra messages (e.g. a Flex invite)."""
+    await line_bot_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=reply_token,
+            messages=[TextMessage(text=text)] + extras,
+        )
+    )

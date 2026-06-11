@@ -9,6 +9,7 @@ from app.services.routing import (
 )
 from app.services import survey_repository as repo
 from app.services import survey_messages as messages
+from app.services.profile_messages import build_profile_invite
 from app.config import GO_BACK_KEYWORD, CONFIRM_KEYWORD
 
 
@@ -166,4 +167,13 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
 
     elif result["action"] == "complete":
         await repo.finalize_report(db, active_session)
-        await messages.send_text(reply_token, "ขอบคุณที่ร่วมรายงานข้อมูลครับ", line_bot_api)
+
+        # ยังไม่มี profile → แนบ Flex ชวนไปกรอกใน Userdata LIFF ต่อท้ายคำขอบคุณ
+        user = await repo.get_or_create_user(db, user_id)
+        invite = None if user.has_completed_profile else build_profile_invite()
+        if invite:
+            await messages.send_text_with_extras(
+                reply_token, "ขอบคุณที่ร่วมรายงานข้อมูลครับ", [invite], line_bot_api
+            )
+        else:
+            await messages.send_text(reply_token, "ขอบคุณที่ร่วมรายงานข้อมูลครับ", line_bot_api)

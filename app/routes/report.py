@@ -7,8 +7,6 @@ expose the image back via GET /api/form-reports/{id}/image.
 
 Image store is local uploads/ for now (POC); ADR 0005 moves it to S3.
 """
-import os
-import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -21,11 +19,11 @@ from app.config import LIFF_ID
 from app.database import get_db
 from app.models import FormReport, User
 from app.utils.liff_auth import resolve_lineuser_id
+from app.utils.storage import save_image, local_file, unique_image_name
 
 router = APIRouter(tags=["report"])
 
 _HTML_FILE = Path(__file__).resolve().parent.parent / "static" / "report_form.html"
-_UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
 
 
 def point_wkt(latitude, longitude):
@@ -33,12 +31,6 @@ def point_wkt(latitude, longitude):
     if latitude is None or longitude is None:
         return None
     return f"SRID=4326;POINT({longitude} {latitude})"
-
-
-def unique_image_name(original_filename):
-    """A collision-proof stored filename: random uuid + the original extension (default .jpg)."""
-    ext = os.path.splitext(original_filename or "")[1] or ".jpg"
-    return f"{uuid.uuid4().hex}{ext}"
 
 
 @router.get("/report", response_class=HTMLResponse)
@@ -67,13 +59,11 @@ async def submit_form_report(
             db.add(User(lineuser_id=lineuser_id))
             await db.flush()
 
-    # image — POC: save bytes under uploads/, store the filename only (ADR 0005 → S3)
+    # image — เก็บผ่าน storage helper กลาง (key 'reports/<uuid>.<ext>')
     image_path = None
     if image is not None and image.filename:
-        fname = unique_image_name(image.filename)
-        _UPLOAD_DIR.mkdir(exist_ok=True)
-        (_UPLOAD_DIR / fname).write_bytes(await image.read())
-        image_path = fname
+        key = f"reports/{unique_image_name(image.filename)}"
+        image_path = save_image(key, await image.read())
 
     # location — same WKT shape survey_repository uses for PostGIS
     location_data = point_wkt(latitude, longitude)
@@ -98,7 +88,9 @@ async def form_report_image(report_id: int, db: AsyncSession = Depends(get_db)):
     report = result.scalars().first()
     if report is None or not report.image_path:
         raise HTTPException(status_code=404, detail="No image for this report")
-    path = _UPLOAD_DIR / report.image_path
-    if not path.exists():
+    # image_path เป็น storage key ('reports/<name>'); แถวเก่าเก็บชื่อไฟล์เปล่า ๆ
+    # ใต้ uploads/ ตรง ๆ ซึ่ง local_file ก็ resolve ได้เหมือนกัน
+    path = local_file(report.image_path)
+    if path is None:
         raise HTTPException(status_code=404, detail="Image file missing")
     return FileResponse(path)

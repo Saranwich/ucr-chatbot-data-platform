@@ -15,6 +15,7 @@ from app.handlers.message_handler import route_message_event
 from app.utils.survey_loader import survey_manager
 from app.routes.dashboard import router as dashboard_router
 from app.routes.report import router as report_router
+from app.routes.userdata import router as userdata_router
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 import os
@@ -30,7 +31,12 @@ async def lifespan(app: FastAPI):
             
             # Create tables if not exist
             await conn.run_sync(Base.metadata.create_all)
-            
+
+            # users gained profile columns after the table first shipped;
+            # create_all never ALTERs existing tables, so add them idempotently here.
+            for col in ("nickname", "age_range", "gender", "community"):
+                await conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
+
             print("✅ Database tables checked/created with Bangkok timezone defaults!")
     except Exception as e:
         print(f"⚠️ Database initialization warning (likely concurrent start): {e}")
@@ -69,6 +75,7 @@ app.add_middleware(
 # Include Routers
 app.include_router(dashboard_router)
 app.include_router(report_router)
+app.include_router(userdata_router)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

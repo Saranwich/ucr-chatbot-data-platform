@@ -10,6 +10,7 @@ CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 LIFF_REPORT_URL = os.getenv("LIFF_REPORT_URL")
 LIFF_ID = os.getenv("LIFF_ID")  # LIFF app id (from a LINE Login channel, same provider as the bot)
+LIFF_USERDATA_ID = os.getenv("LIFF_USERDATA_ID")  # LIFF app id ของหน้าแก้ไขข้อมูลส่วนตัว (channel เดียวกัน คนละ app)
 SURVEYS_DIR = BASE_DIR / "app" / "data" / "surveys"
 IMAGES_DIR = BASE_DIR / "app" / "data" / "images"
 

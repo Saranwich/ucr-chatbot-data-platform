@@ -1,0 +1,266 @@
+{
+  "version": "fdg140626",
+  "onstart": "start_route",
+  "questions": {
+    "q_start": {
+      "id": "q_start",
+      "type": "quick_reply",
+      "text": "ช่วงนี้ปัญหาอะไรที่กระทบการใช้ชีวิตของคุณมากที่สุดครับ?",
+      "options": [
+        {
+          "label": "🌡️ อากาศร้อนจัด",
+          "action_type": "message",
+          "value": "อากาศร้อนจัด"
+        },
+        {
+          "label": "🌊 น้ำท่วม / น้ำขัง",
+          "action_type": "message",
+          "value": "น้ำท่วม/น้ำขัง"
+        }
+      ]
+    },
+    "q_heat_cause": {
+      "id": "q_heat_cause",
+      "type": "quick_reply",
+      "text": "อะไรทำให้บริเวณนี้ร้อนมากที่สุดครับ?",
+      "options": [
+        {
+          "label": "🏠 บ้านอากาศไม่ถ่ายเท",
+          "action_type": "message",
+          "value": "บ้านไม่ถ่ายเท"
+        },
+        {
+          "label": "☀️ หลังคาร้อน",
+          "action_type": "message",
+          "value": "หลังคาร้อน"
+        },
+        {
+          "label": "🌳 ไม่มีร่มเงาต้นไม้",
+          "action_type": "message",
+          "value": "ไม่มีร่มเงา"
+        },
+        {
+          "label": "❓ อื่น ๆ / ไม่แน่ใจ",
+          "action_type": "message",
+          "value": "ไม่แน่ใจ"
+        }
+      ]
+    },
+    "q_heat_impact": {
+      "id": "q_heat_impact",
+      "type": "multi_select",
+      "max_selections": 2,
+      "text": "ปัญหานี้กระทบกับอะไรบ้าง? (เลือกได้สูงสุด 2 ข้อ)",
+      "options": [
+        {
+          "label": "😷 สุขภาพ",
+          "action_type": "message",
+          "value": "สุขภาพ"
+        },
+        {
+          "label": "👵 ผู้สูงอายุ / เด็ก",
+          "action_type": "message",
+          "value": "ผู้สูงอายุ/เด็ก"
+        },
+        {
+          "label": "💼 ทำงานหรือใช้ชีวิตลำบาก",
+          "action_type": "message",
+          "value": "ใช้ชีวิตลำบาก"
+        },
+        {
+          "label": "⚠️ ไม่ปลอดภัย",
+          "action_type": "message",
+          "value": "ไม่ปลอดภัย"
+        }
+      ]
+    },
+    "q_heat_fix": {
+      "id": "q_heat_fix",
+      "type": "quick_reply",
+      "text": "ถ้าเริ่มแก้ไขได้ก่อนหนึ่งอย่าง อยากให้ทำอะไรมากที่สุดครับ?",
+      "options": [
+        {
+          "label": "🌳 เพิ่มต้นไม้หรือร่มเงา",
+          "action_type": "message",
+          "value": "เพิ่มร่มเงา"
+        },
+        {
+          "label": "🏠 ทำหลังคาหรือกันสาด",
+          "action_type": "message",
+          "value": "ทำหลังคา/กันสาด"
+        },
+        {
+          "label": "🪑 เพิ่มที่นั่งพัก",
+          "action_type": "message",
+          "value": "เพิ่มที่นั่งพัก"
+        },
+        {
+          "label": "💨 เพิ่มพัดลมหรือจุดคลายร้อน",
+          "action_type": "message",
+          "value": "เพิ่มจุดคลายร้อน"
+        }
+      ]
+    },
+    "q_flood_cause": {
+      "id": "q_flood_cause",
+      "type": "quick_reply",
+      "text": "อะไรเป็นสาเหตุหรือสิ่งที่กังวลที่สุดครับ?",
+      "options": [
+        {
+          "label": "🚧 ท่อตัน / ขยะอุดตัน",
+          "action_type": "message",
+          "value": "ท่อตัน"
+        },
+        {
+          "label": "🦠 น้ำสกปรก / มีกลิ่น",
+          "action_type": "message",
+          "value": "น้ำสกปรก"
+        },
+        {
+          "label": "⚡ เสี่ยงไฟรั่วหรือสัตว์มีพิษ",
+          "action_type": "message",
+          "value": "ไฟรั่ว/สัตว์มีพิษ"
+        },
+        {
+          "label": "❓ อื่น ๆ / ไม่แน่ใจ",
+          "action_type": "message",
+          "value": "ไม่แน่ใจ"
+        }
+      ]
+    },
+    "q_flood_impact": {
+      "id": "q_flood_impact",
+      "type": "multi_select",
+      "max_selections": 2,
+      "text": "ปัญหานี้กระทบกับอะไรบ้าง? (เลือกได้สูงสุด 2 ข้อ)",
+      "options": [
+        {
+          "label": "🚶 เดินหรือเข้าออกลำบาก",
+          "action_type": "message",
+          "value": "เข้าออกลำบาก"
+        },
+        {
+          "label": "😷 กระทบสุขภาพ",
+          "action_type": "message",
+          "value": "สุขภาพ"
+        },
+        {
+          "label": "👵 ผู้สูงอายุ / เด็ก",
+          "action_type": "message",
+          "value": "ผู้สูงอายุ/เด็ก"
+        },
+        {
+          "label": "⚠️ ไม่ปลอดภัย",
+          "action_type": "message",
+          "value": "ไม่ปลอดภัย"
+        }
+      ]
+    },
+    "q_flood_fix": {
+      "id": "q_flood_fix",
+      "type": "quick_reply",
+      "text": "ถ้าเริ่มแก้ไขได้ก่อนหนึ่งอย่าง อยากให้ทำอะไรมากที่สุดครับ?",
+      "options": [
+        {
+          "label": "🛠️ ลอกท่อระบายน้ำ",
+          "action_type": "message",
+          "value": "ลอกท่อ"
+        },
+        {
+          "label": "🗑️ จัดการขยะ",
+          "action_type": "message",
+          "value": "จัดการขยะ"
+        },
+        {
+          "label": "🚶 ปรับทางเดิน",
+          "action_type": "message",
+          "value": "ปรับทางเดิน"
+        },
+        {
+          "label": "💡 เพิ่มไฟส่องสว่าง",
+          "action_type": "message",
+          "value": "เพิ่มไฟส่องสว่าง"
+        }
+      ]
+    },
+    "q_location": {
+      "id": "q_location",
+      "type": "location",
+      "text": "เพื่อให้ทีมงานเห็นภาพและวิเคราะห์พื้นที่ได้แม่นยำขึ้น รบกวนแชร์พิกัดที่เกิดปัญหาหน่อยนะครับ 📍",
+      "options": [
+        {
+          "label": "📍 ส่งพิกัด",
+          "action_type": "location"
+        },
+        {
+          "label": "✍️ พิมพ์ชื่อจุด",
+          "action_type": "message",
+          "value": "พิมพ์เอง"
+        }
+      ]
+    },
+    "q_photo": {
+      "id": "q_photo",
+      "type": "image",
+      "text": "ขอบคุณมากครับ! คำถามสุดท้ายแล้ว 😊 ถ้ามีรูปบริเวณที่เกิดปัญหา รบกวนส่งให้ทีมดูได้ไหมครับ? รูปจะช่วยให้ทีมเข้าใจสภาพพื้นที่ได้มากขึ้น (ถ้าไม่สะดวก กด 'ข้าม' ได้เลยครับ)",
+      "options": [
+        {
+          "label": "📷 ส่งรูป",
+          "action_type": "camera"
+        },
+        {
+          "label": "ข้าม",
+          "action_type": "message",
+          "value": "ข้าม"
+        }
+      ]
+    }
+  },
+  "routes": {
+    "start_route": {
+      "questions": [
+        "q_start"
+      ],
+      "next": {
+        "conditions": [
+          {
+            "when": {
+              "q_start": "อากาศร้อนจัด"
+            },
+            "goto": "heat_route"
+          },
+          {
+            "when": {
+              "q_start": "น้ำท่วม/น้ำขัง"
+            },
+            "goto": "flood_route"
+          }
+        ],
+        "default": null
+      }
+    },
+    "heat_route": {
+      "questions": [
+        "q_heat_cause",
+        "q_heat_impact",
+        "q_heat_fix"
+      ],
+      "next": "common_ending_route"
+    },
+    "flood_route": {
+      "questions": [
+        "q_flood_cause",
+        "q_flood_impact",
+        "q_flood_fix"
+      ],
+      "next": "common_ending_route"
+    },
+    "common_ending_route": {
+      "questions": [
+        "q_location",
+        "q_photo"
+      ],
+      "next": null
+    }
+  }
+}

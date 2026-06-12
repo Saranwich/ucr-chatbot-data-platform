@@ -170,10 +170,10 @@ LIFF_REPORT_ID=           # LIFF app id ของหน้าแจ้งปั�
 LIFF_REPORT_URL=          # https://liff.line.me/<LIFF_REPORT_ID> — ใช้ในปุ่ม rich menu
 EDIT_PROFILE_ID=          # LIFF app id ของหน้าข้อมูลส่วนตัว (/userdata) — channel เดียวกัน คนละ app
 EDIT_PROFILE_URL=         # https://liff.line.me/<EDIT_PROFILE_ID> — ใช้ในปุ่ม rich menu
-SECRET_KEY=               # JWT signing key for dashboard auth
-ALGORITHM=HS256           # JWT algorithm (default HS256)
-FRONTEND_URL=             # Angular dashboard origin for CORS (default http://localhost:4200)
-ENV=production            # Set to 'production' to hide /docs and /redoc
+SECRET_KEY=               # JWT signing key for dashboard auth (required — app refuses to start without it)
+ALGORITHM=HS256           # optional — JWT algorithm (default HS256)
+FRONTEND_URL=             # optional — Angular dashboard origin for CORS (default http://localhost:4200)
+ENV=production            # optional — set to 'production' to hide /docs and /redoc
 ```
 
 Run: `uvicorn app.main:app --reload`

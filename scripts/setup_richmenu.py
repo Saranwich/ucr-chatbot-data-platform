@@ -9,7 +9,7 @@ import json
 from app.config import IMAGES_DIR, CHANNEL_ACCESS_TOKEN, LIFF_REPORT_URL, EDIT_PROFILE_URL
 
 # ดึง Path รูปมาจาก config
-IMAGE_PATH = IMAGES_DIR / "rich_menu_v3.jpg"
+IMAGE_PATH = IMAGES_DIR / "rich_menu_v4.jpg"
 
 if not CHANNEL_ACCESS_TOKEN:
     print("❌ Error: ไม่พบ CHANNEL_ACCESS_TOKEN ในไฟล์ .env")

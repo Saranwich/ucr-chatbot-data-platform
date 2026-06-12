@@ -7,6 +7,7 @@ expose the image back via GET /api/form-reports/{id}/image.
 
 Image store is local uploads/ for now (POC); ADR 0005 moves it to S3.
 """
+import mimetypes
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +19,7 @@ from sqlalchemy.future import select
 from app.config import LIFF_REPORT_ID
 from app.database import get_db
 from app.models import FormReport, User
+from app.utils.auth import get_current_user
 from app.utils.liff_auth import resolve_lineuser_id
 from app.utils.storage import save_image, local_file, unique_image_name
 
@@ -82,8 +84,12 @@ async def submit_form_report(
 
 
 @router.get("/api/form-reports/{report_id}/image")
-async def form_report_image(report_id: int, db: AsyncSession = Depends(get_db)):
-    """Stream a report's uploaded image from uploads/ (404 if none)."""
+async def form_report_image(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Stream a report's uploaded image (admin only — these are residents' private reports)."""
     result = await db.execute(select(FormReport).where(FormReport.report_id == report_id))
     report = result.scalars().first()
     if report is None or not report.image_path:
@@ -93,4 +99,8 @@ async def form_report_image(report_id: int, db: AsyncSession = Depends(get_db)):
     path = local_file(report.image_path)
     if path is None:
         raise HTTPException(status_code=404, detail="Image file missing")
-    return FileResponse(path)
+    # บังคับให้เสิร์ฟเป็นรูปเสมอ ไม่ปล่อยให้เดาเป็น text/html (กันไฟล์เก่านามสกุลแปลก ๆ)
+    media_type = mimetypes.guess_type(str(path))[0]
+    if not media_type or not media_type.startswith("image/"):
+        media_type = "image/jpeg"
+    return FileResponse(path, media_type=media_type)

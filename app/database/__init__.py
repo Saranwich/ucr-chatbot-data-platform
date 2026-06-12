@@ -37,8 +37,10 @@ engine = create_async_engine(
     echo=False,
     json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False),
     connect_args=connect_args,
-    pool_size=1,
-    max_overflow=0,
+    # ช่องต่อ DB หลายช่อง เพื่อให้ผู้ใช้หลายคนทำ survey พร้อมกันได้โดยไม่ต้องต่อคิว
+    # (เดิม 1 ช่อง — เทสต์คนเดียวไม่เห็นปัญหา แต่คนเยอะพร้อมกันจะค้าง)
+    pool_size=5,
+    max_overflow=2,
     pool_pre_ping=True,
     pool_recycle=300
 )

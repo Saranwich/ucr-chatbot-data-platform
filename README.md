@@ -51,7 +51,22 @@ ucr-smartcity_chatbot/
 **LINE Official Account:**
 - Create a Provider and a Messaging API Channel on the [LINE Developers Console](https://developers.line.biz/en/).
 - Obtain your `Channel Secret` and `Channel Access Token`.
-- Configure and upload a Rich Menu to trigger the survey.
+- Configure and upload a Rich Menu to trigger the survey (see step 7 — a script does this for you).
+
+**LINE Login Channel + 2 LIFF apps:**
+
+The bot has two in-chat web pages (LIFF). They are served by *this* FastAPI app, but LINE needs a LIFF app registered for each one so it can open them inside LINE.
+
+- Under the **same provider**, create a **LINE Login** channel.
+- Inside that channel, add **two LIFF apps** ([LIFF docs](https://developers.line.biz/en/docs/liff/registering-liff-apps/)):
+
+  | LIFF app | Endpoint URL (your server) | Serves | Goes in `.env` as |
+  |---|---|---|---|
+  | Report form | `https://<your-domain>/report` | `app/static/report_form.html` | `LIFF_REPORT_ID` / `LIFF_REPORT_URL` |
+  | Edit profile | `https://<your-domain>/userdata` | `app/static/userdata_form.html` | `EDIT_PROFILE_ID` / `EDIT_PROFILE_URL` |
+
+- For local dev, `<your-domain>` is your ngrok HTTPS URL (see the last section).
+- Each LIFF app gives you a **LIFF ID** and a URL of the form `https://liff.line.me/<LIFF_ID>`. Put the IDs in the `*_ID` vars and the `liff.line.me` links in the `*_URL` vars.
 
 **PostgreSQL Database:**
 - Install a PostgreSQL server and create a new database.
@@ -93,16 +108,26 @@ Edit `.env`:
 CHANNEL_SECRET=your_line_channel_secret
 CHANNEL_ACCESS_TOKEN=your_line_channel_access_token
 DATABASE_URL=postgresql://user:password@localhost/dbname
-LIFF_REPORT_URL=your_liff_url
-SECRET_KEY=your_jwt_secret_key        # signs/verifies dashboard JWTs
+
+# LIFF — report form (/report)
+LIFF_REPORT_ID=your_liff_report_app_id
+LIFF_REPORT_URL=https://liff.line.me/your_liff_report_app_id
+# LIFF — edit profile form (/userdata)
+EDIT_PROFILE_ID=your_liff_edit_profile_app_id
+EDIT_PROFILE_URL=https://liff.line.me/your_liff_edit_profile_app_id
+
+SECRET_KEY=your_jwt_secret_key        # signs/verifies dashboard JWTs (required)
 ALGORITHM=HS256                       # JWT algorithm (default HS256)
 FRONTEND_URL=http://localhost:4200    # browser client origin allowed by CORS
 ENV=development                       # set to 'production' to hide /docs & /redoc
-# RICHMENU_ID=richmenu-....
+# RICHMENU_ID=richmenu-....           # optional note only — not read by the app
 ```
 *(Note: The application automatically replaces `postgresql://` with `postgresql+asyncpg://`.)*
 
-### 6. Run the application
+### 6. Run the application (local development)
+
+> The commands below run a **local development** server with auto-reload. For production, drop `--reload` and run behind a proper process manager / container (a `Dockerfile` is provided).
+
 **Linux/macOS:**
 ```bash
 uvicorn --reload app.main:app
@@ -117,16 +142,22 @@ python -m uvicorn app.main:app --reload
 
 The Rich Menu is what users tap to trigger the survey and other actions. A script creates it, uploads its image, and sets it as the default menu for everyone who adds the bot.
 
-1. Place the menu image at `app/data/images/rich_menu_v2.jpg` (size **2500 × 843** px).
-2. Make sure `CHANNEL_ACCESS_TOKEN` and `LIFF_REPORT_URL` are set in `.env`.
+1. Place the menu image at `app/data/images/rich_menu_v3.jpg` (size **2500 × 1686** px — a 1-button top row + 3-button bottom row).
+2. Make sure `CHANNEL_ACCESS_TOKEN`, `LIFF_REPORT_URL`, **and** `EDIT_PROFILE_URL` are set in `.env` (the script exits early if any is missing).
 3. Run:
    ```bash
    python scripts/setup_richmenu.py
    ```
 
-The script prints the new menu's id (`✅ ... ได้ ID: richmenu-xxxx`) and sets it as the default for everyone — so you don't need to copy the id anywhere for normal use. (The `RICHMENU_ID` line in `.env` is optional and not read by the app; it's just a handy place to note the id.) To list menus later, call LINE's API: `GET https://api.line.me/v2/bot/richmenu/list` with your channel token.
+**You do not need a `RICHMENU_ID`.** The script creates a brand-new menu, gets its id back from LINE, uploads the image to it, and sets it as the default for everyone — all in one run. It prints the id (`✅ ... ได้ ID: richmenu-xxxx`) for your reference only; nothing in the app reads it. (The commented `RICHMENU_ID` line in `.env` is just a handy place to jot it down.) To list menus later, call LINE's API: `GET https://api.line.me/v2/bot/richmenu/list` with your channel token.
 
-The four buttons map to: `เริ่มทำแบบสำรวจ` (start survey), `รายงานปัญหา` (report — opens `LIFF_REPORT_URL`), `ข้อมูลโครงการ` (project info), `สรุปผล` (summary). To change the layout or button actions, edit `scripts/setup_richmenu.py`.
+The four buttons map to:
+- `เริ่มทำแบบสำรวจ` — start survey (top, full width)
+- `แจ้งปัญหา` — report problem, opens `LIFF_REPORT_URL`
+- `คู่มือการใช้งาน` — usage manual
+- `แก้ไขข้อมูล` — edit profile, opens `EDIT_PROFILE_URL`
+
+To change the layout or button actions, edit `scripts/setup_richmenu.py`.
 
 ## Data API (`/api/dashboard`)
 

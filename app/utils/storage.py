@@ -11,10 +11,20 @@ from typing import Optional
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
 
+# เก็บได้เฉพาะนามสกุลรูปจริง — กันคนอัปไฟล์ปลอม (เช่น .html ที่ซ่อนสคริปต์)
+# มาให้เราเสิร์ฟกลับจาก origin เดียวกับหน้า LIFF
+ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
 
 def unique_image_name(original_filename):
-    """A collision-proof stored filename: random uuid + the original extension (default .jpg)."""
-    ext = os.path.splitext(original_filename or "")[1] or ".jpg"
+    """A collision-proof stored filename: random uuid + a safe image extension.
+
+    Only real image extensions are kept; anything else (or missing) becomes .jpg,
+    so a disguised upload can never be stored and later served as itself.
+    """
+    ext = os.path.splitext(original_filename or "")[1].lower()
+    if ext not in ALLOWED_IMAGE_EXTS:
+        ext = ".jpg"
     return f"{uuid.uuid4().hex}{ext}"
 
 

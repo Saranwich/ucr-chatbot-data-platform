@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Survey Builder — UCR Smartcity</title>
+<link rel="stylesheet" href="vendor/drawflow.min.css" />
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a2129; --panel2: #232c36; --line: #313c47;
+    --text: #e6edf3; --dim: #8b98a5; --accent: #4f9cf9; --accent2: #2d7d46;
+    --warn: #d29922; --danger: #d2493f; --node: #20303f; --node-head: #2a4a63;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", "Sarabun", sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px; }
+  body { display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ---- top toolbar ---- */
+  #toolbar { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    background: var(--panel); border-bottom: 1px solid var(--line); flex-shrink: 0; flex-wrap: wrap; }
+  #toolbar .title { font-weight: 700; color: var(--accent); margin-right: 6px; }
+  #toolbar label { color: var(--dim); font-size: 12px; }
+  #toolbar input, #toolbar select { background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font-size: 13px; }
+  #toolbar input#version { width: 200px; }
+  .btn { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #04121f; font-weight: 600; }
+  .btn.ghost { background: transparent; }
+  .spacer { flex: 1; }
+
+  /* ---- main split ---- */
+  #main { flex: 1; display: flex; min-height: 0; }
+  #drawflow { flex: 1; position: relative; background: var(--bg);
+    background-image: radial-gradient(#2a333d 1px, transparent 1px); background-size: 22px 22px; }
+  #side { width: 360px; flex-shrink: 0; background: var(--panel); border-left: 1px solid var(--line);
+    display: flex; flex-direction: column; overflow: hidden; }
+  #side .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  #side .tab { flex: 1; text-align: center; padding: 10px; cursor: pointer; color: var(--dim);
+    font-size: 13px; border-bottom: 2px solid transparent; }
+  #side .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  #side .tabbody { flex: 1; overflow-y: auto; padding: 14px; }
+  .hint { color: var(--dim); font-size: 12px; line-height: 1.5; }
+
+  /* ---- question editor (side) ---- */
+  .field { margin-bottom: 12px; }
+  .field label { display: block; color: var(--dim); font-size: 12px; margin-bottom: 4px; }
+  .field input, .field select, .field textarea { width: 100%; background: var(--panel2);
+    color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font-size: 13px; }
+  .field textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+  .opt-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .opt-row input { flex: 1; }
+  .opt-row select { width: 110px; }
+  .icon-btn { background: var(--panel2); border: 1px solid var(--line); color: var(--dim);
+    border-radius: 5px; width: 26px; height: 28px; cursor: pointer; font-size: 13px; flex-shrink: 0; }
+  .icon-btn:hover { color: var(--text); border-color: var(--accent); }
+  .icon-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
+  .sec-title { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim);
+    margin: 16px 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+
+  /* ---- drawflow node ---- */
+  .drawflow .drawflow-node { background: var(--node); border: 1px solid var(--line);
+    border-radius: 10px; padding: 0; color: var(--text); width: 280px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  .drawflow .drawflow-node.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .drawflow .drawflow-node .input, .drawflow .drawflow-node .output {
+    background: var(--accent); border: 2px solid var(--bg); height: 14px; width: 14px; }
+  .rnode { width: 280px; }
+  .rnode .rhead { background: var(--node-head); padding: 8px 10px; border-radius: 9px 9px 0 0;
+    display: flex; align-items: center; gap: 6px; }
+  .rnode .rhead .rid { flex: 1; background: transparent; border: none; color: #fff; font-weight: 700;
+    font-size: 13px; padding: 2px 4px; border-radius: 4px; }
+  .rnode .rhead .rid:focus { background: rgba(0,0,0,.3); outline: none; }
+  .rnode .rhead .onstart-badge { font-size: 10px; background: var(--accent2); color: #d6ffe1;
+    padding: 2px 6px; border-radius: 4px; display: none; }
+  .rnode.is-onstart .onstart-badge { display: inline; }
+  .rnode .rbody { padding: 8px 10px; }
+  .qrow { display: flex; align-items: center; gap: 5px; padding: 5px 6px; margin-bottom: 4px;
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+  .qrow:hover { border-color: var(--accent); }
+  .qrow.sel { border-color: var(--accent); background: #243240; }
+  .qrow .qtype { font-size: 10px; color: var(--dim); flex-shrink: 0; width: 16px; text-align: center; }
+  .qrow .qtext { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qrow .mini { background: transparent; border: none; color: var(--dim); cursor: pointer; font-size: 11px;
+    padding: 0 2px; }
+  .qrow .mini:hover { color: var(--text); }
+  .addq { width: 100%; margin-top: 2px; }
+  .exit { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+  .exit .modes { display: flex; gap: 4px; margin-bottom: 8px; }
+  .exit .modes label { flex: 1; text-align: center; font-size: 11px; padding: 4px; border: 1px solid var(--line);
+    border-radius: 6px; cursor: pointer; color: var(--dim); }
+  .exit .modes input { display: none; }
+  .exit .modes input:checked + span { color: var(--accent); }
+  .exit .modes label:has(input:checked) { border-color: var(--accent); background: #1d2a36; }
+  .exit select { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 7px; font-size: 12px; }
+  .cond { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px;
+    margin-bottom: 6px; }
+  .cond .crow { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
+  .cond .crow span { font-size: 11px; color: var(--dim); }
+  .cond select { font-size: 11px; padding: 4px; }
+  .exit .lbl { font-size: 11px; color: var(--dim); margin: 6px 0 3px; }
+
+  /* ---- LINE preview ---- */
+  #preview-wrap { display: flex; flex-direction: column; align-items: center; }
+  .phone { width: 300px; background: #8ca7c4; border-radius: 18px; padding: 14px 12px; min-height: 360px; }
+  .phone .chat-from { font-size: 11px; color: #2b3a4a; margin-bottom: 6px; }
+  .flex-bubble { background: #fff; color: #111; border-radius: 14px; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.25); max-width: 240px; }
+  .flex-bubble .body { padding: 12px 14px; font-weight: 700; font-size: 13px; line-height: 1.45; }
+  .flex-bubble .footer { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 7px; }
+  .flex-btn { text-align: center; padding: 8px; border-radius: 8px; font-size: 12px; }
+  .flex-btn.secondary { background: #eceff1; color: #222; }
+  .flex-btn.primary { background: var(--accent2); color: #fff; font-weight: 700; }
+  .flex-btn.link { color: var(--accent); }
+  .qr-bar { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .qr-chip { background: #fff; color: var(--accent); border: 1px solid var(--accent); border-radius: 16px;
+    padding: 5px 12px; font-size: 11px; }
+  .empty-prev { color: #2b3a4a; font-size: 12px; text-align: center; padding: 30px 10px; }
+
+  /* ---- quick check ---- */
+  #qc { font-size: 12px; }
+  #qc .ok { color: var(--accent2); }
+  #qc .row { padding: 4px 0; border-bottom: 1px solid var(--line); }
+  #qc .row.err { color: var(--danger); }
+  #qc .row.warn { color: var(--warn); }
+
+  /* ---- toast ---- */
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--panel2); border: 1px solid var(--accent); color: var(--text);
+    padding: 10px 16px; border-radius: 8px; font-size: 13px; opacity: 0; pointer-events: none;
+    transition: opacity .2s; z-index: 100; max-width: 80%; }
+  #toast.show { opacity: 1; }
+  kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+    font-size: 11px; }
+</style>
+</head>
+<body>
+  <div id="toolbar">
+    <span class="title">📋 Survey Builder</span>
+    <label>version</label>
+    <input id="version" placeholder="เช่น community_report_v4" />
+    <label>onstart</label>
+    <select id="onstart"><option value="">— เลือก route เริ่มต้น —</option></select>
+    <span class="spacer"></span>
+    <button class="btn" id="btn-add">+ Route</button>
+    <button class="btn ghost" id="btn-import">⬆ Import</button>
+    <button class="btn ghost" id="btn-zoom-out">−</button>
+    <button class="btn ghost" id="btn-zoom-in">+</button>
+    <button class="btn primary" id="btn-export">⬇ Export JSON</button>
+    <input type="file" id="file-input" accept="application/json" hidden />
+  </div>
+
+  <div id="main">
+    <div id="drawflow"></div>
+    <div id="side">
+      <div class="tabs">
+        <div class="tab active" data-tab="editor">✏️ คำถาม</div>
+        <div class="tab" data-tab="preview">📱 Preview</div>
+        <div class="tab" data-tab="check">✓ ตรวจ</div>
+      </div>
+      <div class="tabbody" id="tab-editor">
+        <p class="hint">คลิกคำถามในกล่อง route เพื่อแก้ที่นี่ — หรือกด <b>+ Route</b> / ปุ่ม <b>+ คำถาม</b> ในกล่อง</p>
+        <div id="qeditor"></div>
+      </div>
+      <div class="tabbody" id="tab-preview" hidden>
+        <div id="preview-wrap"></div>
+      </div>
+      <div class="tabbody" id="tab-check" hidden>
+        <p class="hint">ตรวจเบื้องต้นในเบราว์เซอร์ — ตัวจริงคือ
+          <kbd>python tools/survey_builder/validate.py &lt;file&gt;</kbd> ที่ใช้ schema เดียวกับบอท</p>
+        <div id="qc"></div>
+      </div>
+    </div>
+  </div>
+  <div id="toast"></div>
+
+<script src="vendor/drawflow.min.js"></script>
+<script>
+"use strict";
+
+/* ============================================================
+   State — single source of truth (mirrors the bot's schema).
+   questions: global dict { qid: {id,type,text,options,max_selections} }
+   nodes:     { nodeId: { routeId, questionIds:[...], exit } }   keyed by Drawflow node id
+   exit:      { mode:'end'|'single'|'branch', single:nodeId|null,
+                conditions:[{field:qid, value:str, goto:nodeId|null}], default:nodeId|null }
+   onstartNode: nodeId of the start route (resolved to routeId on export)
+   ============================================================ */
+const state = { version: "", onstartNode: null, questions: {}, nodes: {} };
+let selectedQ = null;          // {nodeId, qid} currently open in the side editor
+let isRedrawing = false;       // guards Drawflow connection events during programmatic redraw
+let qSeq = 0, rSeq = 0;        // counters for default id generation
+
+const QTYPES = ["quick_reply", "multi_select", "location", "image"];
+const QTYPE_ICON = { quick_reply: "≣", multi_select: "☑", location: "📍", image: "📷" };
+const ACTION_TYPES = ["message", "location", "camera"];
+const GO_BACK = "◀️ ย้อนกลับ";
+
+/* ---------- Drawflow init ---------- */
+const dfEl = document.getElementById("drawflow");
+const editor = new Drawflow(dfEl);
+editor.reroute = true;
+editor.start();
+
+// Let form controls inside nodes work without Drawflow hijacking the drag.
+dfEl.addEventListener("mousedown", (e) => {
+  if (e.target.closest("input,select,textarea,button,.no-drag")) e.stopPropagation();
+}, true);
+
+/* ---------- helpers ---------- */
+const $ = (sel, root = document) => root.querySelector(sel);
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2600);
+}
+const nodeIds = () => Object.keys(state.nodes);
+const routeIdOf = (nodeId) => state.nodes[nodeId]?.routeId ?? null;
+function nodeByRouteId(routeId) {
+  return nodeIds().find((id) => state.nodes[id].routeId === routeId) ?? null;
+}
+function uniqueRouteId(base) {
+  let id = base, n = 1;
+  const taken = new Set(nodeIds().map((i) => state.nodes[i].routeId));
+  while (taken.has(id)) id = `${base}_${++n}`;
+  return id;
+}
+function uniqueQid(base) {
+  let id = base, n = 1;
+  while (state.questions[id]) id = `${base}_${++n}`;
+  return id;
+}
+
+/* ============================================================
+   Route nodes
+   ============================================================ */
+function addRoute(routeId, x = 80, y = 80, focus = true) {
+  const rid = uniqueRouteId(routeId || `route_${++rSeq}`);
+  const nodeId = editor.addNode("route", 1, 1, x, y, "route-node", {}, '<div class="rnode"></div>');
+  state.nodes[nodeId] = { routeId: rid, questionIds: [], exit: { mode: "end", single: null, conditions: [], default: null } };
+  if (!state.onstartNode) state.onstartNode = nodeId;   // first route becomes onstart by default
+  renderNode(nodeId);
+  refreshOnstartOptions();
+  redrawConnections();
+  runQuickCheck();
+  return nodeId;
+}
+
+function renderNode(nodeId) {
+  const host = document.querySelector(`#node-${nodeId} .rnode`);
+  if (!host) return;
+  const n = state.nodes[nodeId];
+  const isStart = state.onstartNode === nodeId;
+  host.classList.toggle("is-onstart", isStart);
+
+  const qrows = n.questionIds.map((qid, i) => {
+    const q = state.questions[qid];
+    const sel = selectedQ && selectedQ.nodeId === nodeId && selectedQ.qid === qid ? " sel" : "";
+    const txt = (q?.text || "(ว่าง)").replace(/</g, "&lt;");
+    return `<div class="qrow${sel}" data-act="editq" data-node="${nodeId}" data-q="${qid}">
+        <span class="qtype" title="${q?.type || ""}">${QTYPE_ICON[q?.type] || "?"}</span>
+        <span class="qtext">${i + 1}. ${txt}</span>
+        <button class="mini" data-act="qup"  data-node="${nodeId}" data-q="${qid}" title="ขึ้น">▲</button>
+        <button class="mini" data-act="qdown" data-node="${nodeId}" data-q="${qid}" title="ลง">▼</button>
+        <button class="mini" data-act="qdel"  data-node="${nodeId}" data-q="${qid}" title="ลบ">✕</button>
+      </div>`;
+  }).join("");
+
+  host.innerHTML = `
+    <div class="rhead">
+      <input class="rid" data-act="rename" data-node="${nodeId}" value="${n.routeId.replace(/"/g, "&quot;")}" />
+      <span class="onstart-badge">START</span>
+      <button class="mini" data-act="rdel" data-node="${nodeId}" title="ลบ route">🗑</button>
+    </div>
+    <div class="rbody">
+      ${qrows || '<div class="hint" style="padding:4px 2px">ยังไม่มีคำถาม</div>'}
+      <button class="btn addq" data-act="addq" data-node="${nodeId}">+ คำถาม</button>
+      ${renderExit(nodeId)}
+    </div>`;
+  editor.updateConnectionNodes(`node-${nodeId}`);
+}
+
+function renderExit(nodeId) {
+  const n = state.nodes[nodeId];
+  const e = n.exit;
+  const opts = (selId) => `<option value="">— จบแบบสำรวจ —</option>` +
+    nodeIds().filter((id) => id !== nodeId)
+      .map((id) => `<option value="${id}" ${selId === id ? "selected" : ""}>${state.nodes[id].routeId}</option>`).join("");
+  const mode = (val, label) =>
+    `<label><input type="radio" name="exit-${nodeId}" data-act="exitmode" data-node="${nodeId}" value="${val}" ${e.mode === val ? "checked" : ""}/><span>${label}</span></label>`;
+
+  let inner = "";
+  if (e.mode === "single") {
+    inner = `<div class="lbl">ไปต่อที่ route:</div>
+      <select data-act="single" data-node="${nodeId}">${opts(e.single)}</select>`;
+  } else if (e.mode === "branch") {
+    const conds = e.conditions.map((c, i) => {
+      const q = state.questions[c.field];
+      const fieldOpts = `<option value="">— เลือกคำถาม —</option>` +
+        Object.values(state.questions).map((qq) =>
+          `<option value="${qq.id}" ${c.field === qq.id ? "selected" : ""}>${(qq.text || qq.id).slice(0, 22)}</option>`).join("");
+      const valOpts = answerValues(q).map((v) =>
+        `<option value="${v.replace(/"/g, "&quot;")}" ${c.value === v ? "selected" : ""}>${v}</option>`).join("");
+      const valControl = (q && answerValues(q).length)
+        ? `<select data-act="condval" data-node="${nodeId}" data-i="${i}"><option value="">— ค่า —</option>${valOpts}</select>`
+        : `<input data-act="condval" data-node="${nodeId}" data-i="${i}" placeholder="ค่าคำตอบ" value="${(c.value || "").replace(/"/g, "&quot;")}" style="flex:1"/>`;
+      return `<div class="cond">
+          <div class="crow"><span>ถ้า</span>
+            <select data-act="condfield" data-node="${nodeId}" data-i="${i}" style="flex:1">${fieldOpts}</select></div>
+          <div class="crow"><span>=</span>${valControl}
+            <button class="icon-btn danger" data-act="conddel" data-node="${nodeId}" data-i="${i}">✕</button></div>
+          <div class="crow"><span>→</span>
+            <select data-act="condgoto" data-node="${nodeId}" data-i="${i}" style="flex:1">${opts(c.goto)}</select></div>
+        </div>`;
+    }).join("");
+    inner = `${conds}
+      <button class="btn" style="width:100%;margin-bottom:6px" data-act="addcond" data-node="${nodeId}">+ เงื่อนไข</button>
+      <div class="lbl">ไม่เข้าเงื่อนไขใด → default:</div>
+      <select data-act="default" data-node="${nodeId}">${opts(e.default)}</select>`;
+  }
+  return `<div class="exit">
+      <div class="modes">
+        ${mode("end", "จบ")}${mode("single", "ไป route เดียว")}${mode("branch", "แยกตามคำตอบ")}
+      </div>${inner}
+    </div>`;
+}
+
+/* answers a question can produce (for condition value dropdowns) */
+function answerValues(q) {
+  if (!q || !q.options) return [];
+  return q.options.filter((o) => (o.action_type || "message") === "message")
+    .map((o) => o.value || o.label).filter(Boolean);
+}
+
+/* ============================================================
+   Delegated events on the canvas (survive node re-renders)
+   ============================================================ */
+dfEl.addEventListener("input", onNodeEvent);
+dfEl.addEventListener("change", onNodeEvent);
+dfEl.addEventListener("click", onNodeClick);
+
+function onNodeEvent(ev) {
+  const el = ev.target.closest("[data-act]"); if (!el) return;
+  const act = el.dataset.act, nodeId = el.dataset.node, n = state.nodes[nodeId];
+  if (!n && act !== "rename") return;
+  switch (act) {
+    case "rename": {
+      const v = el.value.trim();
+      if (v && v !== n.routeId && nodeByRouteId(v) && nodeByRouteId(v) !== nodeId) { toast("route id ซ้ำ"); return; }
+      n.routeId = v || n.routeId; refreshOnstartOptions(); redrawConnections(); runQuickCheck();
+      // refresh other nodes' dropdowns that reference this route by label
+      nodeIds().forEach((id) => { if (id !== nodeId) renderNode(id); });
+      break;
+    }
+    case "exitmode":
+      n.exit.mode = el.value;
+      if (n.exit.mode === "branch" && n.exit.conditions.length === 0) n.exit.conditions.push({ field: "", value: "", goto: null });
+      renderNode(nodeId); redrawConnections(); runQuickCheck(); break;
+    case "single": n.exit.single = el.value || null; redrawConnections(); runQuickCheck(); break;
+    case "default": n.exit.default = el.value || null; redrawConnections(); runQuickCheck(); break;
+    case "condfield": n.exit.conditions[+el.dataset.i].field = el.value; renderNode(nodeId); break;
+    case "condval": n.exit.conditions[+el.dataset.i].value = el.value; runQuickCheck(); break;
+    case "condgoto": n.exit.conditions[+el.dataset.i].goto = el.value || null; redrawConnections(); runQuickCheck(); break;
+  }
+}
+
+function onNodeClick(ev) {
+  const el = ev.target.closest("[data-act]"); if (!el) return;
+  const act = el.dataset.act, nodeId = el.dataset.node, n = state.nodes[nodeId];
+  switch (act) {
+    case "addq": addQuestion(nodeId); break;
+    case "editq": openQuestion(nodeId, el.dataset.q); break;
+    case "qup": moveQuestion(nodeId, el.dataset.q, -1); break;
+    case "qdown": moveQuestion(nodeId, el.dataset.q, +1); break;
+    case "qdel": deleteQuestion(nodeId, el.dataset.q); break;
+    case "rdel": deleteRoute(nodeId); break;
+    case "addcond": n.exit.conditions.push({ field: "", value: "", goto: null }); renderNode(nodeId); break;
+    case "conddel": n.exit.conditions.splice(+el.dataset.i, 1); renderNode(nodeId); redrawConnections(); runQuickCheck(); break;
+  }
+}
+
+/* ============================================================
+   Questions
+   ============================================================ */
+function addQuestion(nodeId) {
+  const qid = uniqueQid(`q_${++qSeq}`);
+  state.questions[qid] = { id: qid, type: "quick_reply", text: "", options: [], max_selections: null };
+  state.nodes[nodeId].questionIds.push(qid);
+  renderNode(nodeId);
+  openQuestion(nodeId, qid);
+  runQuickCheck();
+}
+function moveQuestion(nodeId, qid, dir) {
+  const arr = state.nodes[nodeId].questionIds, i = arr.indexOf(qid), j = i + dir;
+  if (j < 0 || j >= arr.length) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]]; renderNode(nodeId);
+}
+function deleteQuestion(nodeId, qid) {
+  const arr = state.nodes[nodeId].questionIds; arr.splice(arr.indexOf(qid), 1);
+  // drop from global only if no other node still references it
+  const usedElsewhere = nodeIds().some((id) => state.nodes[id].questionIds.includes(qid));
+  if (!usedElsewhere) delete state.questions[qid];
+  if (selectedQ && selectedQ.qid === qid) { selectedQ = null; renderQEditor(); }
+  renderNode(nodeId); runQuickCheck();
+}
+function openQuestion(nodeId, qid) {
+  selectedQ = { nodeId, qid };
+  nodeIds().forEach(renderNode);
+  switchTab("editor");
+  renderQEditor();
+  renderPreview();
+}
+
+/* ---------- side question editor ---------- */
+function renderQEditor() {
+  const host = $("#qeditor");
+  if (!selectedQ) { host.innerHTML = ""; return; }
+  const q = state.questions[selectedQ.qid];
+  const typeOpts = QTYPES.map((t) => `<option value="${t}" ${q.type === t ? "selected" : ""}>${t}</option>`).join("");
+  const showOpts = q.type === "quick_reply" || q.type === "multi_select";
+  const optRows = (q.options || []).map((o, i) => `
+    <div class="opt-row">
+      <input data-qe="optlabel" data-i="${i}" placeholder="ป้ายปุ่ม (label)" value="${(o.label || "").replace(/"/g, "&quot;")}"/>
+      <select data-qe="optaction" data-i="${i}">
+        ${ACTION_TYPES.map((a) => `<option value="${a}" ${(o.action_type || "message") === a ? "selected" : ""}>${a}</option>`).join("")}
+      </select>
+      <input data-qe="optvalue" data-i="${i}" placeholder="value" value="${(o.value || "").replace(/"/g, "&quot;")}" style="width:90px"/>
+      <button class="icon-btn danger" data-qe="optdel" data-i="${i}">✕</button>
+    </div>`).join("");
+
+  host.innerHTML = `
+    <div class="field"><label>ข้อความคำถาม</label>
+      <textarea data-qe="text" placeholder="พิมพ์คำถาม...">${(q.text || "").replace(/</g, "&lt;")}</textarea></div>
+    <div class="field"><label>ชนิดคำถาม (type)</label>
+      <select data-qe="type">${typeOpts}</select></div>
+    <div class="field"><label>question id</label>
+      <input data-qe="id" value="${q.id.replace(/"/g, "&quot;")}"/></div>
+    ${q.type === "multi_select" ? `<div class="field"><label>เลือกได้สูงสุด (max_selections)</label>
+      <input type="number" min="1" data-qe="max" value="${q.max_selections ?? ""}"/></div>` : ""}
+    ${showOpts ? `<div class="sec-title">ตัวเลือก (options)</div>${optRows}
+      <button class="btn" style="width:100%" data-qe="optadd">+ ตัวเลือก</button>
+      <p class="hint" style="margin-top:8px">action_type: <b>message</b> = ปุ่มข้อความ · <b>location</b> = ขอพิกัด · <b>camera</b> = เปิดกล้อง.
+      <b>value</b> คือคำตอบที่บันทึก (ใช้ผูกกับเงื่อนไข branch); เว้นว่าง = ใช้ label</p>`
+      : `<p class="hint">ชนิด <b>${q.type}</b> ไม่ต้องมี options — บอทจะแสดงปุ่ม ${q.type === "location" ? "ขอพิกัด" : "เปิดกล้อง"} ให้อัตโนมัติเมื่อใส่ option ชนิดนั้น</p>`}
+  `;
+}
+
+$("#qeditor").addEventListener("input", onQEdit);
+$("#qeditor").addEventListener("change", onQEdit);
+$("#qeditor").addEventListener("click", onQEdit);
+function onQEdit(ev) {
+  if (!selectedQ) return;
+  const el = ev.target.closest("[data-qe]"); if (!el) return;
+  const q = state.questions[selectedQ.qid], act = el.dataset.qe, i = +el.dataset.i;
+  let rerender = false, rerenderNode = true;
+  switch (act) {
+    case "text": q.text = el.value; break;
+    case "type": q.type = el.value; if (q.type !== "multi_select") q.max_selections = null; rerender = true; break;
+    case "id": { renameQuestion(q.id, el.value.trim()); return; }
+    case "max": q.max_selections = el.value ? +el.value : null; rerenderNode = false; break;
+    case "optadd": q.options.push({ label: "", action_type: "message", value: "" }); rerender = true; rerenderNode = false; break;
+    case "optdel": q.options.splice(i, 1); rerender = true; break;
+    case "optlabel": q.options[i].label = el.value; break;
+    case "optaction": q.options[i].action_type = el.value; rerenderNode = false; break;
+    case "optvalue": q.options[i].value = el.value; rerenderNode = false; break;
+  }
+  if (rerenderNode) renderNode(selectedQ.nodeId);
+  if (rerender) renderQEditor();
+  renderPreview(); runQuickCheck();
+}
+
+function renameQuestion(oldId, newId) {
+  if (!newId || newId === oldId) { renderQEditor(); return; }
+  if (state.questions[newId]) { toast("question id ซ้ำ"); renderQEditor(); return; }
+  const q = state.questions[oldId]; q.id = newId;
+  state.questions[newId] = q; delete state.questions[oldId];
+  nodeIds().forEach((id) => {
+    const node = state.nodes[id];
+    node.questionIds = node.questionIds.map((x) => (x === oldId ? newId : x));
+    node.exit.conditions.forEach((c) => { if (c.field === oldId) c.field = newId; });
+  });
+  if (selectedQ.qid === oldId) selectedQ.qid = newId;
+  nodeIds().forEach(renderNode); renderQEditor(); runQuickCheck();
+}
+
+/* ============================================================
+   Routes delete + onstart
+   ============================================================ */
+function deleteRoute(nodeId) {
+  if (!confirm(`ลบ route "${state.nodes[nodeId].routeId}"?`)) return;
+  // clear references from other routes' exits
+  nodeIds().forEach((id) => {
+    const e = state.nodes[id]?.exit; if (!e || id === nodeId) return;
+    if (e.single === nodeId) e.single = null;
+    if (e.default === nodeId) e.default = null;
+    e.conditions.forEach((c) => { if (c.goto === nodeId) c.goto = null; });
+  });
+  // drop questions that only this route used
+  state.nodes[nodeId].questionIds.forEach((qid) => {
+    const elsewhere = nodeIds().some((id) => id !== nodeId && state.nodes[id].questionIds.includes(qid));
+    if (!elsewhere) delete state.questions[qid];
+  });
+  editor.removeNodeId(`node-${nodeId}`);
+  delete state.nodes[nodeId];
+  if (state.onstartNode === nodeId) state.onstartNode = nodeIds()[0] || null;
+  if (selectedQ && selectedQ.nodeId === nodeId) { selectedQ = null; renderQEditor(); }
+  nodeIds().forEach(renderNode);
+  refreshOnstartOptions(); redrawConnections(); runQuickCheck();
+}
+
+function refreshOnstartOptions() {
+  const sel = $("#onstart");
+  sel.innerHTML = `<option value="">— เลือก route เริ่มต้น —</option>` +
+    nodeIds().map((id) => `<option value="${id}" ${state.onstartNode === id ? "selected" : ""}>${state.nodes[id].routeId}</option>`).join("");
+}
+$("#onstart").addEventListener("change", (e) => {
+  state.onstartNode = e.target.value || null;
+  nodeIds().forEach(renderNode); runQuickCheck();
+});
+$("#version").addEventListener("input", (e) => { state.version = e.target.value.trim(); runQuickCheck(); });
+
+/* ============================================================
+   Connections — auto-drawn from state; drag-to-connect for single mode
+   ============================================================ */
+function clearConnections() {
+  const data = editor.drawflow.drawflow.Home.data;
+  Object.keys(data).forEach((id) => {
+    const outs = data[id].outputs?.output_1?.connections || [];
+    outs.slice().forEach((c) => {
+      isRedrawing = true;
+      try { editor.removeSingleConnection(id, c.node, "output_1", c.output); } catch (_) {}
+      isRedrawing = false;
+    });
+  });
+}
+function targetsOf(nodeId) {
+  const e = state.nodes[nodeId].exit, t = [];
+  if (e.mode === "single" && e.single) t.push(e.single);
+  if (e.mode === "branch") { e.conditions.forEach((c) => c.goto && t.push(c.goto)); if (e.default) t.push(e.default); }
+  return [...new Set(t)];
+}
+function redrawConnections() {
+  clearConnections();
+  isRedrawing = true;
+  nodeIds().forEach((from) => targetsOf(from).forEach((to) => {
+    if (state.nodes[to]) { try { editor.addConnection(from, to, "output_1", "input_1"); } catch (_) {} }
+  }));
+  isRedrawing = false;
+}
+// User dragged a wire: treat as setting the single target (the unambiguous case).
+editor.on("connectionCreated", (info) => {
+  if (isRedrawing) return;
+  const from = String(info.output_id), to = String(info.input_id), n = state.nodes[from];
+  if (!n) return;
+  if (n.exit.mode === "branch") {
+    toast("โหมดแยกตามคำตอบ: ตั้งปลายทางที่ช่อง → ในแต่ละเงื่อนไข");
+    redrawConnections(); return;
+  }
+  if (n.exit.mode === "end") n.exit.mode = "single";
+  n.exit.single = to;
+  renderNode(from); redrawConnections(); runQuickCheck();
+});
+editor.on("connectionRemoved", (info) => {
+  if (isRedrawing) return;
+  const from = String(info.output_id), n = state.nodes[from];
+  if (n && n.exit.mode === "single") { n.exit.single = null; renderNode(from); runQuickCheck(); }
+});
+
+/* ============================================================
+   LINE preview (mirrors app/services/survey_messages.py)
+   ============================================================ */
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+  ["editor", "preview", "check"].forEach((n) => { $("#tab-" + n).hidden = n !== name; });
+  if (name === "preview") renderPreview();
+  if (name === "check") runQuickCheck();
+}
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
+
+function renderPreview() {
+  const host = $("#preview-wrap");
+  if (!selectedQ) { host.innerHTML = `<div class="phone"><div class="empty-prev">เลือกคำถามเพื่อดูตัวอย่าง</div></div>`; return; }
+  const q = state.questions[selectedQ.qid];
+  const footer = [], chips = [];
+  (q.options || []).forEach((o) => {
+    const at = o.action_type || "message";
+    if (at === "location") chips.push(`<div class="qr-chip">📍 ${esc(o.label || "พิกัด")}</div>`);
+    else if (at === "camera") chips.push(`<div class="qr-chip">📷 ${esc(o.label || "กล้อง")}</div>`);
+    else footer.push(`<div class="flex-btn secondary">${esc(o.label || "(ปุ่ม)")}</div>`);
+  });
+  if (q.type === "multi_select") footer.push(`<div class="flex-btn primary">✅ ยืนยัน (0/${q.max_selections ?? "?"})</div>`);
+  footer.push(`<div class="flex-btn link">${GO_BACK}</div>`);
+  host.innerHTML = `
+    <div class="phone">
+      <div class="chat-from">🤖 บอท</div>
+      <div class="flex-bubble">
+        <div class="body">${esc(q.text || "(ยังไม่มีข้อความ)")}</div>
+        ${footer.length ? `<div class="footer">${footer.join("")}</div>` : ""}
+      </div>
+      ${chips.length ? `<div class="qr-bar">${chips.join("")}</div>` : ""}
+    </div>`;
+}
+const esc = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/* ============================================================
+   Quick check (light; validate.py is authoritative)
+   ============================================================ */
+function runQuickCheck() {
+  const host = $("#qc"); const errs = [], warns = [];
+  if (!state.version) errs.push("ยังไม่ได้ตั้ง version");
+  if (!state.onstartNode) errs.push("ยังไม่ได้เลือก route เริ่มต้น (onstart)");
+  // duplicate route ids
+  const seen = {}; nodeIds().forEach((id) => { const r = state.nodes[id].routeId; seen[r] = (seen[r] || 0) + 1; });
+  Object.entries(seen).forEach(([r, c]) => { if (c > 1) errs.push(`route id "${r}" ซ้ำ ${c} กล่อง`); });
+  // dangling targets / unset routing
+  nodeIds().forEach((id) => {
+    const n = state.nodes[id], e = n.exit, rid = n.routeId;
+    if (e.mode === "single" && !e.single) warns.push(`route "${rid}" โหมดไป route เดียวแต่ยังไม่เลือกปลายทาง`);
+    if (e.mode === "branch") {
+      e.conditions.forEach((c, i) => {
+        if (!c.field) warns.push(`route "${rid}" เงื่อนไข #${i + 1} ยังไม่เลือกคำถาม`);
+        if (!c.value) warns.push(`route "${rid}" เงื่อนไข #${i + 1} ยังไม่ใส่ค่า`);
+      });
+    }
+    n.questionIds.forEach((qid) => { if (!state.questions[qid]?.text) warns.push(`route "${rid}" มีคำถามที่ยังไม่มีข้อความ`); });
+  });
+  // reachability
+  if (state.onstartNode) {
+    const seenN = new Set(), stack = [state.onstartNode];
+    while (stack.length) { const id = stack.pop(); if (seenN.has(id)) continue; seenN.add(id); targetsOf(id).forEach((t) => stack.push(t)); }
+    nodeIds().forEach((id) => { if (!seenN.has(id)) warns.push(`route "${state.nodes[id].routeId}" ไปไม่ถึงจาก onstart`); });
+  }
+  host.innerHTML = (!errs.length && !warns.length)
+    ? `<div class="ok">✓ ผ่านการตรวจเบื้องต้น</div>`
+    : errs.map((m) => `<div class="row err">✗ ${m}</div>`).join("") + warns.map((m) => `<div class="row warn">⚠ ${m}</div>`).join("");
+}
+
+/* ============================================================
+   Export / Import
+   ============================================================ */
+function buildSurvey() {
+  const positions = {};
+  const data = editor.export().drawflow.Home.data;
+  const routes = {}, questions = {};
+  nodeIds().forEach((id) => {
+    const n = state.nodes[id], rid = n.routeId;
+    positions[rid] = { x: Math.round(data[id]?.pos_x || 0), y: Math.round(data[id]?.pos_y || 0) };
+    n.questionIds.forEach((qid) => {
+      const q = state.questions[qid];
+      const qo = { id: q.id, type: q.type, text: q.text };
+      if (q.type === "quick_reply" || q.type === "multi_select" || (q.options && q.options.length))
+        qo.options = (q.options || []).map((o) => {
+          const oo = { label: o.label, action_type: o.action_type || "message" };
+          if (o.value) oo.value = o.value;
+          return oo;
+        });
+      if (q.type === "multi_select" && q.max_selections != null) qo.max_selections = q.max_selections;
+      questions[q.id] = qo;
+    });
+    let next = null;
+    if (n.exit.mode === "single") next = n.exit.single ? routeIdOf(n.exit.single) : null;
+    else if (n.exit.mode === "branch") {
+      next = {
+        conditions: n.exit.conditions.filter((c) => c.field).map((c) => ({
+          when: { [c.field]: c.value }, goto: c.goto ? routeIdOf(c.goto) : null,
+        })),
+        default: n.exit.default ? routeIdOf(n.exit.default) : null,
+      };
+    }
+    routes[rid] = { questions: n.questionIds.slice(), next };
+  });
+  // keep orphan questions (defined but not on any node) so round-trips don't lose data
+  Object.values(state.questions).forEach((q) => { if (!questions[q.id]) questions[q.id] = stripQ(q); });
+  return {
+    version: state.version,
+    onstart: state.onstartNode ? routeIdOf(state.onstartNode) : "",
+    questions, routes,
+    _builder: { positions },
+  };
+}
+function stripQ(q) {
+  const qo = { id: q.id, type: q.type, text: q.text };
+  if (q.options && q.options.length) qo.options = q.options.map((o) => {
+    const oo = { label: o.label, action_type: o.action_type || "message" }; if (o.value) oo.value = o.value; return oo;
+  });
+  if (q.type === "multi_select" && q.max_selections != null) qo.max_selections = q.max_selections;
+  return qo;
+}
+
+$("#btn-export").addEventListener("click", () => {
+  if (!state.version) { toast("ตั้ง version ก่อน export"); $("#version").focus(); return; }
+  const survey = buildSurvey();
+  const blob = new Blob([JSON.stringify(survey, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = `${state.version}.json`; a.click();
+  URL.revokeObjectURL(a.href);
+  toast(`ดาวน์โหลด ${state.version}.json — วางใน app/data/surveys/ แล้วรัน validate.py`);
+});
+
+$("#btn-import").addEventListener("click", () => $("#file-input").click());
+$("#file-input").addEventListener("change", (ev) => {
+  const file = ev.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { try { importSurvey(JSON.parse(reader.result)); } catch (e) { toast("อ่านไฟล์ไม่ได้: " + e.message); } };
+  reader.readAsText(file); ev.target.value = "";
+});
+
+function importSurvey(s) {
+  editor.clear();
+  state.version = s.version || ""; state.questions = {}; state.nodes = {}; state.onstartNode = null;
+  selectedQ = null;
+  $("#version").value = state.version;
+  // load all questions globally
+  Object.values(s.questions || {}).forEach((q) => {
+    state.questions[q.id] = { id: q.id, type: q.type, text: q.text || "", options: q.options || [], max_selections: q.max_selections ?? null };
+  });
+  // create a node per route (restore positions when present)
+  const pos = (s._builder && s._builder.positions) || {};
+  const routeIdToNode = {};
+  let gx = 60, gy = 60, col = 0;
+  Object.entries(s.routes || {}).forEach(([rid, route]) => {
+    const p = pos[rid] || { x: gx + col * 320, y: gy + (col % 3) * 30 };
+    col++; if (gx + col * 320 > 1400) { gx = 60; gy += 260; col = 0; }
+    const nodeId = editor.addNode("route", 1, 1, p.x, p.y, "route-node", {}, '<div class="rnode"></div>');
+    state.nodes[nodeId] = { routeId: rid, questionIds: (route.questions || []).slice(),
+      exit: { mode: "end", single: null, conditions: [], default: null } };
+    routeIdToNode[rid] = nodeId;
+  });
+  // resolve exits now that all nodes exist
+  Object.entries(s.routes || {}).forEach(([rid, route]) => {
+    const n = state.nodes[routeIdToNode[rid]], nx = route.next;
+    if (nx == null) n.exit.mode = "end";
+    else if (typeof nx === "string") { n.exit.mode = "single"; n.exit.single = routeIdToNode[nx] || null; }
+    else {
+      n.exit.mode = "branch";
+      n.exit.default = nx.default ? (routeIdToNode[nx.default] || null) : null;
+      n.exit.conditions = (nx.conditions || []).map((c) => {
+        const field = Object.keys(c.when || {})[0] || "";
+        return { field, value: field ? c.when[field] : "", goto: c.goto ? (routeIdToNode[c.goto] || null) : null };
+      });
+    }
+  });
+  state.onstartNode = routeIdToNode[s.onstart] || nodeIds()[0] || null;
+  nodeIds().forEach(renderNode);
+  refreshOnstartOptions(); redrawConnections(); runQuickCheck();
+  toast(`นำเข้า "${state.version}" — ${Object.keys(state.nodes).length} routes`);
+}
+
+/* ============================================================
+   Toolbar misc + boot
+   ============================================================ */
+$("#btn-add").addEventListener("click", () => addRoute("route", 80 + Math.random() * 120, 80 + Math.random() * 120));
+$("#btn-zoom-in").addEventListener("click", () => editor.zoom_in());
+$("#btn-zoom-out").addEventListener("click", () => editor.zoom_out());
+editor.on("nodeMoved", () => { /* positions read on export */ });
+
+// start with one empty route so the canvas isn't blank
+addRoute("start_route", 120, 120);
+state.nodes[nodeIds()[0]].routeId = "start_route";
+refreshOnstartOptions(); runQuickCheck();
+</script>
+</body>
+</html>

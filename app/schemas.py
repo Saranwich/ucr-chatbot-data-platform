@@ -28,3 +28,21 @@ class CompletedReportSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class IncompleteReportSchema(BaseModel):
+    report_id: int
+    lineuser_id: str
+    survey_version: str
+    drop_off_route_id: Optional[str] = None
+    drop_off_step: Optional[int] = None
+    drop_off_question_id: Optional[str] = None
+    drop_off_question_text: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    payload: Any
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

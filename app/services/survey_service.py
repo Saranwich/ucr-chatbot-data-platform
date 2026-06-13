@@ -30,7 +30,7 @@ def session_position_is_valid(survey, route_id: str, step: int) -> bool:
 
 async def start_survey_session(user_id: str, survey_version: str, reply_token: str, line_bot_api, db: AsyncSession):
     await repo.get_or_create_user(db, user_id)  # ensure the FK target exists
-    await repo.clear_session(db, user_id)
+    await repo.archive_and_clear_session(db, user_id, status="restarted")
 
     # Profile ไม่อยู่ใน survey แล้ว (กรอกผ่าน Userdata LIFF) — ทุกคนเริ่มที่ onstart
     survey = survey_manager.get_survey(survey_version)
@@ -67,7 +67,7 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
     #     If the saved position no longer resolves, clear it and ask for a restart
     #     instead of crashing on a missing version / route / out-of-range step.
     if not session_position_is_valid(survey, active_session.current_route_id, active_session.current_step):
-        await repo.clear_session(db, user_id)
+        await repo.archive_and_clear_session(db, user_id, status="survey_changed")
         await messages.send_text(reply_token, "เกิดข้อผิดพลาด กรุณาเริ่มทำแบบสำรวจใหม่อีกครั้ง", line_bot_api)
         return
 

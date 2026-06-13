@@ -9,7 +9,8 @@ from sqlalchemy import func, select
 from geoalchemy2.functions import ST_X, ST_Y
 from app.database import get_db
 from app.models import User, CompletedReport, IncompleteReport
-from app.schemas import DashboardStats, CompletedReportSchema
+from app.schemas import DashboardStats, CompletedReportSchema, IncompleteReportSchema
+from app.utils.survey_loader import SurveyManager, survey_manager
 from typing import List, Optional
 from datetime import datetime
 
@@ -49,6 +50,23 @@ def parse_date_filter(date: Optional[str]):
         return datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
+
+
+def resolve_drop_off_question(
+    manager: SurveyManager,
+    survey_version: str,
+    route_id: Optional[str],
+    step: Optional[int],
+):
+    """Resolve a saved route position without failing on changed survey files."""
+    if route_id is None or step is None:
+        return None, None
+    route = manager.get_route(survey_version, route_id)
+    if route is None or step < 0 or step >= len(route.questions):
+        return None, None
+    question_id = route.questions[step]
+    question = manager.get_question(survey_version, question_id)
+    return question_id, question.text if question else None
 
 @router.get("/stats", response_model=DashboardStats)
 async def get_dashboard_stats(
@@ -102,6 +120,45 @@ async def get_completed_reports(
     for row in result.mappings():
         item = dict(row)
         item["images"] = extract_images(item.get("payload"))
+        reports.append(item)
+    return reports
+
+
+@router.get("/incomplete-reports", response_model=List[IncompleteReportSchema])
+async def get_incomplete_reports(
+    date: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    query = select(
+        IncompleteReport.report_id,
+        IncompleteReport.lineuser_id,
+        IncompleteReport.survey_version,
+        IncompleteReport.drop_off_route_id,
+        IncompleteReport.drop_off_step,
+        IncompleteReport.payload,
+        IncompleteReport.status,
+        IncompleteReport.created_at,
+        ST_X(IncompleteReport.location_data).label("longitude"),
+        ST_Y(IncompleteReport.location_data).label("latitude"),
+    ).order_by(IncompleteReport.created_at.desc())
+
+    target_date = parse_date_filter(date)
+    if target_date:
+        query = query.where(func.date(IncompleteReport.created_at) == target_date)
+
+    result = await db.execute(query)
+    reports = []
+    for row in result.mappings():
+        item = dict(row)
+        question_id, question_text = resolve_drop_off_question(
+            survey_manager,
+            item["survey_version"],
+            item["drop_off_route_id"],
+            item["drop_off_step"],
+        )
+        item["drop_off_question_id"] = question_id
+        item["drop_off_question_text"] = question_text
         reports.append(item)
     return reports
 

@@ -143,7 +143,7 @@
     if (!nickname) { show("กรุณากรอกชื่อเล่น", false); return; }
     if (!age.get()) { show("กรุณาเลือกช่วงอายุ", false); return; }
     if (!gender.get()) { show("กรุณาเลือกเพศ", false); return; }
-    if (!community) { show("กรุณากรอกชุมชน/โซนที่อยู่", false); return; }
+    if (!community) { show("กรุณาเลือกชุมชน/โซนที่อยู่", false); return; }
     if (!accessToken) { show("❌ บันทึกไม่ได้ กรุณาเปิดจากในแอป LINE", false); return; }
 
     btn.disabled = true; btn.textContent = "กำลังบันทึก…";

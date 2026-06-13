@@ -356,7 +356,7 @@
           {"when": {"q_heat_location": "ในบ้าน"}, "goto": "heat_house_loc"},
           {"when": {"q_heat_location": "นอกบ้าน"}, "goto": "heat_outdoor_loc"}
         ],
-        "default": null
+        "default": "default_loc"
       }
     },
     "heat_house_loc": {
@@ -400,7 +400,7 @@
           {"when": {"q_flood_location": "บ้านหรือหน้าบ้าน"}, "goto": "flood_house_loc"},
           {"when": {"q_flood_location": "ทางเดินหรือถนน"}, "goto": "flood_road_loc"}
         ],
-        "default": null
+        "default": "default_loc"
       }
     },
     "flood_house_loc": {

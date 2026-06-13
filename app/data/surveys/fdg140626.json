@@ -5,7 +5,7 @@
     "q_start": {
       "id": "q_start",
       "type": "quick_reply",
-      "text": "ช่วงนี้เจอปัญหาอะไรที่ทำให้ใช้ชีวิตไม่ค่อยสะดวกบ้างครับ?",
+      "text": "วันนี้เจอปัญหาอะไรที่ทำให้ใช้ชีวิตไม่ค่อยสะดวกบ้างครับ?",
       "options": [
         {
           "label": "🌡️ อากาศร้อน",
@@ -46,9 +46,21 @@
           "action_type": "location"
         },
         {
-          "label": "✍️ พิมพ์ชื่อสถานที่",
+          "label": "⏭️ ข้าม",
           "action_type": "message",
-          "value": "พิมพ์เอง"
+          "value": "ข้าม"
+        }
+      ]
+    },
+    "q_location_text": {
+      "id": "q_location_text",
+      "type": "quick_reply",
+      "text": "ช่วยพิมพ์บรรยายสถานที่สั้นๆ ได้เลยครับ 📝\nเช่น 'หน้าบ้านซอย 3' หรือ 'ใกล้ตลาดเก่า'\n(ถ้าไม่สะดวก กด 'ข้าม' ได้เลย)",
+      "options": [
+        {
+          "label": "⏭️ ข้าม",
+          "action_type": "message",
+          "value": "ข้าม"
         }
       ]
     },
@@ -300,6 +312,18 @@
           "value": "ข้าม"
         }
       ]
+    },
+    "q_free_desc": {
+      "id": "q_free_desc",
+      "type": "quick_reply",
+      "text": "ขอบคุณครับ 😊 ช่วยเล่าให้ฟังสั้นๆ ได้ไหมครับ ว่าเจอปัญหาอะไรบ้าง?\n(ถ้าไม่สะดวก กด 'ข้าม' ได้เลย)",
+      "options": [
+        {
+          "label": "⏭️ ข้าม",
+          "action_type": "message",
+          "value": "ข้าม"
+        }
+      ]
     }
   },
   "routes": {
@@ -322,83 +346,112 @@
             "goto": "flood_route"
           }
         ],
-        "default": null
+        "default": "default_loc"
       }
     },
     "heat_route": {
-      "questions": [
-        "q_heat_location"
-      ],
+      "questions": ["q_heat_location"],
       "next": {
         "conditions": [
-          {
-            "when": {
-              "q_heat_location": "ในบ้าน"
-            },
-            "goto": "heat_house_route"
-          },
-          {
-            "when": {
-              "q_heat_location": "นอกบ้าน"
-            },
-            "goto": "heat_outdoor_route"
-          }
+          {"when": {"q_heat_location": "ในบ้าน"}, "goto": "heat_house_loc"},
+          {"when": {"q_heat_location": "นอกบ้าน"}, "goto": "heat_outdoor_loc"}
         ],
         "default": null
       }
     },
-    "heat_house_route": {
-      "questions": [
-        "q_location",
-        "q_heat_house_cause",
-        "q_heat_house_fix"
-      ],
+    "heat_house_loc": {
+      "questions": ["q_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_location": "ข้าม"}, "goto": "heat_house_loc_text"}
+        ],
+        "default": "heat_house_main"
+      }
+    },
+    "heat_house_loc_text": {
+      "questions": ["q_location_text"],
+      "next": "heat_house_main"
+    },
+    "heat_house_main": {
+      "questions": ["q_heat_house_cause", "q_heat_house_fix"],
       "next": "common_ending_route"
     },
-    "heat_outdoor_route": {
-      "questions": [
-        "q_location",
-        "q_heat_outdoor_cause",
-        "q_heat_outdoor_fix"
-      ],
+    "heat_outdoor_loc": {
+      "questions": ["q_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_location": "ข้าม"}, "goto": "heat_outdoor_loc_text"}
+        ],
+        "default": "heat_outdoor_main"
+      }
+    },
+    "heat_outdoor_loc_text": {
+      "questions": ["q_location_text"],
+      "next": "heat_outdoor_main"
+    },
+    "heat_outdoor_main": {
+      "questions": ["q_heat_outdoor_cause", "q_heat_outdoor_fix"],
       "next": "common_ending_route"
     },
     "flood_route": {
-      "questions": [
-        "q_flood_location"
-      ],
+      "questions": ["q_flood_location"],
       "next": {
         "conditions": [
-          {
-            "when": {
-              "q_flood_location": "บ้านหรือหน้าบ้าน"
-            },
-            "goto": "flood_house_route"
-          },
-          {
-            "when": {
-              "q_flood_location": "ทางเดินหรือถนน"
-            },
-            "goto": "flood_road_route"
-          }
+          {"when": {"q_flood_location": "บ้านหรือหน้าบ้าน"}, "goto": "flood_house_loc"},
+          {"when": {"q_flood_location": "ทางเดินหรือถนน"}, "goto": "flood_road_loc"}
         ],
         "default": null
       }
     },
-    "flood_house_route": {
-      "questions": [
-        "q_location",
-        "q_flood_house_cause",
-        "q_flood_house_fix"
-      ],
+    "flood_house_loc": {
+      "questions": ["q_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_location": "ข้าม"}, "goto": "flood_house_loc_text"}
+        ],
+        "default": "flood_house_main"
+      }
+    },
+    "flood_house_loc_text": {
+      "questions": ["q_location_text"],
+      "next": "flood_house_main"
+    },
+    "flood_house_main": {
+      "questions": ["q_flood_house_cause", "q_flood_house_fix"],
       "next": "common_ending_route"
     },
-    "flood_road_route": {
-      "questions": [
-        "q_location",
-        "q_flood_road_cause",
-        "q_flood_road_fix"
-      ],
+    "flood_road_loc": {
+      "questions": ["q_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_location": "ข้าม"}, "goto": "flood_road_loc_text"}
+        ],
+        "default": "flood_road_main"
+      }
+    },
+    "flood_road_loc_text": {
+      "questions": ["q_location_text"],
+      "next": "flood_road_main"
+    },
+    "flood_road_main": {
+      "questions": ["q_flood_road_cause", "q_flood_road_fix"],
+      "next": "common_ending_route"
+    },
+    "default_loc": {
+      "questions": ["q_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_location": "ข้าม"}, "goto": "default_loc_text"}
+        ],
+        "default": "default_desc"
+      }
+    },
+    "default_loc_text": {
+      "questions": ["q_location_text"],
+      "next": "default_desc"
+    },
+    "default_desc": {
+      "questions": ["q_free_desc"],
       "next": "common_ending_route"
     },
     "common_ending_route": {

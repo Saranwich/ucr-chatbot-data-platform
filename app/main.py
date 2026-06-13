@@ -37,6 +37,14 @@ async def lifespan(app: FastAPI):
             for col in ("nickname", "age_range", "gender", "community"):
                 await conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
 
+            # survey_sessions gained pending_multi_select (multi-select accumulator)
+            # after the table first shipped — same create_all blind spot. Without this,
+            # a DB created before that column crashes every session insert/select.
+            await conn.execute(text(
+                "ALTER TABLE survey_sessions "
+                "ADD COLUMN IF NOT EXISTS pending_multi_select JSON DEFAULT '{}'::json"
+            ))
+
             print("✅ Database tables checked/created with Bangkok timezone defaults!")
     except Exception as e:
         print(f"⚠️ Database initialization warning (likely concurrent start): {e}")

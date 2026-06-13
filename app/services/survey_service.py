@@ -34,6 +34,14 @@ async def start_survey_session(user_id: str, survey_version: str, reply_token: s
 
     # Profile ไม่อยู่ใน survey แล้ว (กรอกผ่าน Userdata LIFF) — ทุกคนเริ่มที่ onstart
     survey = survey_manager.get_survey(survey_version)
+    # The trigger may point at a version that failed to load (broken/renamed JSON
+    # is skipped silently at startup) or a typo'd key. Bail with a friendly reply
+    # instead of crashing on survey.onstart → AttributeError → 500 → webhook retry loop.
+    if survey is None:
+        await messages.send_text(
+            reply_token, "ขออภัย ระบบแบบสำรวจไม่พร้อมใช้งานชั่วคราว กรุณาลองใหม่ภายหลังครับ", line_bot_api
+        )
+        return
     start_route_id = survey.onstart
 
     await repo.create_session(db, user_id, survey_version, start_route_id)

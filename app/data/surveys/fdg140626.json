@@ -1,5 +1,5 @@
 {
-  "version": "fdg_v4_140626",
+  "version": "fdg140626",
   "onstart": "start_route",
   "questions": {
     "q_start": {

@@ -6,27 +6,28 @@
   <title>แจ้งปัญหา — UCR Smart City</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; margin: 0; background: #eef3f8; color: #1c2e3e; font-size: 17px; }
-    .wrap { max-width: 480px; margin: 0 auto; padding: 20px; }
-    h1 { font-size: 25px; }
-    label { display: block; font-weight: 600; margin: 20px 0 9px; font-size: 17px; }
-    textarea { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #ccdff0; border-radius: 8px; font-size: 18px; min-height: 110px; resize: vertical; }
+    body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; margin: 0; background: #eef3f8; color: #1c2e3e; font-size: 20px; }
+    .wrap { max-width: 480px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 30px; }
+    label { display: block; font-weight: 600; margin: 24px 0 10px; font-size: 20px; }
+    textarea { width: 100%; box-sizing: border-box; padding: 16px; border: 1px solid #ccdff0; border-radius: 8px; font-size: 20px; min-height: 120px; resize: vertical; }
 
-    .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .choice { display: flex; align-items: center; gap: 8px; padding: 14px; border: 1px solid #ccdff0; border-radius: 10px; background: #fff; font-size: 17px; cursor: pointer; }
-    .choice .emoji { font-size: 23px; }
+    .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .choice { display: flex; align-items: center; gap: 8px; padding: 16px; border: 1px solid #ccdff0; border-radius: 10px; background: #fff; font-size: 19px; cursor: pointer; }
+    .choice .emoji { font-size: 26px; }
     .choice.active { border-color: #4A90C4; background: #e8f2fb; font-weight: 600; }
 
     #map { height: 240px; border-radius: 10px; border: 1px solid #ccdff0; margin-top: 4px; }
-    .coords { margin-top: 8px; font-size: 15px; color: #555; }
+    .coords { margin-top: 8px; font-size: 18px; color: #555; }
     .coords.set { color: #1c7a45; font-weight: 600; }
 
-    input[type=file] { font-size: 16px; }
+    input[type=file] { width: 100%; box-sizing: border-box; padding: 16px; font-size: 20px; border: 2px dashed #ccdff0; border-radius: 10px; background: #f8fbff; cursor: pointer; }
+    input[type=file]::file-selector-button { padding: 14px 22px; border: 0; border-radius: 8px; background: #4A90C4; color: #fff; font-size: 19px; font-weight: 600; cursor: pointer; margin-right: 14px; }
     #preview { margin-top: 10px; max-width: 100%; border-radius: 10px; display: none; }
 
-    button.submit { width: 100%; margin-top: 24px; padding: 16px; border: 0; border-radius: 10px; background: #4A90C4; color: #fff; font-size: 19px; font-weight: 600; }
+    button.submit { width: 100%; margin-top: 28px; padding: 20px; border: 0; border-radius: 10px; background: #4A90C4; color: #fff; font-size: 22px; font-weight: 600; }
     button.submit:disabled { background: #b8d8f0; }
-    .msg { margin-top: 16px; padding: 13px; border-radius: 8px; font-size: 16px; display: none; }
+    .msg { margin-top: 16px; padding: 16px; border-radius: 8px; font-size: 19px; display: none; }
     .msg.ok { background: #e3f6ec; color: #1c7a45; display: block; }
     .msg.err { background: #fde8e8; color: #c0392b; display: block; }
   </style>

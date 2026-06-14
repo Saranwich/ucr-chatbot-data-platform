@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>แจ้งปัญหา — UCR Smart City</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.css" />
   <style>
     body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; margin: 0; background: #eef3f8; color: #1c2e3e; font-size: 20px; }
     .wrap { max-width: 480px; margin: 0 auto; padding: 24px; }
@@ -17,7 +18,14 @@
     .choice .emoji { font-size: 26px; }
     .choice.active { border-color: #4A90C4; background: #e8f2fb; font-weight: 600; }
 
-    #map { height: 240px; border-radius: 10px; border: 1px solid #ccdff0; margin-top: 4px; }
+    #map { height: 440px; border-radius: 10px; border: 1px solid #ccdff0; margin-top: 4px; }
+    /* enlarge the geocoder search box to match the form's big-touch style */
+    .leaflet-control-geocoder { font-size: 18px; box-shadow: 0 1px 6px rgba(0,0,0,.3); }
+    .leaflet-control-geocoder-form input { font-size: 18px; height: 38px; min-width: 200px; }
+    .leaflet-control-geocoder-icon { width: 38px; height: 38px; background-size: 22px 22px; }
+    .leaflet-control-geocoder-alternatives a { font-size: 16px; padding: 8px 10px; }
+    .locate-btn { width: 44px; height: 44px; font-size: 22px; line-height: 44px; text-align: center; padding: 0; border: 0; border-radius: 8px; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.3); cursor: pointer; }
+    .locate-btn:active { background: #e8f2fb; }
     .coords { margin-top: 8px; font-size: 18px; color: #555; }
     .coords.set { color: #1c7a45; font-weight: 600; }
 
@@ -42,6 +50,7 @@
       <div class="choice" data-value="ไฟส่องสว่าง"><span class="emoji">💡</span> ไฟส่องสว่าง</div>
       <div class="choice" data-value="ถนน/ทางเดิน"><span class="emoji">🛣️</span> ถนน/ทางเดิน</div>
       <div class="choice" data-value="น้ำท่วม/น้ำขัง"><span class="emoji">🌊</span> น้ำท่วม/น้ำขัง</div>
+      <div class="choice" data-value="ความร้อน/อุณหภูมิ"><span class="emoji">🌡️</span> ความร้อน</div>
       <div class="choice" data-value="ท่อ/ระบายน้ำ"><span class="emoji">🚰</span> ท่อ/ระบายน้ำ</div>
       <div class="choice" data-value="สายไฟ/เสาไฟ"><span class="emoji">⚡</span> สายไฟ/เสาไฟ</div>
       <div class="choice" data-value="เสียงรบกวน"><span class="emoji">🔊</span> เสียงรบกวน</div>
@@ -67,6 +76,7 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
   const LIFF_ID = "__LIFF_ID__";   // injected at serve time; empty = anonymous dev mode
@@ -84,14 +94,63 @@
     } catch (e) { console.warn("LIFF init failed, continuing anonymously:", e); }
   }
 
-  // --- map with a draggable pin (Leaflet + OpenStreetMap, no API key) ---
+  // --- map with a draggable pin (Leaflet + Esri satellite imagery, no API key) ---
   let lat = null, lng = null, marker = null;
   const coordsEl = document.getElementById("coords");
   const FALLBACK = [13.7563, 100.5018]; // Bangkok, until we get a real fix
   const map = L.map("map").setView(FALLBACK, 15);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+
+  // --- two base layers, toggleable: satellite (default) & road ---
+  // Esri World Imagery = Google-Earth-style satellite (keyless)
+  const esriImagery = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 19, attribution: "© Esri, Maxar, Earthstar Geographics",
+  });
+  // road/place-name labels overlaid on the imagery so it stays readable
+  const satLabels = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
+    maxZoom: 19, attribution: "© CARTO",
+  });
+  const satellite = L.layerGroup([esriImagery, satLabels]);
+  const road = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, attribution: "© OpenStreetMap",
-  }).addTo(map);
+  });
+  satellite.addTo(map); // satellite shown by default
+  L.control.layers(
+    { "🛰️ ดาวเทียม": satellite, "🗺️ ถนน": road },
+    null,
+    { collapsed: false }
+  ).addTo(map);
+
+  // --- searchable place lookup → drops the pin ---
+  // Photon gives type-ahead + better Thai matching than Nominatim; bias to Thailand.
+  L.Control.geocoder({
+    defaultMarkGeocode: false,
+    placeholder: "ค้นหาสถานที่…",
+    errorMessage: "ไม่พบสถานที่",
+    suggestMinLength: 2,
+    suggestTimeout: 250,
+    queryMinLength: 1,
+    geocoder: L.Control.Geocoder.photon({
+      geocodingQueryParams: { lang: "default", bbox: "97.3,5.6,105.7,20.5" }, // Thailand
+    }),
+  })
+    .on("markgeocode", (e) => {
+      const c = e.geocode.center;
+      map.setView(c, 17);
+      setPin(c.lat, c.lng);
+    })
+    .addTo(map);
+
+  // --- current-location button (Leaflet control, bottom-right) ---
+  const LocateControl = L.Control.extend({
+    options: { position: "bottomright" },
+    onAdd() {
+      const b = L.DomUtil.create("button", "locate-btn");
+      b.type = "button"; b.innerHTML = "📍"; b.title = "ตำแหน่งปัจจุบัน";
+      L.DomEvent.on(b, "click", L.DomEvent.stop).on(b, "click", locateMe);
+      return b;
+    },
+  });
+  map.addControl(new LocateControl());
 
   function setPin(la, ln) {
     lat = la; lng = ln;
@@ -107,12 +166,17 @@
   }
   map.on("click", (e) => setPin(e.latlng.lat, e.latlng.lng));
 
-  if (navigator.geolocation) {
+  function locateMe() {
+    if (!navigator.geolocation) { coordsEl.textContent = "อุปกรณ์ไม่รองรับการหาตำแหน่ง"; return; }
+    coordsEl.textContent = "⏳ กำลังหาตำแหน่งปัจจุบัน…";
+    coordsEl.classList.remove("set");
     navigator.geolocation.getCurrentPosition(
       (pos) => { map.setView([pos.coords.latitude, pos.coords.longitude], 17); setPin(pos.coords.latitude, pos.coords.longitude); },
-      () => { coordsEl.textContent = "แตะบนแผนที่เพื่อปักหมุด"; }
+      () => { if (lat === null) coordsEl.textContent = "แตะบนแผนที่เพื่อปักหมุด"; },
+      { enableHighAccuracy: true, timeout: 10000 }
     );
-  } else { coordsEl.textContent = "แตะบนแผนที่เพื่อปักหมุด"; }
+  }
+  locateMe(); // try to centre on the user at load
 
   // --- category buttons ---
   let category = null;

@@ -77,6 +77,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
+  <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
   const LIFF_ID = "__LIFF_ID__";   // injected at serve time; empty = anonymous dev mode
@@ -98,7 +99,12 @@
   let lat = null, lng = null, marker = null;
   const coordsEl = document.getElementById("coords");
   const FALLBACK = [13.7563, 100.5018]; // Bangkok, until we get a real fix
-  const map = L.map("map").setView(FALLBACK, 15);
+  const map = L.map("map", {
+    rotate: true,                                  // enable rotation
+    touchRotate: true,                             // two-finger rotate on mobile
+    rotateControl: { closeOnZeroBearing: false },  // compass button to reset north
+    bearing: 0,
+  }).setView(FALLBACK, 15);
 
   // --- two base layers, toggleable: satellite (default) & road ---
   // Esri World Imagery = Google-Earth-style satellite (keyless)

@@ -3,7 +3,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.models import User, SurveySession, CompletedReport
+from app.models import User, SurveySession, CompletedReport, IncompleteReport
 
 
 async def get_or_create_user(db: AsyncSession, user_id: str) -> User:
@@ -23,6 +23,35 @@ async def clear_session(db: AsyncSession, user_id: str):
     if existing:
         await db.delete(existing)
         await db.flush()
+
+
+def build_incomplete_report(session: SurveySession, status: str) -> IncompleteReport:
+    """Copy the current survey position into an auditable drop-off record."""
+    payload = dict(session.payload or {})
+    return IncompleteReport(
+        lineuser_id=session.lineuser_id,
+        survey_version=session.survey_version,
+        drop_off_route_id=session.current_route_id,
+        drop_off_step=session.current_step,
+        payload=payload,
+        location_data=build_location_point(payload),
+        status=status,
+    )
+
+
+async def archive_and_clear_session(
+    db: AsyncSession, user_id: str, status: str = "restarted"
+) -> bool:
+    """Archive an active survey before replacing it with a fresh session."""
+    result = await db.execute(select(SurveySession).where(SurveySession.lineuser_id == user_id))
+    existing = result.scalars().first()
+    if not existing:
+        return False
+
+    db.add(build_incomplete_report(existing, status))
+    await db.delete(existing)
+    await db.flush()
+    return True
 
 
 async def create_session(db: AsyncSession, user_id: str, survey_version: str, start_route_id: str) -> SurveySession:

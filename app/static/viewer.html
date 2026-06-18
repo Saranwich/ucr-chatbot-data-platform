@@ -43,10 +43,23 @@
 const $ = s => document.querySelector(s);
 $('#token').value = localStorage.getItem('token') || '';
 
+const authHeaders = () => ({ Authorization: 'Bearer ' + $('#token').value.trim() });
+
 async function api(path) {
-  const r = await fetch(path, { headers: { Authorization: 'Bearer ' + $('#token').value.trim() } });
+  const r = await fetch(path, { headers: authHeaders() });
   if (!r.ok) throw new Error(path + ' → ' + r.status);
   return r.json();
+}
+
+// <img> can't send the JWT header, so fetch each image as an authed blob and swap in an object URL.
+async function hydrateImages() {
+  for (const img of document.querySelectorAll('img[data-src]')) {
+    try {
+      const r = await fetch(img.dataset.src, { headers: authHeaders() });
+      if (r.ok) img.src = URL.createObjectURL(await r.blob());
+      else img.replaceWith(Object.assign(document.createElement('span'), { textContent: `🖼️✗ ${r.status}` }));
+    } catch { /* leave broken img */ }
+  }
 }
 
 function renderVal(v) {
@@ -61,7 +74,7 @@ function card(r) {
   const rows = Object.entries(r.payload || {})
     .map(([k, v]) => `<tr><td class="k">${k}</td><td>${renderVal(v)}</td></tr>`).join('');
   const imgs = (r.images || [])
-    .map(i => `<img class="thumb" src="${i.image_url}?_t=${Date.now()}" loading="lazy">`).join('');
+    .map(i => `<img class="thumb" data-src="${i.image_url}">`).join('');
   const loc = (r.latitude != null && r.longitude != null)
     ? `<a href="https://maps.google.com/?q=${r.latitude},${r.longitude}" target="_blank">📍 ${r.latitude.toFixed(5)}, ${r.longitude.toFixed(5)}</a>` : '';
   return `<div class="card">
@@ -75,7 +88,7 @@ function formCard(r) {
   const loc = (r.latitude != null && r.longitude != null)
     ? `<a href="https://maps.google.com/?q=${r.latitude},${r.longitude}" target="_blank">📍 ${r.latitude.toFixed(5)}, ${r.longitude.toFixed(5)}</a>` : '';
   const img = r.image_url
-    ? `<img class="thumb" src="${r.image_url}?_t=${Date.now()}" loading="lazy">` : '';
+    ? `<img class="thumb" data-src="${r.image_url}">` : '';
   return `<div class="card">
     <h3>#${r.report_id} · ${r.category || 'uncategorized'} · ${r.status}</h3>
     <div class="meta">${r.created_at} · ${r.lineuser_id || 'anonymous'} ${loc ? '· ' + loc : ''}</div>
@@ -99,6 +112,7 @@ async function load() {
     const forms = await api('/api/dashboard/form-reports' + (d ? '?date=' + d : ''));
     $('#forms').innerHTML = forms.length
       ? forms.map(formCard).join('') : '<p>No form reports.</p>';
+    hydrateImages();
   } catch (e) {
     $('#err').textContent = e.message;
   }

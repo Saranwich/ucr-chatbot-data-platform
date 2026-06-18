@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 from geoalchemy2.functions import ST_X, ST_Y
 from app.database import get_db
-from app.models import User, CompletedReport, IncompleteReport
+from app.models import User, CompletedReport, IncompleteReport, FormReport
 from app.schemas import DashboardStats, CompletedReportSchema, IncompleteReportSchema
 from app.utils.survey_loader import SurveyManager, survey_manager
 from typing import List, Optional
@@ -159,6 +159,39 @@ async def get_incomplete_reports(
         )
         item["drop_off_question_id"] = question_id
         item["drop_off_question_text"] = question_text
+        reports.append(item)
+    return reports
+
+@router.get("/form-reports")
+async def get_form_reports(
+    date: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    # แจ้งปัญหาจาก LIFF form — รูปเสิร์ฟผ่าน /api/form-reports/{id}/image (ไม่ใช่ payload)
+    query = select(
+        FormReport.report_id,
+        FormReport.lineuser_id,
+        FormReport.category,
+        FormReport.description,
+        FormReport.status,
+        FormReport.image_path,
+        FormReport.created_at,
+        ST_X(FormReport.location_data).label("longitude"),
+        ST_Y(FormReport.location_data).label("latitude"),
+    ).order_by(FormReport.created_at.desc())
+
+    target_date = parse_date_filter(date)
+    if target_date:
+        query = query.where(func.date(FormReport.created_at) == target_date)
+
+    result = await db.execute(query)
+    reports = []
+    for row in result.mappings():
+        item = dict(row)
+        item["image_url"] = (
+            f"/api/form-reports/{item['report_id']}/image" if item["image_path"] else None
+        )
         reports.append(item)
     return reports
 

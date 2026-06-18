@@ -34,7 +34,10 @@
   <span id="err"></span>
 </header>
 <div class="stats" id="stats"></div>
+<h2>Survey reports</h2>
 <div id="reports"></div>
+<h2>แจ้งปัญหา (form reports)</h2>
+<div id="forms"></div>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -68,6 +71,18 @@ function card(r) {
   </div>`;
 }
 
+function formCard(r) {
+  const loc = (r.latitude != null && r.longitude != null)
+    ? `<a href="https://maps.google.com/?q=${r.latitude},${r.longitude}" target="_blank">📍 ${r.latitude.toFixed(5)}, ${r.longitude.toFixed(5)}</a>` : '';
+  const img = r.image_url
+    ? `<img class="thumb" src="${r.image_url}?_t=${Date.now()}" loading="lazy">` : '';
+  return `<div class="card">
+    <h3>#${r.report_id} · ${r.category || 'uncategorized'} · ${r.status}</h3>
+    <div class="meta">${r.created_at} · ${r.lineuser_id || 'anonymous'} ${loc ? '· ' + loc : ''}</div>
+    <div>${r.description || ''}</div>${img}
+  </div>`;
+}
+
 async function load() {
   $('#err').textContent = '';
   localStorage.setItem('token', $('#token').value.trim());
@@ -81,6 +96,9 @@ async function load() {
     const reports = await api('/api/dashboard/reports' + (d ? '?date=' + d : ''));
     $('#reports').innerHTML = reports.length
       ? reports.map(card).join('') : '<p>No reports.</p>';
+    const forms = await api('/api/dashboard/form-reports' + (d ? '?date=' + d : ''));
+    $('#forms').innerHTML = forms.length
+      ? forms.map(formCard).join('') : '<p>No form reports.</p>';
   } catch (e) {
     $('#err').textContent = e.message;
   }

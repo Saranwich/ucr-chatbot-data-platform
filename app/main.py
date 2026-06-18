@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import traceback
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,6 +84,11 @@ app.add_middleware(
 app.include_router(dashboard_router)
 app.include_router(report_router)
 app.include_router(userdata_router)
+
+@app.get("/viewer")
+async def viewer():
+    # ponytail: dev-only data viewer page; API stays JWT-protected
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "viewer.html"))
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

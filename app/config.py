@@ -49,6 +49,9 @@ WELCOME_TEXT = (
 )
 WELCOME_BACK_TEXT = "ยินดีต้อนรับกลับครับ 👋 เริ่มทำแบบสำรวจหรือแจ้งปัญหาได้จากเมนูด้านล่างเลยครับ"
 SUMMARY_PLACEHOLDER_TEXT = "📊 ระบบสรุปผลกำลังอยู่ระหว่างการพัฒนา จะพร้อมให้ใช้งานเร็วๆ นี้ครับ"
+# Emergency reply when a webhook event blows up — so the user is never left
+# staring at silence; tells them to try the same action again.
+SYSTEM_ERROR_TEXT = "ขออภัยครับ ระบบขัดข้องชั่วคราว 🙏 รบกวนลองส่งหรือกดเลือกอีกครั้งนะครับ"
 
 MANUAL_TEXT = (
     "📖 คู่มือการใช้งาน\n\n"

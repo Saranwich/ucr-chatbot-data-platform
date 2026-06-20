@@ -152,22 +152,18 @@ async def process_survey_answer(user_id: str, answer_data, reply_token: str, lin
         survey=survey,
     )
 
-    # 8. Act on the routing decision
-    if result["action"] == "next_question":
+    # 8. Act on the routing decision.
+    #    Send the next question FIRST, then commit the step advance. If the reply
+    #    fails (poor connection / expired reply_token) send_question raises and we
+    #    never commit — the session stays on the current question, so a re-tap
+    #    re-answers the SAME question instead of being eaten as the next one.
+    if result["action"] in ("next_question", "next_route"):
+        next_question = survey_manager.get_question(survey_version, result["next_question_id"])
+        await messages.send_question(reply_token, next_question, line_bot_api, show_go_back=True)
         active_session.current_route_id = result["current_route_id"]
         active_session.current_step = result["current_step"]
         active_session.route_history = list(result["route_history"])
         await repo.save_session(db)
-        next_question = survey_manager.get_question(survey_version, result["next_question_id"])
-        await messages.send_question(reply_token, next_question, line_bot_api, show_go_back=True)
-
-    elif result["action"] == "next_route":
-        active_session.current_route_id = result["current_route_id"]
-        active_session.current_step = result["current_step"]
-        active_session.route_history = list(result["route_history"])
-        await repo.save_session(db)
-        next_question = survey_manager.get_question(survey_version, result["next_question_id"])
-        await messages.send_question(reply_token, next_question, line_bot_api, show_go_back=True)
 
     elif result["action"] == "complete":
         await repo.finalize_report(db, active_session)

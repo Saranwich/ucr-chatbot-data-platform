@@ -18,7 +18,7 @@ IMAGES_DIR = BASE_DIR / "app" / "data" / "images"
 
 #add question file path here
 SURVEY_TRIGGER_MAP = {
-    "เริ่มทำแบบสำรวจ": "fdg140626",
+    "เริ่มทำแบบสำรวจ": "fdg210626",
     # คำเทสต์ — ครอบ __...__ ให้ชาวบ้านพิมพ์โดนโดยบังเอิญไม่ได้ แต่เรายังเรียกเทสต์ได้
     "__devtest__": "devtest",
     "__d2__": "community_report_v1",

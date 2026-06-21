@@ -157,4 +157,12 @@ cython_debug/
 # VS Code
 .vscode/
 
+#macos
+.DS_Store
+
 GEMINI.md
+
+# Report-form uploaded images (POC local store; ADR 0005 moves these to S3)
+uploads/
+# private keys never belong in the repo
+*.pem

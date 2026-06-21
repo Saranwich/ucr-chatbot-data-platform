@@ -1,0 +1,205 @@
+{
+  "version": "socratic_community_report_v3",
+  "onstart": "start_route",
+  "questions": {
+    "q_socratic_implication": {
+      "id": "q_socratic_implication",
+      "type": "quick_reply",
+      "text": "สวัสดีครับ 🏡 ช่วงนี้สภาพแวดล้อมในพื้นที่ มีเรื่องไหนที่สร้างความลำบากหรือกระทบการใช้ชีวิตของคุณมากที่สุดครับ?",
+      "options": [
+        {
+          "label": "🌡️ ร้อน/แดดจัด",
+          "action_type": "message",
+          "value": "อากาศร้อนจัด"
+        },
+        {
+          "label": "🌊 น้ำท่วม/น้ำขัง",
+          "action_type": "message",
+          "value": "น้ำท่วม/น้ำขัง"
+        }
+      ]
+    },
+    "q_socratic_root_heat": {
+      "id": "q_socratic_root_heat",
+      "type": "quick_reply",
+      "text": "พอจะสังเกตไหมครับว่าที่ร้อนจนอยู่ลำบาก สาเหตุหลักๆ ในจุดนั้นมาจากอะไร?",
+      "options": [
+        {
+          "label": "บ้านทึบ/ไม่ถ่ายเท",
+          "action_type": "message",
+          "value": "บ้านทึบ"
+        },
+        {
+          "label": "หลังคาร้อน/ไม่มีฉนวน",
+          "action_type": "message",
+          "value": "หลังคาร้อน"
+        },
+        {
+          "label": "ไม่มีร่มเงาต้นไม้เลย",
+          "action_type": "message",
+          "value": "ไม่มีร่มเงา"
+        },
+        {
+          "label": "อื่น ๆ / ไม่แน่ใจ",
+          "action_type": "message",
+          "value": "ไม่แน่ใจ"
+        }
+      ]
+    },
+    "q_socratic_root_flood": {
+      "id": "q_socratic_root_flood",
+      "type": "quick_reply",
+      "text": "สำหรับเรื่องน้ำท่วม/ขัง อะไรคือสาเหตุ หรือสิ่งที่คุณกังวลที่สุดในจุดนั้นครับ?",
+      "options": [
+        {
+          "label": "น้ำเน่า/เชื้อโรค",
+          "action_type": "message",
+          "value": "น้ำเน่าเหม็น"
+        },
+        {
+          "label": "ท่อตัน/ขยะอุดตัน",
+          "action_type": "message",
+          "value": "ท่อตัน"
+        },
+        {
+          "label": "สัตว์มีพิษ/ไฟรั่ว",
+          "action_type": "message",
+          "value": "สัตว์มีพิษ"
+        },
+        {
+          "label": "อื่น ๆ / ไม่แน่ใจ",
+          "action_type": "message",
+          "value": "ไม่แน่ใจ"
+        }
+      ]
+    },
+    "q_socratic_evidence": {
+      "id": "q_socratic_evidence",
+      "type": "multi_select",
+      "max_selections": 2,
+      "text": "เข้าใจเลยครับ แล้วจากปัญหาที่เจอ มันทำให้ส่วนไหนของการใช้ชีวิตสะดุด หรือน่าเป็นห่วงที่สุดครับ? (เลือกได้ไม่เกิน 2 ข้อ)",
+      "options": [
+        {
+          "label": "กระทบสุขภาพ",
+          "action_type": "message",
+          "value": "กระทบสุขภาพ"
+        },
+        {
+          "label": "ห่วงคนแก่/เด็ก",
+          "action_type": "message",
+          "value": "ห่วงกลุ่มเปราะบาง"
+        },
+        {
+          "label": "ทำมาหากินลำบาก",
+          "action_type": "message",
+          "value": "กระทบรายได้"
+        },
+        {
+          "label": "เสี่ยงอุบัติเหตุ",
+          "action_type": "message",
+          "value": "อุบัติเหตุ"
+        }
+      ]
+    },
+    "q_socratic_alternative": {
+      "id": "q_socratic_alternative",
+      "type": "multi_select",
+      "max_selections": 2,
+      "text": "ถ้าเราสามารถร่วมกันปรับพื้นที่ตรงนี้ได้ คุณมองว่า 'จุดเริ่มต้น' แบบไหนที่จะช่วยแก้ปัญหาให้คนส่วนใหญ่ได้จริงครับ? (เลือกได้ไม่เกิน 2 ข้อ)",
+      "options": [
+        {
+          "label": "ร่มเงา/หลังคา/พัดลม",
+          "action_type": "message",
+          "value": "ร่มเงาและระบายอากาศ"
+        },
+        {
+          "label": "ลอกท่อ/จัดการขยะ",
+          "action_type": "message",
+          "value": "จัดการขยะและท่อระบาย"
+        },
+        {
+          "label": "เพิ่มไฟ/จุดนั่งพัก",
+          "action_type": "message",
+          "value": "ไฟสว่างและจุดพัก"
+        }
+      ]
+    },
+    "q_location": {
+      "id": "q_location",
+      "type": "location",
+      "text": "เพื่อให้ทีมงานเห็นภาพและวิเคราะห์พื้นที่ได้แม่นยำขึ้น รบกวนแชร์พิกัดที่เกิดปัญหาหน่อยนะครับ 📍",
+      "options": [
+        {
+          "label": "📍 ส่งพิกัดตำแหน่ง",
+          "action_type": "location"
+        },
+        {
+          "label": "✍️ พิมพ์ชื่อจุด",
+          "action_type": "message",
+          "value": "พิมพ์เอง"
+        }
+      ]
+    },
+    "q_photo": {
+      "id": "q_photo",
+      "type": "image",
+      "text": "ขอบคุณมากครับ! คำถามสุดท้ายแล้ว... มีภาพถ่ายสถานที่จริงเพื่อเป็น 'หลักฐาน' สนับสนุนสิ่งที่เราคุยกันไหมครับ? 📸 (ถ้าไม่สะดวก กด 'ข้ามได้')",
+      "options": [
+        {
+          "label": "📸 ถ่ายรูปส่ง",
+          "action_type": "camera"
+        },
+        {
+          "label": "ข้ามได้",
+          "action_type": "message",
+          "value": "ข้าม"
+        }
+      ]
+    }
+  },
+  "routes": {
+    "start_route": {
+      "questions": [
+        "q_socratic_implication"
+      ],
+      "next": {
+        "conditions": [
+          {
+            "when": {
+              "q_socratic_implication": "อากาศร้อนจัด"
+            },
+            "goto": "heat_root_route"
+          },
+          {
+            "when": {
+              "q_socratic_implication": "น้ำท่วม/น้ำขัง"
+            },
+            "goto": "flood_root_route"
+          }
+        ],
+        "default": null
+      }
+    },
+    "heat_root_route": {
+      "questions": [
+        "q_socratic_root_heat"
+      ],
+      "next": "common_ending_route"
+    },
+    "flood_root_route": {
+      "questions": [
+        "q_socratic_root_flood"
+      ],
+      "next": "common_ending_route"
+    },
+    "common_ending_route": {
+      "questions": [
+        "q_socratic_evidence",
+        "q_socratic_alternative",
+        "q_location",
+        "q_photo"
+      ],
+      "next": null
+    }
+  }
+}

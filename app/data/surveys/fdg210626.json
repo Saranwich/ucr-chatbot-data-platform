@@ -1,0 +1,557 @@
+{
+  "version": "fdg210626",
+  "onstart": "start_route",
+  "questions": {
+    "q_start": {
+      "id": "q_start",
+      "type": "quick_reply",
+      "text": "วันนี้เจอปัญหาอะไรในชุมชนที่อยากแจ้งบ้างครับ?",
+      "options": [
+        {
+          "label": "🌡️ อากาศร้อน",
+          "action_type": "message",
+          "value": "อากาศร้อน"
+        },
+        {
+          "label": "🌊 น้ำท่วม / น้ำขัง",
+          "action_type": "message",
+          "value": "น้ำท่วม/น้ำขัง"
+        }
+      ]
+    },
+    "q_heat_location": {
+      "id": "q_heat_location",
+      "type": "quick_reply",
+      "text": "เจอปัญหานี้ที่ไหนครับ?",
+      "options": [
+        {
+          "label": "🏠 ในบ้าน",
+          "action_type": "message",
+          "value": "ในบ้าน"
+        },
+        {
+          "label": "🌳 นอกบ้านหรือพื้นที่สาธารณะ",
+          "action_type": "message",
+          "value": "นอกบ้าน"
+        }
+      ]
+    },
+    "q_location": {
+      "id": "q_location",
+      "type": "location",
+      "text": "ช่วยแชร์ตำแหน่งที่เกิดปัญหาให้หน่อยได้มั้ยครับ? ☺️",
+      "options": [
+        {
+          "label": "📍 ส่งพิกัด",
+          "action_type": "location"
+        },
+        {
+          "label": "⏭️ ข้าม",
+          "action_type": "message",
+          "value": "ข้าม"
+        }
+      ]
+    },
+    "q_location_text": {
+      "id": "q_location_text",
+      "type": "quick_reply",
+      "text": "งั้นช่วยพิมพ์บรรยายสถานที่สั้น ๆ ให้หน่อยได้ไหมครับ? 📝\nเช่น 'หน้าบ้านซอย 3' หรือ 'ใกล้ตลาดเก่า'\n(ถ้าไม่สะดวก กด 'ข้าม' ได้เลย)",
+      "options": [
+        {
+          "label": "⏭️ ข้าม",
+          "action_type": "message",
+          "value": "ข้าม"
+        }
+      ]
+    },
+    "q_heat_house_cause": {
+      "id": "q_heat_house_cause",
+      "type": "quick_reply",
+      "text": "คุณคิดว่าอะไรที่ทำให้ในบ้านร้อนที่สุดครับ?",
+      "options": [
+        {
+          "label": "☀️ แดดส่องเข้าบ้าน",
+          "action_type": "message",
+          "value": "แดดส่องเข้าบ้าน"
+        },
+        {
+          "label": "💨 อากาศไม่ค่อยถ่ายเท",
+          "action_type": "message",
+          "value": "อากาศไม่ถ่ายเท"
+        },
+        {
+          "label": "🏠 หลังคาร้อนจากแดด",
+          "action_type": "message",
+          "value": "หลังคารับแดด"
+        },
+        {
+          "label": "🌳 ไม่มีต้นไม้หรือร่มเงารอบบ้าน",
+          "action_type": "message",
+          "value": "ไม่มีต้นไม้หรือร่มเงารอบบ้าน"
+        }
+      ]
+    },
+    "q_heat_house_effect": {
+      "id": "q_heat_house_effect",
+      "type": "quick_reply",
+      "text": "อากาศร้อนในบ้านทำให้คุณเดือดร้อนเรื่องไหนที่สุดครับ?",
+      "options": [
+        {
+          "label": "🌡️ เหนื่อยเพลีย อยู่บ้านไม่สบาย",
+          "action_type": "message",
+          "value": "อึดอัดเหนื่อยเพลีย"
+        },
+                {
+          "label": "👴 เป็นห่วงผู้สูงอายุ/เด็กในบ้าน",
+          "action_type": "message",
+          "value": "เป็นห่วงผู้สูงอายุ/เด็กในบ้าน"
+        },
+        {
+          "label": "💸 ค่าไฟแพง เปิดแอร์/พัดลมบ่อย",
+          "action_type": "message",
+          "value": "ค่าไฟแพง"
+        }
+      ]
+    },
+    "q_heat_house_fix": {
+      "id": "q_heat_house_fix",
+      "type": "quick_reply",
+      "text": "ในความเห็นของคุณ คิดว่าอะไรจะช่วยแก้ปัญหานี้ได้มากที่สุดครับ",
+      "options": [
+        {
+          "label": "🌤️ เพิ่มหลังคาหรือกันสาด",
+          "action_type": "message",
+          "value": "ทำหลังคา/กันสาด"
+        },
+        {
+          "label": "💨 ปรับปรุงให้อากาศถ่ายเทดีขึ้น",
+          "action_type": "message",
+          "value": "อากาศถ่ายเท"
+        },
+        {
+          "label": "🌳 เพิ่มต้นไม้รอบบ้าน",
+          "action_type": "message",
+          "value": "เพิ่มต้นไม้รอบบ้าน"
+        },
+        {
+          "label": "🪟 ติดม่านหรือฟิล์มกันแดด",
+          "action_type": "message",
+          "value": "ติดม่านหรือฟิล์มกันแดด"
+        }
+      ]
+    },
+    "q_heat_outdoor_cause": {
+      "id": "q_heat_outdoor_cause",
+      "type": "quick_reply",
+      "text": "คุณคิดว่าอะไรทำให้ตรงนี้ร้อนที่สุดบ้างครับ?",
+      "options": [
+        {
+          "label": "🌞 แดดแรง",
+          "action_type": "message",
+          "value": "แดดแรง"
+        },
+        {
+          "label": "🌳 ไม่มีต้นไม้/ร่มเงา",
+          "action_type": "message",
+          "value": "ไม่มีต้นไม้/ร่มเงา"
+        },
+        {
+          "label": "🌡️ พื้นถนน/พื้นปูนสะสมความร้อน",
+          "action_type": "message",
+          "value": "พื้นถนน/พื้นปูนสะสมความร้อน"
+        },
+        {
+          "label": "🍃 อากาศไม่ค่อยถ่ายเท",
+          "action_type": "message",
+          "value": "อากาศไม่ค่อยถ่ายเท"
+        }
+      ]
+    },
+    "q_heat_outdoor_effect": {
+      "id": "q_heat_outdoor_effect",
+      "type": "quick_reply",
+      "text": "อากาศร้อนแบบนี้ทำให้คุณเดือดร้อนยังไงบ้างครับ?",
+      "options": [
+        {
+          "label": "😮‍💨 เหนื่อย/เพลียเวลาออกนอกบ้าน",
+          "action_type": "message",
+          "value": "เหนื่อยเพลียเวลาออกนอกบ้าน"
+        },
+        {
+          "label": "🌳 หาที่ร่มนั่งพักไม่ได้",
+          "action_type": "message",
+          "value": "หาที่ร่มนั่งพักไม่ได้"
+        },
+        {
+          "label": "🚶 ออกไปทำธุระลำบาก",
+          "action_type": "message",
+          "value": "ออกไปทำธุระลำบาก"
+        }
+      ]
+    },
+    "q_heat_outdoor_fix": {
+      "id": "q_heat_outdoor_fix",
+      "type": "quick_reply",
+      "text": "ในความเห็นของคุณ คิดว่าอะไรจะช่วยแก้ปัญหานี้ได้มากที่สุดครับ",
+      "options": [
+        {
+          "label": "🌳 เพิ่มต้นไม้/พื้นที่สีเขียว",
+          "action_type": "message",
+          "value": "เพิ่มต้นไม้/พื้นที่สีเขียว"
+        },
+        {
+          "label": "☂️ เพิ่มหลังคากันแดดตามทางเดิน",
+          "action_type": "message",
+          "value": "เพิ่มหลังคากันแดด"
+        },
+        {
+          "label": "🪑 เพิ่มที่นั่งพัก",
+          "action_type": "message",
+          "value": "เพิ่มที่นั่งพัก"
+        }
+      ]
+    },
+    "q_flood_location": {
+      "id": "q_flood_location",
+      "type": "quick_reply",
+      "text": "เจอปัญหานี้ที่ไหนครับ?",
+      "options": [
+        {
+          "label": "🏠 บ้านหรือหน้าบ้าน",
+          "action_type": "message",
+          "value": "บ้านหรือหน้าบ้าน"
+        },
+        {
+          "label": "🚶 ทางเดินหรือถนน",
+          "action_type": "message",
+          "value": "ทางเดินหรือถนน"
+        }
+      ]
+    },
+    "q_flood_house_cause": {
+      "id": "q_flood_house_cause",
+      "type": "quick_reply",
+      "text": "คุณคิดว่าอะไรที่ทำให้น้ำท่วม/ขังบริเวณบ้านครับ?",
+      "options": [
+        {
+          "label": "🚰 ท่อระบายน้ำอุดตัน",
+          "action_type": "message",
+          "value": "ท่อระบายน้ำอุดตัน"
+        },
+        {
+          "label": "🗑️ มีขยะกีดขวางทางน้ำ",
+          "action_type": "message",
+          "value": "ขยะกีดขวางทางน้ำ"
+        },
+        {
+          "label": "🚫 ไม่มีทางระบายน้ำในซอย",
+          "action_type": "message",
+          "value": "ไม่มีทางระบายน้ำในซอย"
+        },
+        {
+          "label": "🌧️ ฝนตกหนักมาก น้ำระบายไม่ทัน",
+          "action_type": "message",
+          "value": "ฝนตกน้ำระบายไม่ทัน"
+        }
+      ]
+    },
+    "q_flood_house_effect": {
+      "id": "q_flood_house_effect",
+      "type": "quick_reply",
+      "text": "น้ำท่วม/ขังทำให้ในบ้านคุณเดือดร้อนยังไงบ้างครับ?",
+      "options": [
+        {
+          "label": "🌊 น้ำขังหน้าบ้าน/ในซอยนาน",
+          "action_type": "message",
+          "value": "น้ำขังนาน"
+        },
+        {
+          "label": "🚪 น้ำเข้าบ้าน",
+          "action_type": "message",
+          "value": "น้ำเข้าบ้าน"
+        },
+        {
+          "label": "🦟 มียุงเยอะขึ้น",
+          "action_type": "message",
+          "value": "ยุงเยอะ"
+        },
+        {
+          "label": "🚮 มีกลิ่นเหม็นจากน้ำขัง",
+          "action_type": "message",
+          "value": "กลิ่นเหม็นจากน้ำขัง"
+        }
+      ]
+    },
+    "q_flood_house_fix": {
+      "id": "q_flood_house_fix",
+      "type": "quick_reply",
+      "text": "ในความเห็นของคุณ คิดว่าอะไรจะช่วยแก้ปัญหานี้ได้ครับ?",
+      "options": [
+        {
+          "label": "🚰 ปรับปรุงท่อระบายน้ำ",
+          "action_type": "message",
+          "value": "ปรับปรุงท่อระบายน้ำ"
+        },
+        {
+          "label": "🧹 จัดการขยะที่กีดขวางทางน้ำ",
+          "action_type": "message",
+          "value": "จัดการขยะที่กีดขวางทางน้ำ"
+        },
+        {
+          "label": "🌧️ เพิ่มทางระบายน้ำ",
+          "action_type": "message",
+          "value": "เพิ่มทางระบายน้ำ"
+        },
+        {
+          "label": "🛠️ แก้จุดที่น้ำขังเป็นประจำ",
+          "action_type": "message",
+          "value": "แก้จุดน้ำขัง"
+        }
+      ]
+    },
+    "q_flood_road_effect": {
+      "id": "q_flood_road_effect",
+      "type": "quick_reply",
+      "text": "น้ำท่วม/ขังทำให้คุณเดือดร้อนยังไงบ้างครับ?",
+      "options": [
+        {
+          "label": "🌊 น้ำขังจนเดินลำบาก",
+          "action_type": "message",
+          "value": "น้ำขังเดินลำบาก"
+        },
+        {
+          "label": "⚠️ พื้นลื่น เสี่ยงลื่นล้ม",
+          "action_type": "message",
+          "value": "พื้นลื่น"
+        },
+        {
+          "label": "🚗 รถสัญจรลำบาก",
+          "action_type": "message",
+          "value": "รถสัญจรลำบาก"
+        },
+        {
+          "label": "🕳️ เข้า-ออกพื้นที่ลำบาก",
+          "action_type": "message",
+          "value": "เข้า-ออกพื้นที่ลำบาก"
+        }
+      ]
+    },
+    "q_flood_road_cause": {
+      "id": "q_flood_road_cause",
+      "type": "quick_reply",
+      "text": "คุณคิดว่าอะไรที่ทำให้น้ำขังบนถนน/ทางเดินครับ?",
+      "options": [
+        {
+          "label": "🚰 ท่อระบายน้ำอุดตัน",
+          "action_type": "message",
+          "value": "ท่อระบายน้ำอุดตัน"
+        },
+        {
+          "label": "🗑️ มีขยะกีดขวางทางน้ำ",
+          "action_type": "message",
+          "value": "ขยะกีดขวางทางน้ำ"
+        },
+        {
+          "label": "🏘️ ซอยแคบ น้ำไหลออกไม่ได้",
+          "action_type": "message",
+          "value": "ซอยแคบน้ำไหลออกไม่ได้"
+        },
+        {
+          "label": "🌧️ฝนตกหนักมาก น้ำระบายไม่ทัน",
+          "action_type": "message",
+          "value": "ฝนตกน้ำระบายไม่ทัน"
+        }
+      ]
+    },
+    "q_flood_road_fix": {
+      "id": "q_flood_road_fix",
+      "type": "quick_reply",
+      "text": "ในความเห็นของคุณ คิดว่าอะไรจะช่วยแก้ปัญหานี้ได้ครับ?",
+      "options": [
+        {
+          "label": "🌧️ ปรับปรุงการระบายน้ำ",
+          "action_type": "message",
+          "value": "ปรับปรุงระบายน้ำ"
+        },
+        {
+          "label": "🛠️ แก้จุดน้ำขังเป็นประจำ",
+          "action_type": "message",
+          "value": "แก้จุดน้ำขัง"
+        },
+        {
+          "label": "🚰 จัดการขยะขวางทางระบายน้ำ",
+          "action_type": "message",
+          "value": "จัดการขยะที่กีดขวางทางระบายน้ำ"
+        },
+        {
+          "label": "🚧 ปรับปรุงทางเดินหรือถนน",
+          "action_type": "message",
+          "value": "ปรับปรุงทางเดิน/ถนน"
+        }
+      ]
+    },
+    "q_photo": {
+      "id": "q_photo",
+      "type": "image",
+      "text": "ถ้ามีรูปบริเวณที่เกิดปัญหา 🏡 ส่งให้ทีมดูได้ไหมครับ 😊",
+      "options": [
+        {
+          "label": "📸 ส่งรูป",
+          "action_type": "camera"
+        },
+        {
+          "label": "⏭️ ข้าม",
+          "action_type": "message",
+          "value": "ข้าม"
+        }
+      ]
+    },
+    "q_free_desc": {
+      "id": "q_free_desc",
+      "type": "quick_reply",
+      "text": "ขอบคุณครับ 😊 ช่วยเล่าให้ฟังสั้นๆ ได้ไหมครับ ว่าเจอปัญหาอะไรบ้าง?\n(ถ้าไม่สะดวก กด 'ข้าม' ได้เลย)",
+      "options": [
+        {
+          "label": "⏭️ ข้าม",
+          "action_type": "message",
+          "value": "ข้าม"
+        }
+      ]
+    }
+  },
+  "routes": {
+    "start_route": {
+      "questions": [
+        "q_start"
+      ],
+      "next": {
+        "conditions": [
+          {
+            "when": {
+              "q_start": "อากาศร้อน"
+            },
+            "goto": "heat_route"
+          },
+          {
+            "when": {
+              "q_start": "น้ำท่วม/น้ำขัง"
+            },
+            "goto": "flood_route"
+          }
+        ],
+        "default": "default_loc"
+      }
+    },
+    "heat_route": {
+      "questions": ["q_heat_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_heat_location": "ในบ้าน"}, "goto": "heat_house_loc"},
+          {"when": {"q_heat_location": "นอกบ้าน"}, "goto": "heat_outdoor_loc"}
+        ],
+        "default": "default_loc"
+      }
+    },
+    "heat_house_loc": {
+      "questions": ["q_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_location": "ข้าม"}, "goto": "heat_house_loc_text"}
+        ],
+        "default": "heat_house_main"
+      }
+    },
+    "heat_house_loc_text": {
+      "questions": ["q_location_text"],
+      "next": "heat_house_main"
+    },
+    "heat_house_main": {
+      "questions": ["q_heat_house_cause", "q_heat_house_effect", "q_heat_house_fix"],
+      "next": "common_ending_route"
+    },
+    "heat_outdoor_loc": {
+      "questions": ["q_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_location": "ข้าม"}, "goto": "heat_outdoor_loc_text"}
+        ],
+        "default": "heat_outdoor_main"
+      }
+    },
+    "heat_outdoor_loc_text": {
+      "questions": ["q_location_text"],
+      "next": "heat_outdoor_main"
+    },
+    "heat_outdoor_main": {
+      "questions": ["q_heat_outdoor_cause", "q_heat_outdoor_effect", "q_heat_outdoor_fix"],
+      "next": "common_ending_route"
+    },
+    "flood_route": {
+      "questions": ["q_flood_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_flood_location": "บ้านหรือหน้าบ้าน"}, "goto": "flood_house_loc"},
+          {"when": {"q_flood_location": "ทางเดินหรือถนน"}, "goto": "flood_road_loc"}
+        ],
+        "default": "default_loc"
+      }
+    },
+    "flood_house_loc": {
+      "questions": ["q_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_location": "ข้าม"}, "goto": "flood_house_loc_text"}
+        ],
+        "default": "flood_house_main"
+      }
+    },
+    "flood_house_loc_text": {
+      "questions": ["q_location_text"],
+      "next": "flood_house_main"
+    },
+    "flood_house_main": {
+      "questions": ["q_flood_house_cause", "q_flood_house_effect", "q_flood_house_fix"],
+      "next": "common_ending_route"
+    },
+    "flood_road_loc": {
+      "questions": ["q_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_location": "ข้าม"}, "goto": "flood_road_loc_text"}
+        ],
+        "default": "flood_road_main"
+      }
+    },
+    "flood_road_loc_text": {
+      "questions": ["q_location_text"],
+      "next": "flood_road_main"
+    },
+    "flood_road_main": {
+      "questions": ["q_flood_road_cause", "q_flood_road_effect", "q_flood_road_fix"],
+      "next": "common_ending_route"
+    },
+    "default_loc": {
+      "questions": ["q_location"],
+      "next": {
+        "conditions": [
+          {"when": {"q_location": "ข้าม"}, "goto": "default_loc_text"}
+        ],
+        "default": "default_desc"
+      }
+    },
+    "default_loc_text": {
+      "questions": ["q_location_text"],
+      "next": "default_desc"
+    },
+    "default_desc": {
+      "questions": ["q_free_desc"],
+      "next": "common_ending_route"
+    },
+    "common_ending_route": {
+      "questions": [
+        "q_photo"
+      ],
+      "next": null
+    }
+  }
+}

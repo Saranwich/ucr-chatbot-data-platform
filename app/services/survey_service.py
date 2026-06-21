@@ -1,169 +1,179 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from linebot.v3.messaging import (
-    ReplyMessageRequest,
-    TextMessage,
-    QuickReply,
-    QuickReplyItem,
-    MessageAction,
-    LocationAction,
-    CameraAction
-)
-from linebot.v3.messaging import AsyncMessagingApiBlob
-import os
 
-# Import โมเดล Database และตัวโหลด JSON ของเรา
-from app.models import User, SurveySession, CompletedReport
 from app.utils.survey_loader import survey_manager
+from app.services.routing import (
+    compute_next_state,
+    compute_go_back_state,
+    compute_multi_select_state,
+)
+from app.services import survey_repository as repo
+from app.services import survey_messages as messages
+from app.services.profile_messages import build_profile_invite
+from app.config import GO_BACK_KEYWORD, CONFIRM_KEYWORD
+
+
+def session_position_is_valid(survey, route_id: str, step: int) -> bool:
+    """Can the session's saved (route, step) still be resolved against this survey?
+
+    Survey definitions are loaded fresh from JSON at startup, but a session's
+    position lives in the DB. If the file was renamed/deleted/shortened while a
+    user was mid-survey, the saved position may now point at something that no
+    longer exists. Return False so the caller can clear the stale session.
+    """
+    if survey is None:
+        return False
+    route = survey.routes.get(route_id)
+    if route is None:
+        return False
+    return 0 <= step < len(route.questions)
+
 
 async def start_survey_session(user_id: str, survey_version: str, reply_token: str, line_bot_api, db: AsyncSession):
-    """เปิดโต๊ะ: ล้าง Session เก่า สร้างใหม่ แล้วยิงคำถามข้อแรก"""
-    
-    # 1. เช็ค User
-    user_result = await db.execute(select(User).where(User.lineuser_id == user_id))
-    user = user_result.scalars().first()
-    if not user:
-        user = User(lineuser_id=user_id)
-        db.add(user)
-        await db.flush()
+    await repo.get_or_create_user(db, user_id)  # ensure the FK target exists
+    await repo.archive_and_clear_session(db, user_id, status="restarted")
 
-    # 2. ล้างไพ่ (ถ้ามีงานค้างอยู่ให้ลบทิ้ง เริ่มใหม่)
-    session_result = await db.execute(select(SurveySession).where(SurveySession.lineuser_id == user_id))
-    active_session = session_result.scalars().first()
+    # Profile ไม่อยู่ใน survey แล้ว (กรอกผ่าน Userdata LIFF) — ทุกคนเริ่มที่ onstart
+    survey = survey_manager.get_survey(survey_version)
+    # The trigger may point at a version that failed to load (broken/renamed JSON
+    # is skipped silently at startup) or a typo'd key. Bail with a friendly reply
+    # instead of crashing on survey.onstart → AttributeError → 500 → webhook retry loop.
+    if survey is None:
+        await messages.send_text(
+            reply_token, "ขออภัย ระบบแบบสำรวจไม่พร้อมใช้งานชั่วคราว กรุณาลองใหม่ภายหลังครับ", line_bot_api
+        )
+        return
+    start_route_id = survey.onstart
 
-    if active_session:
-        await db.delete(active_session)
-        await db.flush()
+    await repo.create_session(db, user_id, survey_version, start_route_id)
 
-    # 3. สร้าง Session ใหม่ (เริ่ม Step 0)
-    new_session = SurveySession(
-        lineuser_id=user_id,
-        survey_version=survey_version,
-        current_step=0,
-        payload={}
-    )
-    db.add(new_session)
-    await db.commit()
-
-    # 4. งัดคำถามข้อแรกออกมาส่ง
-    first_question = survey_manager.get_question_by_step(survey_version, 0)
+    # Send the first question of the starting route (no go-back on the first question)
+    first_question_id = survey.routes[start_route_id].questions[0]
+    first_question = survey_manager.get_question(survey_version, first_question_id)
     if first_question:
-        await send_question(reply_token, first_question, line_bot_api)
-
-# async def download_line_image(message_id: str, api_client):
-#     """โหลดไฟล์รูปจาก LINE มาเก็บไว้ในเครื่อง (DEPRECATED: Now using dynamic fetch)"""
-#     blob_api = AsyncMessagingApiBlob(api_client)
-#     content = await blob_api.get_message_content(message_id)
-#     
-#     filename = f"{message_id}.jpg"
-#     filepath = os.path.join("uploads", filename)
-#     
-#     # เขียนไฟล์ลงดิสก์
-#     with open(filepath, "wb") as f:
-#         f.write(content)
-#     
-#     return filename
+        await messages.send_question(reply_token, first_question, line_bot_api, show_go_back=False)
 
 
 async def process_survey_answer(user_id: str, answer_data, reply_token: str, line_bot_api, db: AsyncSession):
-    """เครื่องจักร State Machine: รับคำตอบ -> บันทึก -> ถามข้อต่อไป หรือ จบงาน"""
-    
-    # 1. หา Session ปัจจุบัน
-    session_result = await db.execute(select(SurveySession).where(SurveySession.lineuser_id == user_id))
-    active_session = session_result.scalars().first()
-
+    # 1. Load active session
+    active_session = await repo.load_session(db, user_id)
     if not active_session:
-        # ถ้าไม่ได้เปิดโต๊ะไว้ แต่พิมพ์ตอบมา ให้เงียบๆ ไว้ (หรือจะตอบกลับให้กดเมนูก็ได้)
+        await messages.send_text(reply_token, "กรุณากดปุ่มเมนูเพื่อเริ่มแบบสำรวจครับ", line_bot_api)
         return
 
     survey_version = active_session.survey_version
-    current_step = active_session.current_step
+    survey = survey_manager.get_survey(survey_version)
 
-    # 2. เอาคำถามข้อที่เพิ่งตอบไปมาเป็น Key เพื่อบันทึกคำตอบ
-    current_question = survey_manager.get_question_by_step(survey_version, current_step)
-    if not current_question: return
+    # 1b. Guard against a survey file that changed since this session started.
+    #     If the saved position no longer resolves, clear it and ask for a restart
+    #     instead of crashing on a missing version / route / out-of-range step.
+    if not session_position_is_valid(survey, active_session.current_route_id, active_session.current_step):
+        await repo.archive_and_clear_session(db, user_id, status="survey_changed")
+        await messages.send_text(reply_token, "เกิดข้อผิดพลาด กรุณาเริ่มทำแบบสำรวจใหม่อีกครั้ง", line_bot_api)
+        return
 
-    # 🌟 พิเศษ: ถ้าเป็นรูปภาพ ไม่ต้องโหลดเก็บแล้ว ให้ส่ง URL วิ่งไปที่ API proxy แทน
+    # 2. Handle go-back before touching the payload
+    if answer_data == GO_BACK_KEYWORD:
+        go_back = compute_go_back_state(
+            active_session.current_route_id,
+            active_session.current_step,
+            active_session.route_history or [],
+            survey,
+        )
+        if go_back["action"] == "at_beginning":
+            return
+
+        # Clear the answer for the question we're returning to so the user re-answers it
+        payload = (active_session.payload or {}).copy()
+        payload.pop(go_back["question_id"], None)
+        active_session.payload = payload
+        active_session.current_route_id = go_back["route_id"]
+        active_session.current_step = go_back["step"]
+        if "route_history" in go_back:
+            active_session.route_history = list(go_back["route_history"])
+        await repo.save_session(db)
+
+        prev_question = survey_manager.get_question(survey_version, go_back["question_id"])
+        is_first = (go_back["route_id"] == survey.onstart and go_back["step"] == 0)
+        await messages.send_question(reply_token, prev_question, line_bot_api, show_go_back=not is_first)
+        return
+
+    # 3. Identify the question the user just answered
+    current_route = survey.routes[active_session.current_route_id]
+    current_question_id = current_route.questions[active_session.current_step]
+    current_question = survey_manager.get_question(survey_version, current_question_id)
+
+    # 4. Handle multi_select accumulation
+    if current_question and current_question.type == "multi_select":
+        pending_all = (active_session.pending_multi_select or {}).copy()
+        pending_this = pending_all.get(current_question_id, [])
+        ms_result = compute_multi_select_state(
+            pending=pending_this,
+            new_answer=answer_data,
+            max_selections=current_question.max_selections or 99,
+            confirm_keyword=CONFIRM_KEYWORD,
+        )
+
+        if ms_result["action"] == "ignore":
+            return
+
+        if ms_result["action"] == "accumulate":
+            pending_all[current_question_id] = ms_result["pending"]
+            active_session.pending_multi_select = pending_all
+            await repo.save_session(db)
+            max_sel = current_question.max_selections or 99
+            await messages.send_question(
+                reply_token, current_question, line_bot_api,
+                show_go_back=True,
+                multi_select_pending=ms_result["pending"],
+                multi_select_max=max_sel,
+            )
+            return
+
+        # action == "confirm" — save final answers and fall through to routing
+        pending_all.pop(current_question_id, None)
+        active_session.pending_multi_select = pending_all
+        answer_data = ms_result["answers"]
+
+    # 5. Handle image answer — store proxy URL instead of downloading
     if isinstance(answer_data, dict) and "image_id" in answer_data:
-        try:
-            # ไม่โหลดไฟล์ลงเครื่องแล้ว (ตามคำขอ user: ไม่ต้องเก็บภาพไว้)
-            # filename = await download_line_image(answer_data["image_id"], line_bot_api.api_client)
-            # answer_data["image_filename"] = filename
-            
-            # เราเก็บ URL ที่ชี้ไปยัง Endpoint ใหม่ที่ดึงรูปสดจาก LINE
-            answer_data["image_url"] = f"/api/dashboard/image/{answer_data['image_id']}"
-        except Exception as e:
-            print(f"❌ Failed to process image URL: {e}")
+        answer_data["image_url"] = f"/api/dashboard/image/{answer_data['image_id']}"
 
-    # บันทึกลง payload (ต้อง copy() ก่อนเพื่อให้ SQLAlchemy รู้ว่ามีการเปลี่ยนแปลง)
+    # 6. Save answer into payload (copy() so SQLAlchemy detects the change)
     payload = active_session.payload.copy() if active_session.payload else {}
-    payload[current_question.id] = answer_data
+    payload[current_question_id] = answer_data
     active_session.payload = payload
 
-    # 3. เดินหน้า 1 ก้าว
-    active_session.current_step += 1
-    next_step = active_session.current_step
-    
-    # 4. ค้นหาคำถามข้อต่อไป
-    next_question = survey_manager.get_question_by_step(survey_version, next_step)
+    # 7. Ask the routing engine where to go next
+    result = compute_next_state(
+        current_route_id=active_session.current_route_id,
+        current_step=active_session.current_step,
+        route_history=active_session.route_history or [],
+        payload=payload,
+        survey=survey,
+    )
 
-    if next_question:
-        # 🌟 ถ้ายังมีข้อต่อไป เซฟ DB แล้วส่งคำถาม
-        await db.commit()
-        await send_question(reply_token, next_question, line_bot_api)
-    else:
-        # 🎉 ถ้าไม่มีคำถามแล้ว (จบแบบสำรวจ)
-        # แพ็คข้อมูลลงตาราง CompletedReport
-        
-        # สมมติว่าข้อแรกเราตั้ง id ว่า "q1_location" ตามที่คุณอาจจะวางแผนไว้
-        loc_data = active_session.payload.get("q1_location")
-        postgis_point = None
-        if isinstance(loc_data, dict) and "lat" in loc_data and "lng" in loc_data:
-            postgis_point = f"SRID=4326;POINT({loc_data['lng']} {loc_data['lat']})"
+    # 8. Act on the routing decision.
+    #    Send the next question FIRST, then commit the step advance. If the reply
+    #    fails (poor connection / expired reply_token) send_question raises and we
+    #    never commit — the session stays on the current question, so a re-tap
+    #    re-answers the SAME question instead of being eaten as the next one.
+    if result["action"] in ("next_question", "next_route"):
+        next_question = survey_manager.get_question(survey_version, result["next_question_id"])
+        await messages.send_question(reply_token, next_question, line_bot_api, show_go_back=True)
+        active_session.current_route_id = result["current_route_id"]
+        active_session.current_step = result["current_step"]
+        active_session.route_history = list(result["route_history"])
+        await repo.save_session(db)
 
-        completed_report = CompletedReport(
-            lineuser_id=user_id,
-            survey_version=survey_version,
-            payload=active_session.payload,
-            location_data=postgis_point
-        )
-        db.add(completed_report)
-        
-        # ลบกระดาษทด
-        await db.delete(active_session)
-        await db.commit()
+    elif result["action"] == "complete":
+        await repo.finalize_report(db, active_session)
 
-        # ส่งข้อความขอบคุณ
-        await line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=reply_token,
-                messages=[TextMessage(text="ขอบคุณที่ร่วมรายงานข้อมูลครับ")]
+        # ยังไม่มี profile → แนบ Flex ชวนไปกรอกใน Userdata LIFF ต่อท้ายคำขอบคุณ
+        user = await repo.get_or_create_user(db, user_id)
+        invite = None if user.has_completed_profile else build_profile_invite()
+        if invite:
+            await messages.send_text_with_extras(
+                reply_token, "ขอบคุณที่ร่วมรายงานข้อมูลครับ", [invite], line_bot_api
             )
-        )
-
-async def send_question(reply_token: str, question_obj, line_bot_api):
-    """ฟังก์ชันผู้ช่วยสำหรับสร้างปุ่ม Quick Reply และส่งข้อความ"""
-    quick_reply_items = []
-    for opt in question_obj.options:
-        action = None
-        if opt.action_type == "message":
-            action = MessageAction(label=opt.label, text=opt.value if opt.value else opt.label)
-        elif opt.action_type == "location":
-            action = LocationAction(label=opt.label)
-        elif opt.action_type == "camera":
-            action = CameraAction(label=opt.label)
-        
-        if action:
-            quick_reply_items.append(QuickReplyItem(action=action))
-
-    message = TextMessage(
-        text=question_obj.text,
-        quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items else None
-    )
-
-    await line_bot_api.reply_message(
-        ReplyMessageRequest(
-            reply_token=reply_token,
-            messages=[message]
-        )
-    )
+        else:
+            await messages.send_text(reply_token, "ขอบคุณที่ร่วมรายงานข้อมูลครับ", line_bot_api)

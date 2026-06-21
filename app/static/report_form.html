@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>แจ้งปัญหา — UCR Smart City</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.css" />
+  <style>
+    body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; margin: 0; background: #eef3f8; color: #1c2e3e; font-size: 20px; }
+    .wrap { max-width: 480px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 30px; }
+    label { display: block; font-weight: 600; margin: 24px 0 10px; font-size: 20px; }
+    textarea { width: 100%; box-sizing: border-box; padding: 16px; border: 1px solid #ccdff0; border-radius: 8px; font-size: 20px; min-height: 120px; resize: vertical; }
+
+    .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .choice { display: flex; align-items: center; gap: 8px; padding: 16px; border: 1px solid #ccdff0; border-radius: 10px; background: #fff; font-size: 19px; cursor: pointer; }
+    .choice .emoji { font-size: 26px; }
+    .choice.active { border-color: #4A90C4; background: #e8f2fb; font-weight: 600; }
+
+    #map { height: 440px; border-radius: 10px; border: 1px solid #ccdff0; margin-top: 4px; }
+    /* enlarge the geocoder search box to match the form's big-touch style */
+    .leaflet-control-geocoder { font-size: 18px; box-shadow: 0 1px 6px rgba(0,0,0,.3); }
+    .leaflet-control-geocoder-form input { font-size: 18px; height: 38px; min-width: 200px; }
+    .leaflet-control-geocoder-icon { width: 38px; height: 38px; background-size: 22px 22px; }
+    .leaflet-control-geocoder-alternatives a { font-size: 16px; padding: 8px 10px; }
+    .locate-btn { width: 44px; height: 44px; font-size: 22px; line-height: 44px; text-align: center; padding: 0; border: 0; border-radius: 8px; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.3); cursor: pointer; }
+    .locate-btn:active { background: #e8f2fb; }
+    .coords { margin-top: 8px; font-size: 18px; color: #555; }
+    .coords.set { color: #1c7a45; font-weight: 600; }
+
+    input[type=file] { width: 100%; box-sizing: border-box; padding: 12px; font-size: 17px; border: 2px dashed #ccdff0; border-radius: 10px; background: #f8fbff; cursor: pointer; }
+    input[type=file]::file-selector-button { padding: 10px 16px; border: 0; border-radius: 8px; background: #4A90C4; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; margin-right: 12px; }
+    #preview { margin-top: 10px; max-width: 100%; border-radius: 10px; display: none; }
+
+    button.submit { width: 100%; margin-top: 24px; padding: 16px; border: 0; border-radius: 10px; background: #4A90C4; color: #fff; font-size: 19px; font-weight: 600; }
+    button.submit:disabled { background: #b8d8f0; }
+    .msg { margin-top: 16px; padding: 16px; border-radius: 8px; font-size: 19px; display: none; }
+    .msg.ok { background: #e3f6ec; color: #1c7a45; display: block; }
+    .msg.err { background: #fde8e8; color: #c0392b; display: block; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>📝 แจ้งปัญหาในชุมชน</h1>
+
+    <label>ประเภทปัญหา</label>
+    <div class="choices" id="choices">
+      <div class="choice" data-value="ขยะ"><span class="emoji">🗑️</span> ขยะ</div>
+      <div class="choice" data-value="ไฟส่องสว่าง"><span class="emoji">💡</span> ไฟส่องสว่าง</div>
+      <div class="choice" data-value="ถนน/ทางเดิน"><span class="emoji">🛣️</span> ถนน/ทางเดิน</div>
+      <div class="choice" data-value="น้ำท่วม/น้ำขัง"><span class="emoji">🌊</span> น้ำท่วม/น้ำขัง</div>
+      <div class="choice" data-value="ความร้อน/อุณหภูมิ"><span class="emoji">🌡️</span> ความร้อน</div>
+      <div class="choice" data-value="ท่อ/ระบายน้ำ"><span class="emoji">🚰</span> ท่อ/ระบายน้ำ</div>
+      <div class="choice" data-value="สายไฟ/เสาไฟ"><span class="emoji">⚡</span> สายไฟ/เสาไฟ</div>
+      <div class="choice" data-value="เสียงรบกวน"><span class="emoji">🔊</span> เสียงรบกวน</div>
+      <div class="choice" data-value="สัตว์/แมลง"><span class="emoji">🐕</span> สัตว์/แมลง</div>
+      <div class="choice" data-value="ต้นไม้/พื้นที่สีเขียว"><span class="emoji">🌳</span> ต้นไม้/สีเขียว</div>
+      <div class="choice" data-value="จุดเสี่ยง/ความปลอดภัย"><span class="emoji">⚠️</span> จุดเสี่ยง</div>
+      <div class="choice" data-value="อื่น ๆ"><span class="emoji">📌</span> อื่น ๆ</div>
+    </div>
+
+    <label for="description">รายละเอียด</label>
+    <textarea id="description" placeholder="อธิบายปัญหาที่พบ..."></textarea>
+
+    <label>ตำแหน่ง (แตะหรือลากหมุดให้ตรงจุด)</label>
+    <div id="map"></div>
+    <div class="coords" id="coords">⏳ กำลังหาตำแหน่งปัจจุบัน…</div>
+
+    <label for="image">รูปภาพ (ไม่บังคับ)</label>
+    <input type="file" id="image" accept="image/*" />
+    <img id="preview" alt="ตัวอย่างรูป" />
+
+    <button class="submit" id="submit">ส่งรายงาน</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
+  <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+  const LIFF_ID = "__LIFF_ID__";   // injected at serve time; empty = anonymous dev mode
+  const msg = document.getElementById("msg");
+  const btn = document.getElementById("submit");
+  function show(text, ok) { msg.textContent = text; msg.className = "msg " + (ok ? "ok" : "err"); }
+
+  // --- LIFF identity (degrades to anonymous when outside LINE / no LIFF_ID) ---
+  let accessToken = null;
+  async function initLiff() {
+    if (!LIFF_ID || !window.liff) return;
+    try {
+      await liff.init({ liffId: LIFF_ID });
+      if (liff.isLoggedIn()) accessToken = liff.getAccessToken();
+    } catch (e) { console.warn("LIFF init failed, continuing anonymously:", e); }
+  }
+
+  // --- map with a draggable pin (Leaflet + Esri satellite imagery, no API key) ---
+  let lat = null, lng = null, marker = null;
+  const coordsEl = document.getElementById("coords");
+  const FALLBACK = [13.7563, 100.5018]; // Bangkok, until we get a real fix
+  const map = L.map("map", {
+    rotate: true,                                  // enable rotation
+    touchRotate: true,                             // two-finger rotate on mobile
+    rotateControl: { closeOnZeroBearing: false },  // compass button to reset north
+    bearing: 0,
+  }).setView(FALLBACK, 15);
+
+  // --- two base layers, toggleable: satellite (default) & road ---
+  // Esri World Imagery = Google-Earth-style satellite (keyless)
+  const esriImagery = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 19, attribution: "© Esri, Maxar, Earthstar Geographics",
+  });
+  // road/place-name labels overlaid on the imagery so it stays readable
+  const satLabels = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
+    maxZoom: 19, attribution: "© CARTO",
+  });
+  const satellite = L.layerGroup([esriImagery, satLabels]);
+  const road = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "© OpenStreetMap",
+  });
+  satellite.addTo(map); // satellite shown by default
+  L.control.layers(
+    { "🛰️ ดาวเทียม": satellite, "🗺️ ถนน": road },
+    null,
+    { collapsed: false }
+  ).addTo(map);
+
+  // --- searchable place lookup → drops the pin ---
+  // Photon gives type-ahead + better Thai matching than Nominatim; bias to Thailand.
+  L.Control.geocoder({
+    defaultMarkGeocode: false,
+    placeholder: "ค้นหาสถานที่…",
+    errorMessage: "ไม่พบสถานที่",
+    suggestMinLength: 2,
+    suggestTimeout: 250,
+    queryMinLength: 1,
+    geocoder: L.Control.Geocoder.photon({
+      geocodingQueryParams: { lang: "default", bbox: "97.3,5.6,105.7,20.5" }, // Thailand
+    }),
+  })
+    .on("markgeocode", (e) => {
+      const c = e.geocode.center;
+      map.setView(c, 17);
+      setPin(c.lat, c.lng);
+    })
+    .addTo(map);
+
+  // --- current-location button (Leaflet control, bottom-right) ---
+  const LocateControl = L.Control.extend({
+    options: { position: "bottomright" },
+    onAdd() {
+      const b = L.DomUtil.create("button", "locate-btn");
+      b.type = "button"; b.innerHTML = "📍"; b.title = "ตำแหน่งปัจจุบัน";
+      L.DomEvent.on(b, "click", L.DomEvent.stop).on(b, "click", locateMe);
+      return b;
+    },
+  });
+  map.addControl(new LocateControl());
+
+  function setPin(la, ln) {
+    lat = la; lng = ln;
+    if (!marker) {
+      marker = L.marker([la, ln], { draggable: true }).addTo(map);
+      marker.on("dragend", () => { const p = marker.getLatLng(); lat = p.lat; lng = p.lng; showCoords(); });
+    } else { marker.setLatLng([la, ln]); }
+    showCoords();
+  }
+  function showCoords() {
+    coordsEl.textContent = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    coordsEl.classList.add("set");
+  }
+  map.on("click", (e) => setPin(e.latlng.lat, e.latlng.lng));
+
+  function locateMe() {
+    if (!navigator.geolocation) { coordsEl.textContent = "อุปกรณ์ไม่รองรับการหาตำแหน่ง"; return; }
+    coordsEl.textContent = "⏳ กำลังหาตำแหน่งปัจจุบัน…";
+    coordsEl.classList.remove("set");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { map.setView([pos.coords.latitude, pos.coords.longitude], 17); setPin(pos.coords.latitude, pos.coords.longitude); },
+      () => { if (lat === null) coordsEl.textContent = "แตะบนแผนที่เพื่อปักหมุด"; },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+  locateMe(); // try to centre on the user at load
+
+  // --- category buttons ---
+  let category = null;
+  document.querySelectorAll(".choice").forEach((el) => {
+    el.addEventListener("click", () => {
+      document.querySelectorAll(".choice").forEach((c) => c.classList.remove("active"));
+      el.classList.add("active");
+      category = el.dataset.value;
+    });
+  });
+
+  // --- image preview ---
+  const fileInput = document.getElementById("image");
+  const preview = document.getElementById("preview");
+  fileInput.addEventListener("change", () => {
+    const f = fileInput.files[0];
+    if (!f) { preview.style.display = "none"; return; }
+    preview.src = URL.createObjectURL(f);
+    preview.style.display = "block";
+  });
+
+  // --- submit (multipart) ---
+  btn.addEventListener("click", async () => {
+    const description = document.getElementById("description").value.trim();
+    if (!category) { show("กรุณาเลือกประเภทปัญหา", false); return; }
+    if (!description) { show("กรุณากรอกรายละเอียด", false); return; }
+    if (lat === null) { show("กรุณาปักหมุดตำแหน่งบนแผนที่", false); return; }
+
+    const fd = new FormData();
+    fd.append("description", description);
+    fd.append("category", category);
+    fd.append("latitude", lat);
+    fd.append("longitude", lng);
+    const imageFile = fileInput.files[0];
+    if (imageFile) fd.append("image", imageFile);
+
+    const headers = {};
+    if (accessToken) headers["Authorization"] = "Bearer " + accessToken;
+
+    btn.disabled = true; btn.textContent = "กำลังส่ง…";
+    try {
+      const res = await fetch("/api/form-reports", { method: "POST", headers, body: fd });
+      if (res.ok) {
+        show("✅ ส่งรายงานสำเร็จ ขอบคุณครับ", true);
+        if (window.liff && LIFF_ID && liff.isInClient()) setTimeout(() => liff.closeWindow(), 1200);
+      } else {
+        show("❌ ส่งรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", false);
+      }
+    } catch (e) {
+      // Never surface internal errors/status/report number to the user — just fail.
+      show("❌ ส่งรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", false);
+    } finally {
+      btn.disabled = false; btn.textContent = "ส่งรายงาน";
+    }
+  });
+
+  initLiff();
+  </script>
+</body>
+</html>

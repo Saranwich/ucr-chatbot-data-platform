@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Code Review — main branch — 2026-06-08</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #181b24;
+    --panel-2: #1f2430;
+    --text: #e6e8ee;
+    --muted: #9aa3b2;
+    --border: #2a2f3c;
+    --red: #ff6b6b;
+    --red-bg: #2a1416;
+    --yellow: #ffd166;
+    --yellow-bg: #2a2410;
+    --green: #6bd49a;
+    --green-bg: #122318;
+    --blue: #6ba8ff;
+    --code-bg: #0b0d13;
+    --accent: #8b9bff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.65;
+    font-size: 16px;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 40px 24px 120px; }
+  header.hero {
+    border: 1px solid var(--border);
+    background: linear-gradient(160deg, #1a1f2e, #14161f);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 32px;
+  }
+  header.hero h1 { margin: 0 0 8px; font-size: 28px; }
+  header.hero .sub { color: var(--muted); font-size: 15px; }
+  .meta-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr));
+    gap: 12px; margin-top: 20px;
+  }
+  .meta-grid div {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; font-size: 13px;
+  }
+  .meta-grid div span { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+  h2 {
+    font-size: 22px; margin: 48px 0 16px; padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+  }
+  h3 { font-size: 18px; margin: 28px 0 10px; }
+  p { margin: 12px 0; }
+  a { color: var(--accent); }
+  code.inline {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 5px; padding: 1px 6px; font-size: 13.5px;
+    font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    color: #ffd9a8;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; overflow-x: auto;
+    font-size: 13.5px; line-height: 1.5;
+    font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  pre .c { color: #6a7080; } /* comment */
+  pre .bad { color: #ff8a8a; }
+  pre .good { color: #7fe0a6; }
+  pre .kw { color: #c7a3ff; }
+  pre .str { color: #ffd9a8; }
+
+  .callout { display:flex; gap:14px; align-items:flex-start; }
+  .callout .ico { font-size: 22px; line-height: 1.2; }
+
+  .finding {
+    border: 1px solid var(--border); border-radius: 14px;
+    margin: 22px 0; overflow: hidden; background: var(--panel);
+  }
+  .finding > .head {
+    padding: 16px 20px; display:flex; gap:12px; align-items:center;
+    border-bottom: 1px solid var(--border);
+  }
+  .finding > .body { padding: 4px 20px 20px; }
+  .finding.red    > .head { background: var(--red-bg); }
+  .finding.yellow > .head { background: var(--yellow-bg); }
+  .finding.green  > .head { background: var(--green-bg); }
+  .badge {
+    font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+  }
+  .badge.red    { background: var(--red); color: #2a0c0c; }
+  .badge.yellow { background: var(--yellow); color: #3a2e00; }
+  .badge.green  { background: var(--green); color: #07210f; }
+  .finding .head h3 { margin: 0; font-size: 16.5px; flex: 1; }
+  .filepath {
+    font-family: "SF Mono", Menlo, monospace; font-size: 12.5px;
+    color: var(--muted); display:block; margin-top: 2px;
+  }
+  .label { font-weight: 700; color: var(--blue); display:block; margin: 16px 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing:.04em;}
+  .analogy {
+    background: var(--panel-2); border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 14px 0;
+    font-size: 14.5px;
+  }
+  .analogy b { color: var(--accent); }
+  table { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 9px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--panel-2); }
+  .effort { font-size: 12px; color: var(--muted); }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }
+  .pill.low { background: var(--green-bg); color: var(--green); border:1px solid var(--green); }
+  .pill.med { background: var(--yellow-bg); color: var(--yellow); border:1px solid var(--yellow); }
+  .pill.high{ background: var(--red-bg); color: var(--red); border:1px solid var(--red); }
+  ul.clean { padding-left: 20px; }
+  ul.clean li { margin: 6px 0; }
+  .glossary dt { font-weight: 700; color: var(--blue); margin-top: 14px; }
+  .glossary dd { margin: 4px 0 0; color: var(--text); }
+  .toc { background: var(--panel); border:1px solid var(--border); border-radius: 12px; padding: 18px 24px; }
+  .toc ol { margin: 8px 0 0; padding-left: 22px; }
+  .toc a { text-decoration: none; }
+  .roadmap-step { display:flex; gap:14px; margin:14px 0; }
+  .roadmap-step .num {
+    flex: 0 0 34px; height:34px; border-radius:50%; background:var(--accent);
+    color:#0c0e16; font-weight:800; display:flex; align-items:center; justify-content:center;
+  }
+  .footer-note { margin-top: 60px; color: var(--muted); font-size: 13px; border-top:1px solid var(--border); padding-top: 20px; }
+  .star { color: var(--yellow); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>🔍 Code Review — <code class="inline">main</code> branch</h1>
+  <div class="sub">A deep, beginner-friendly walkthrough of the UCR Smartcity Chatbot backend. Written so a first-year student can follow every point — no prior security background assumed.</div>
+  <div class="meta-grid">
+    <div><span>Date</span> 2026-06-08</div>
+    <div><span>Branch</span> main (clean)</div>
+    <div><span>Scope</span> Whole app/ backend</div>
+    <div><span>Files read</span> 20 Python files</div>
+    <div><span>Findings</span> 2 🔴 · 8 🟡 · 6 🟢</div>
+    <div><span>Reviewer</span> Claude (Opus 4.8)</div>
+  </div>
+</header>
+
+<p>This document reviews the code as it currently stands on <code class="inline">main</code> (there was no pull request open, so this is a "health check" of the whole backend). I read the entire request journey — from the moment LINE sends a message, through the survey engine, to the admin dashboard API and the database layer.</p>
+
+<div class="callout" style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 20px;">
+  <div class="ico">💡</div>
+  <div><b>How to read this.</b> Each finding has a colored tag telling you how urgent it is, a plain-English explanation, a real-world analogy, the actual code, <i>why it matters</i>, and a suggested fix with an effort estimate. If a term is unfamiliar, check the <a href="#glossary">Glossary</a> at the bottom first.</div>
+</div>
+
+<!-- ============ TOC ============ -->
+<div class="toc">
+  <h3 style="margin-top:0;">Contents</h3>
+  <ol>
+    <li><a href="#summary">The 30-second summary</a></li>
+    <li><a href="#legend">What the colors mean</a></li>
+    <li><a href="#critical">🔴 Critical — fix before real users</a></li>
+    <li><a href="#important">🟡 Important — should fix soon</a></li>
+    <li><a href="#nits">🟢 Minor — polish when you have time</a></li>
+    <li><a href="#dead">🧹 Dead code &amp; leftovers</a></li>
+    <li><a href="#good">✅ What's genuinely good</a></li>
+    <li><a href="#roadmap">🗺️ Suggested fix order</a></li>
+    <li><a href="#glossary">📖 Glossary</a></li>
+  </ol>
+</div>
+
+<!-- ============ SUMMARY ============ -->
+<h2 id="summary">1. The 30-second summary</h2>
+<p>The <b>survey engine is well-built.</b> The way questions, routes, and branching logic are separated into small "pure" functions (functions that just calculate an answer and don't touch the database or the internet) is genuinely good design — it's easy to test and easy to understand. You even have a real test suite covering it. <span class="star">Nice work.</span></p>
+<p>The <b>weak spots are all around the edges</b> — specifically the <i>security door</i> to your admin dashboard, and what happens when something goes <i>wrong</i> (error handling). These are exactly the areas beginners usually haven't been taught yet, so don't feel bad — they're very fixable.</p>
+
+<table>
+  <tr><th>Area</th><th>Verdict</th><th>Worst issue</th></tr>
+  <tr><td>Survey engine (routing/state)</td><td>🟢 Strong</td><td>Crashes if a survey file changes while someone is mid-survey</td></tr>
+  <tr><td>Dashboard login / auth</td><td>🔴 Weak</td><td>A default password is hard-coded in the source</td></tr>
+  <tr><td>Error handling</td><td>🔴 Weak</td><td>Full crash details get sent to whoever made the request</td></tr>
+  <tr><td>Database layer</td><td>🟡 Okay</td><td>Encryption checking is turned off</td></tr>
+  <tr><td>Tests</td><td>🟢 Present</td><td>Security paths aren't covered yet</td></tr>
+</table>
+
+<!-- ============ LEGEND ============ -->
+<h2 id="legend">2. What the colors mean</h2>
+<table>
+  <tr><td><span class="badge red">Critical</span></td><td>A real security or data-loss risk. Fix these before real people use the app.</td></tr>
+  <tr><td><span class="badge yellow">Important</span></td><td>A bug or weakness that will bite you later. Fix soon, but it won't burn the house down today.</td></tr>
+  <tr><td><span class="badge green">Minor</span></td><td>Style / tidiness. Nice to fix, never urgent. ("nit" = nitpick.)</td></tr>
+</table>
+
+<!-- ============================================================= -->
+<!-- CRITICAL -->
+<!-- ============================================================= -->
+<h2 id="critical">3. 🔴 Critical — fix before real users</h2>
+
+<!-- C1 -->
+<div class="finding red">
+  <div class="head">
+    <span class="badge red">Critical</span>
+    <h3>C1 · A secret password is hard-coded into the source code
+      <span class="filepath">app/utils/auth.py:9</span>
+    </h3>
+  </div>
+  <div class="body">
+    <p>Your dashboard uses something called a <b>JWT</b> (a digital "wristband" the server hands out to prove someone is logged in). To make a wristband that can't be forged, the server signs it with a secret key. Here is how that key is loaded:</p>
+<pre><code><span class="bad">SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-change-me")</span></code></pre>
+    <p>The second value, <code class="inline">"your-super-secret-key-change-me"</code>, is a <b>fallback</b>: "if nobody set a real secret, use this one." The problem is that this exact string is now public — it's in your code on GitHub <i>and</i> written in your <code class="inline">CLAUDE.md</code>.</p>
+
+    <div class="analogy"><b>Analogy:</b> It's like a school that buys a fancy lock for the server room, but ships every lock pre-set to the combination <i>0-0-0</i> and prints that combination in the manual. If a teacher forgets to change it, anyone who read the manual walks straight in.</div>
+
+    <span class="label">Why it matters</span>
+    <p>If you deploy the app and forget to set a real <code class="inline">SECRET_KEY</code>, an attacker can <b>forge their own admin wristband</b> using the known default, and then read every report, every user's LINE ID, and every GPS location you collected. That's a privacy breach of your community's data.</p>
+
+    <span class="label">The fix</span>
+    <p>Don't allow a fallback. Crash on startup if the secret is missing — you already do exactly this for <code class="inline">CHANNEL_SECRET</code> in <code class="inline">config.py</code>, so just copy that pattern:</p>
+<pre><code><span class="good">SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY is not set — refusing to start.")</span></code></pre>
+    <p>A crash on startup is <i>good</i> here: it's loud, it happens immediately, and it forces whoever deploys to set the secret. Far better than silently running insecure.</p>
+    <p class="effort">Effort: <span class="pill low">tiny — 3 lines</span></p>
+  </div>
+</div>
+
+<!-- C2 -->
+<div class="finding red">
+  <div class="head">
+    <span class="badge red">Critical</span>
+    <h3>C2 · When the app crashes, it emails the full crime-scene photos to the visitor
+      <span class="filepath">app/main.py:79–86</span>
+    </h3>
+  </div>
+  <div class="body">
+    <p>This block runs whenever <i>any</i> unexpected error happens anywhere in the app:</p>
+<pre><code><span class="kw">async def</span> global_exception_handler(request, exc):
+    error_msg = <span class="str">f"Unhandled Exception: {str(exc)}\n{traceback.format_exc()}"</span>
+    print(error_msg)
+    <span class="kw">return</span> JSONResponse(
+        status_code=500,
+        <span class="bad">content={"detail": "Internal Server Error", "traceback": error_msg}</span>
+    )</code></pre>
+    <p>The word <code class="inline">traceback</code> means the full internal error report — file names, line numbers, function names, and sometimes pieces of data or secrets. This code sends that whole report <b>back to whoever made the request</b>.</p>
+
+    <div class="analogy"><b>Analogy:</b> A customer's order fails, so instead of saying "sorry, something went wrong," the shop hands them a folder containing the store's floor plan, the safe's location, and the staff's notes. Helpful for <i>you</i> to debug — dangerous to hand to a stranger.</div>
+
+    <span class="label">Why it matters</span>
+    <p>Attackers use these internal details to map out your system and find more holes. It also leaks even when <code class="inline">ENV=production</code> — which is ironic, because you carefully hide the <code class="inline">/docs</code> page in production but then expose far more here. It also combines badly with finding I4 below (an expired photo crashes the dashboard and dumps a traceback to the browser).</p>
+
+    <span class="label">The fix</span>
+    <p>Keep the detail for <i>yourself</i> (the <code class="inline">print</code> / server logs), but give the visitor a plain, boring message:</p>
+<pre><code><span class="kw">async def</span> global_exception_handler(request, exc):
+    print(<span class="str">f"Unhandled Exception: {exc}\n{traceback.format_exc()}"</span>)  <span class="c"># logged for you</span>
+    <span class="kw">return</span> JSONResponse(
+        status_code=500,
+        <span class="good">content={"detail": "Internal Server Error"}</span>  <span class="c"># nothing leaked</span>
+    )</code></pre>
+    <p class="effort">Effort: <span class="pill low">tiny — delete one field</span></p>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- IMPORTANT -->
+<!-- ============================================================= -->
+<h2 id="important">4. 🟡 Important — should fix soon</h2>
+
+<!-- I1 -->
+<div class="finding yellow">
+  <div class="head">
+    <span class="badge yellow">Important</span>
+    <h3>I1 · Any logged-in user can read the whole dashboard — "admin" is never actually required
+      <span class="filepath">app/routes/dashboard.py (all 5 endpoints) · app/utils/auth.py:33</span>
+    </h3>
+  </div>
+  <div class="body">
+    <p>You wrote two security guards in <code class="inline">auth.py</code>:</p>
+    <ul class="clean">
+      <li><code class="inline">get_current_user</code> — "is this person logged in at all?"</li>
+      <li><code class="inline">get_current_admin</code> — "is this person logged in <b>AND</b> an admin?"</li>
+    </ul>
+    <p>But every dashboard endpoint uses the <i>first</i> one:</p>
+<pre><code>current_user: dict = Depends(<span class="bad">get_current_user</span>)   <span class="c"># on /stats, /reports, /image, ...</span></code></pre>
+    <p>So <code class="inline">get_current_admin</code> exists but is <b>never used anywhere</b>. Any valid wristband — even a non-admin one — can read all reports and images.</p>
+
+    <div class="analogy"><b>Analogy:</b> You hired a bouncer who checks for admin badges, but you stationed him in a back room and put nobody on the actual door. Everyone with <i>any</i> ticket walks in.</div>
+
+    <span class="label">The fix</span>
+    <p>If these pages are meant for admins only (they look like it — they show everyone's data), swap the dependency on each endpoint:</p>
+<pre><code>current_user: dict = Depends(<span class="good">get_current_admin</span>)</code></pre>
+    <p>If you genuinely want any logged-in user to see them, that's fine — but leave a comment saying so, otherwise the next reader assumes it's a bug.</p>
+    <p class="effort">Effort: <span class="pill low">small — change 5 lines</span></p>
+  </div>
+</div>
+
+<!-- I2 -->
+<div class="finding yellow">
+  <div class="head">
+    <span class="badge yellow">Important</span>
+    <h3>I2 · The app crashes if a survey file changes while someone is mid-survey
+      <span class="filepath">app/services/survey_service.py:39, 68–70</span>
+    </h3>
+  </div>
+  <div class="body">
+    <p>A user's progress (which survey, which step) is saved in the database. The survey <i>questions</i> are loaded fresh from JSON files every time the server starts. These two things can drift apart.</p>
+<pre><code>survey = survey_manager.get_survey(survey_version)   <span class="c"># can return None!</span>
+...
+current_route = survey.routes[active_session.current_route_id]        <span class="c"># 💥 if survey is None</span>
+current_question_id = current_route.questions[active_session.current_step]  <span class="c"># 💥 if step out of range</span></code></pre>
+    <p>Two ways this blows up:</p>
+    <ul class="clean">
+      <li><b>Survey renamed/deleted:</b> someone started <code class="inline">"flood_v1"</code>, you rename it, they tap an answer → <code class="inline">get_survey</code> returns <code class="inline">None</code> → <code class="inline">None.routes</code> crashes.</li>
+      <li><b>Survey shortened:</b> a survey had 8 questions, you trim it to 5, a user sitting on step 6 answers → <code class="inline">questions[6]</code> is out of range → crash.</li>
+    </ul>
+
+    <div class="analogy"><b>Analogy:</b> A student is on page 8 of an exam. You swap their booklet for a shorter version. They turn to page 8 — it doesn't exist, and they panic. The code panics the same way (a 500 error), which then leaks a traceback because of C2.</div>
+
+    <span class="label">The fix</span>
+    <p>Check for these cases and gently restart the user instead of crashing:</p>
+<pre><code>survey = survey_manager.get_survey(survey_version)
+<span class="good">if survey is None or active_session.current_route_id not in survey.routes:
+    await repo.clear_session(db, user_id)
+    await messages.send_text(reply_token, "แบบสำรวจมีการอัปเดต กรุณาเริ่มใหม่อีกครั้งครับ", line_bot_api)
+    return</span></code></pre>
+    <p class="effort">Effort: <span class="pill med">medium — add guards in 2 spots</span></p>
+  </div>
+</div>
+
+<!-- I3 -->
+<div class="finding yellow">
+  <div class="head">
+    <span class="badge yellow">Important</span>
+    <h3>I3 · The health-check rate limiter slowly leaks memory (and doesn't work on AWS)
+      <span class="filepath">app/main.py:89, 91–101</span>
+    </h3>
+  </div>
+  <div class="body">
+    <p>To stop people spamming <code class="inline">/api/health</code>, you remember the last visit time of every IP address:</p>
+<pre><code>health_check_limits = defaultdict(float)   <span class="c"># {ip_address: last_seen_time}</span></code></pre>
+    <p>Two problems:</p>
+    <ol class="clean">
+      <li><b>It never forgets.</b> Every new IP that ever visits adds an entry that's <i>never removed</i>. Over months this dictionary grows without limit — a slow memory leak. Worse, an attacker who sends requests from thousands of fake IPs can balloon it on purpose.</li>
+      <li><b>It doesn't work on AWS Lambda.</b> Your <code class="inline">main.py:130</code> wraps the app in <code class="inline">Mangum</code>, meaning it runs on Lambda. Lambda throws away memory between requests, so this dictionary resets constantly and the limit barely applies.</li>
+    </ol>
+
+    <div class="analogy"><b>Analogy:</b> A doorman writes every visitor's name on an infinitely long scroll to remember them — but on Lambda he gets amnesia after each visitor, so the scroll is both useless <i>and</i> endlessly growing.</div>
+
+    <span class="label">The fix</span>
+    <p>For a simple health check, the easiest correct option is to <b>remove the custom limiter entirely</b> — health checks rarely need protecting. If you do need rate-limiting elsewhere, use a library like <code class="inline">slowapi</code> backed by a shared store (Redis), which works across Lambda invocations.</p>
+    <p class="effort">Effort: <span class="pill low">small — delete it, or swap to a library</span></p>
+  </div>
+</div>
+
+<!-- I4 -->
+<div class="finding yellow">
+  <div class="head">
+    <span class="badge yellow">Important</span>
+    <h3>I4 · Viewing an expired photo throws a 500 instead of a clean "not found"
+      <span class="filepath">app/routes/dashboard.py:121–131</span>
+    </h3>
+  </div>
+  <div class="body">
+    <p>Survey photos aren't saved to your own storage — they live on LINE's servers and are fetched live each time the dashboard asks for them. LINE deletes these after a while. When that happens, this code has no safety net:</p>
+<pre><code>blob_api = AsyncMessagingApiBlob(api_client)
+content = <span class="bad">await blob_api.get_message_content(image_id)</span>  <span class="c"># throws if expired/invalid</span>
+<span class="kw">return</span> Response(content=content, media_type=<span class="str">"image/jpeg"</span>)</code></pre>
+    <p>If the photo is gone, that line throws → the request 500s → and (thanks to C2) the dashboard gets a traceback in its face instead of a tidy "image unavailable."</p>
+
+    <span class="label">The fix</span>
+    <p>Wrap it and return a clean 404:</p>
+<pre><code><span class="kw">try</span>:
+    content = await blob_api.get_message_content(image_id)
+<span class="kw">except</span> Exception:
+    <span class="good">raise HTTPException(status_code=404, detail="Image not found or expired")</span>
+<span class="kw">return</span> Response(content=content, media_type="image/jpeg")</code></pre>
+    <p>(Bonus: <code class="inline">media_type</code> is hard-coded to <code class="inline">image/jpeg</code>, so a PNG would be mislabeled. Minor, but worth noting alongside this.)</p>
+    <p class="effort">Effort: <span class="pill low">small — wrap in try/except</span></p>
+  </div>
+</div>
+
+<!-- I5 -->
+<div class="finding yellow">
+  <div class="head">
+    <span class="badge yellow">Important</span>
+    <h3>I5 · A typo in the date filter silently returns <i>every</i> report
+      <span class="filepath">app/routes/dashboard.py:81–86</span>
+    </h3>
+  </div>
+  <div class="body">
+    <p>The reports endpoint lets you filter by date, e.g. <code class="inline">?date=2026-06-08</code>. If the date is malformed, this happens:</p>
+<pre><code><span class="kw">try</span>:
+    target_date = datetime.strptime(date, "%Y-%m-%d").date()
+    query = query.where(...)
+<span class="kw">except</span> ValueError:
+    <span class="bad">pass  # Invalid date format, skip filtering</span></code></pre>
+    <p>The word <code class="inline">pass</code> means "do nothing." So if someone types a bad date, the filter is silently skipped and they get the <b>entire database of reports</b> back — the opposite of what they asked for.</p>
+
+    <div class="analogy"><b>Analogy:</b> You ask a librarian for "books from June." They mishear, shrug, and wheel out <i>every book in the library.</i> No warning that they didn't understand you.</div>
+
+    <span class="label">The fix</span>
+    <p>Tell the caller they made a mistake instead of guessing:</p>
+<pre><code><span class="kw">except</span> ValueError:
+    <span class="good">raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")</span></code></pre>
+    <p class="effort">Effort: <span class="pill low">tiny — one line</span></p>
+  </div>
+</div>
+
+<!-- I6 -->
+<div class="finding yellow">
+  <div class="head">
+    <span class="badge yellow">Important</span>
+    <h3>I6 · Database encryption checks are switched off
+      <span class="filepath">app/database/__init__.py:29–31</span>
+    </h3>
+  </div>
+  <div class="body">
+    <p>When connecting to a hosted database, this code sets up the encrypted link but then disables the safety checks:</p>
+<pre><code>ctx = ssl.create_default_context()
+<span class="bad">ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE</span></code></pre>
+    <p><code class="inline">CERT_NONE</code> means "don't bother verifying who you're actually talking to." The traffic is still scrambled, but you can no longer be sure the thing on the other end is really <i>your</i> database.</p>
+
+    <div class="analogy"><b>Analogy:</b> You speak in code so eavesdroppers can't understand you — but you never check the person you're whispering to is your friend, not an impostor wearing their jacket. (This is called a "man-in-the-middle" risk.)</div>
+
+    <span class="label">Why it's only 🟡, not 🔴</span>
+    <p>This is a <i>very</i> common workaround for managed databases (Render, Heroku) whose certificates are awkward, and it's triggered only when your database URL contains <code class="inline">sslmode</code>. It's a known, deliberate trade-off — but right now it turns on automatically rather than being an explicit, conscious choice.</p>
+
+    <span class="label">The fix</span>
+    <p>Best: download your database provider's CA certificate and verify against it (<code class="inline">CERT_REQUIRED</code> + <code class="inline">cafile=...</code>). Minimum: gate this behind an explicit env flag like <code class="inline">DB_INSECURE_SSL=true</code> so it can't silently happen in production.</p>
+    <p class="effort">Effort: <span class="pill med">medium — depends on provider</span></p>
+  </div>
+</div>
+
+<!-- I7 -->
+<div class="finding yellow">
+  <div class="head">
+    <span class="badge yellow">Important</span>
+    <h3>I7 · The "incomplete reports" counter will always show 0 — nothing ever creates one
+      <span class="filepath">app/models/__init__.py:48 · app/services/survey_repository.py:60</span>
+    </h3>
+  </div>
+  <div class="body">
+    <p>You have a whole database table, <code class="inline">IncompleteReport</code>, designed to record people who <i>abandon</i> a survey partway (with a <code class="inline">drop_off_step</code> field — clever, it tells you which question scares people off). The dashboard even counts them:</p>
+<pre><code>incomplete_count = await db.scalar(select(func.count(IncompleteReport.report_id)))</code></pre>
+    <p>But I searched the whole codebase: <b>nothing ever creates an</b> <code class="inline">IncompleteReport</code>. When a survey finishes you make a <code class="inline">CompletedReport</code>; when one is abandoned, the session just sits there or gets overwritten next time. So that "incomplete reports" number on your dashboard is permanently <code class="inline">0</code> and quietly misleading.</p>
+
+    <div class="analogy"><b>Analogy:</b> You installed a "students who dropped the class" counter on the wall, but never wired it to anything. It proudly reads 0 forever, so everyone assumes nobody ever drops.</div>
+
+    <span class="label">The fix</span>
+    <p>This needs a <b>background job</b> (a timer) that periodically finds <code class="inline">SurveySession</code> rows that haven't been touched in, say, 30 minutes, converts them to <code class="inline">IncompleteReport</code> (copying <code class="inline">current_route_id</code>/<code class="inline">current_step</code> into the drop-off fields), and deletes the session. Until that exists, consider hiding the incomplete counter so it doesn't mislead. Worth filing as its own issue.</p>
+    <p class="effort">Effort: <span class="pill high">larger — needs a scheduled task</span></p>
+  </div>
+</div>
+
+<!-- I8 -->
+<div class="finding yellow">
+  <div class="head">
+    <span class="badge yellow">Important</span>
+    <h3>I8 · The database is configured for a single connection — concurrent users will queue
+      <span class="filepath">app/database/__init__.py:41–43</span>
+    </h3>
+  </div>
+  <div class="body">
+<pre><code>engine = create_async_engine(
+    ...,
+    <span class="bad">pool_size=1,
+    max_overflow=0,</span>     <span class="c"># at most ONE database connection at a time</span>
+)</code></pre>
+    <p>A "connection pool" is a set of open phone lines to the database. <code class="inline">pool_size=1, max_overflow=0</code> means there is exactly <b>one line</b>. If two people answer survey questions at the same instant, the second one waits for the first to hang up.</p>
+
+    <div class="analogy"><b>Analogy:</b> A busy clinic with one phone line. Patients don't get turned away, but they wait — and if the call ahead hangs, everyone behind is stuck.</div>
+
+    <span class="label">Why it might be intentional</span>
+    <p>On AWS Lambda, each running copy handles one request anyway, and databases limit total connections — so people sometimes set this to 1 on purpose. If that's your reasoning, leave a one-line comment. If you ever run this as a normal always-on server (not Lambda), raise it to something like <code class="inline">pool_size=5</code> so several users can be served at once.</p>
+    <p class="effort">Effort: <span class="pill low">tiny — change a number, or add a comment</span></p>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- NITS -->
+<!-- ============================================================= -->
+<h2 id="nits">5. 🟢 Minor — polish when you have time</h2>
+
+<div class="finding green">
+  <div class="head"><span class="badge green">Minor</span><h3>N1 · Import sitting inside a function <span class="filepath">app/routes/dashboard.py:115</span></h3></div>
+  <div class="body"><p><code class="inline">from fastapi import HTTPException</code> is written <i>inside</i> a function. It works, but by convention imports live at the top of the file with the others. Move it up so readers see all dependencies in one place.</p></div>
+</div>
+
+<div class="finding green">
+  <div class="head"><span class="badge green">Minor</span><h3>N2 · Using <code class="inline">print()</code> instead of a logger <span class="filepath">throughout</span></h3></div>
+  <div class="body"><p>Everywhere you report status you use <code class="inline">print()</code>. Fine for a class project, but Python's built-in <code class="inline">logging</code> module lets you turn detail up or down, add timestamps, and (importantly) keep error details out of HTTP responses. Worth switching once the app is real.</p></div>
+</div>
+
+<div class="finding green">
+  <div class="head"><span class="badge green">Minor</span><h3>N3 · <code class="inline">localhost</code> hard-coded in the CORS allow-list <span class="filepath">app/main.py:70</span></h3></div>
+  <div class="body"><p><code class="inline">allow_origins=[FRONTEND_URL, "http://localhost:4200"]</code> leaves your laptop's address whitelisted even in production. Harmless in practice, but cleaner to only include <code class="inline">localhost</code> when not in production.</p></div>
+</div>
+
+<div class="finding green">
+  <div class="head"><span class="badge green">Minor</span><h3>N4 · An <code class="inline">import</code> placed in the middle of the file <span class="filepath">app/models/__init__.py:10</span></h3></div>
+  <div class="body"><p><code class="inline">from geoalchemy2 import Geometry</code> appears <i>after</i> a function definition rather than with the other imports at the top. Pure tidiness.</p></div>
+</div>
+
+<div class="finding green">
+  <div class="head"><span class="badge green">Minor</span><h3>N5 · A malformed survey file ends the survey silently <span class="filepath">app/services/routing.py:144–158</span></h3></div>
+  <div class="body"><p>If a route's <code class="inline">next</code> field is an unexpected shape, <code class="inline">_resolve_next_route</code> quietly returns <code class="inline">None</code>, which ends the survey as if it finished normally. Low risk because Pydantic validates the JSON at load time — but a <code class="inline">print</code> warning here would help you spot a broken survey faster.</p></div>
+</div>
+
+<div class="finding green">
+  <div class="head"><span class="badge green">Minor</span><h3>N6 · Half-finished multi-select isn't cleared on "go back" <span class="filepath">app/services/survey_service.py (go-back branch)</span></h3></div>
+  <div class="body"><p>If a user is partway through ticking multiple checkboxes and then taps "go back," their half-finished <code class="inline">pending_multi_select</code> selections aren't cleared. A small UX edge case — they might see stale ticks. Worth a quick test to confirm the behavior you want.</p></div>
+</div>
+
+<!-- ============================================================= -->
+<!-- DEAD CODE -->
+<!-- ============================================================= -->
+<h2 id="dead">6. 🧹 Dead code &amp; leftovers</h2>
+<p>These aren't bugs, but they're misleading — they suggest features that aren't really wired up. Cleaning them makes the code honest about what it actually does.</p>
+<table>
+  <tr><th>What</th><th>Where</th><th>Why it's dead</th></tr>
+  <tr>
+    <td><code class="inline">image_path</code> column</td>
+    <td>models/__init__.py:44, 60</td>
+    <td>Both report tables still have an <code class="inline">image_path</code> column, but images now come out of the JSON <code class="inline">payload</code> (via <code class="inline">extract_images</code>). Nothing ever writes <code class="inline">image_path</code>. It's a leftover from before the refactor — remove it or you'll confuse the next reader.</td>
+  </tr>
+  <tr>
+    <td><code class="inline">IncompleteReport</code> table</td>
+    <td>models/__init__.py:48</td>
+    <td>Defined and counted, but never created (see I7). Either wire it up or hide the counter.</td>
+  </tr>
+  <tr>
+    <td><code class="inline">get_current_admin</code></td>
+    <td>utils/auth.py:33</td>
+    <td>Written but never called (see I1). Once you decide on admin-gating, this becomes useful — right now it's unused.</td>
+  </tr>
+  <tr>
+    <td><code class="inline">/uploads</code> static mount</td>
+    <td>main.py:104</td>
+    <td>Serves a folder for uploaded files, but images are no longer saved to disk (they're proxied live). Likely legacy — confirm nothing else relies on it.</td>
+  </tr>
+</table>
+
+<!-- ============================================================= -->
+<!-- GOOD -->
+<!-- ============================================================= -->
+<h2 id="good">7. ✅ What's genuinely good</h2>
+<p>Reviews aren't only about problems. These are things you did <i>well</i> — keep doing them. <span class="star">🎉</span></p>
+<ul class="clean">
+  <li><b>The "pure function" routing engine</b> (<code class="inline">routing.py</code>). Functions like <code class="inline">compute_next_state</code> and <code class="inline">compute_go_back_state</code> just take inputs and return a decision — they never touch the database or LINE. This is a professional-level design choice: it makes the trickiest logic in your app easy to test and reason about. Genuinely impressive for a first-year project.</li>
+  <li><b>Clear separation of layers.</b> <code class="inline">survey_service</code> (orchestration) → <code class="inline">routing</code> (decisions) → <code class="inline">survey_repository</code> (database) → <code class="inline">survey_messages</code> (LINE formatting). Each file has one job. This is exactly how bigger systems are structured.</li>
+  <li><b>You have real tests.</b> Eight test files covering routing, go-back, multi-select, location points, and message building. Many student projects have none. (Gap: nothing tests the auth/security paths yet — a great next thing to add.)</li>
+  <li><b>Thoughtful UX details</b>, like clearing the answer you're returning to when a user taps "go back" (<code class="inline">survey_service.py:53–55</code>), and capping LINE's alt-text at 400 characters (<code class="inline">survey_messages.py:83</code>).</li>
+  <li><b>Helpful docstrings</b> that state intent, including the "no DB, no LINE API" contract — future-you will thank present-you.</li>
+</ul>
+
+<!-- ============================================================= -->
+<!-- ROADMAP -->
+<!-- ============================================================= -->
+<h2 id="roadmap">8. 🗺️ Suggested fix order</h2>
+<p>Don't try to fix everything at once. Here's a sane order — quick security wins first, then robustness, then polish.</p>
+
+<div class="roadmap-step"><div class="num">1</div><div><b>Today (15 min, huge payoff):</b> C1 (require <code class="inline">SECRET_KEY</code>) and C2 (stop leaking tracebacks). Both are tiny edits that close the two scariest holes.</div></div>
+<div class="roadmap-step"><div class="num">2</div><div><b>This week:</b> I1 (require admin on the dashboard), I4 (handle expired images), I5 (reject bad dates). All small, all close real gaps.</div></div>
+<div class="roadmap-step"><div class="num">3</div><div><b>Before heavier use:</b> I2 (don't crash on changed surveys) and I3 (remove the leaky rate limiter). These prevent confusing crashes.</div></div>
+<div class="roadmap-step"><div class="num">4</div><div><b>When you have time:</b> I6 (database SSL), I7 (incomplete-report job — file as its own issue), I8 (connection pool decision), then the 🟢 nits and the dead-code cleanup.</div></div>
+
+<p style="margin-top:24px;">Given your branch-first workflow, a good move is to open a GitHub issue per item (or one grouped "security hardening" issue for C1+C2+I1) and tackle them on small branches. Want me to draft those issues?</p>
+
+<!-- ============================================================= -->
+<!-- GLOSSARY -->
+<!-- ============================================================= -->
+<h2 id="glossary">9. 📖 Glossary</h2>
+<dl class="glossary">
+  <dt>JWT (JSON Web Token)</dt>
+  <dd>A signed digital "wristband" the server gives a user after login. The user shows it on each request to prove who they are. If the signing secret leaks, anyone can forge one. (See C1.)</dd>
+
+  <dt>Traceback</dt>
+  <dd>The detailed internal report Python prints when code crashes — file names, line numbers, the chain of function calls. Useful to developers, dangerous to expose to strangers. (See C2.)</dd>
+
+  <dt>Endpoint</dt>
+  <dd>A single URL your server answers, e.g. <code class="inline">GET /api/dashboard/stats</code>. Each one is a "door" into your app.</dd>
+
+  <dt>Dependency (in FastAPI)</dt>
+  <dd>A function FastAPI runs <i>before</i> your endpoint, often to check permissions. <code class="inline">Depends(get_current_user)</code> means "first make sure they're logged in." (See I1.)</dd>
+
+  <dt>CORS</dt>
+  <dd>"Cross-Origin Resource Sharing" — browser rules about which websites are allowed to call your API. The allow-list says which front-end addresses are trusted. (See N3.)</dd>
+
+  <dt>Connection pool</dt>
+  <dd>A set of reusable open connections to the database. Opening one is slow, so apps keep a few ready. <code class="inline">pool_size</code> is how many. (See I8.)</dd>
+
+  <dt>SSL / certificate verification</dt>
+  <dd>SSL scrambles traffic so eavesdroppers can't read it. Certificate <i>verification</i> additionally confirms the other end is who it claims to be. Turning verification off keeps the scrambling but loses the identity check. (See I6.)</dd>
+
+  <dt>Man-in-the-middle (MITM)</dt>
+  <dd>An attack where someone secretly sits between two parties, impersonating each to the other. Certificate verification is the main defense. (See I6.)</dd>
+
+  <dt>Rate limiting</dt>
+  <dd>Restricting how often someone can hit an endpoint, to stop spam/abuse. (See I3.)</dd>
+
+  <dt>Pure function</dt>
+  <dd>A function whose output depends only on its inputs, with no side effects (no database, no network). Easy to test and trust. Your <code class="inline">routing.py</code> is full of these — that's a good thing. (See section 7.)</dd>
+
+  <dt>nit (nitpick)</dt>
+  <dd>A tiny, non-urgent style suggestion. Safe to ignore under deadline. (The 🟢 items.)</dd>
+</dl>
+
+<div class="footer-note">
+  Reviewed by Claude (Opus 4.8) on 2026-06-08 · Scope: full <code class="inline">app/</code> backend on <code class="inline">main</code> · 20 Python files read end-to-end.
+  This is a static snapshot — line numbers refer to the code as of this date and may shift as you edit.
+</div>
+
+</div>
+</body>
+</html>

@@ -16,6 +16,7 @@ from app.database import engine, Base, get_db
 from app.handlers.message_handler import route_message_event
 from app.handlers.follow_handler import handle_follow
 from app.utils.survey_loader import survey_manager
+from app.cors import build_cors_origins
 from app.routes.dashboard import router as dashboard_router
 from app.routes.report import router as report_router
 from app.routes.userdata import router as userdata_router
@@ -64,7 +65,8 @@ async def lifespan(app: FastAPI):
     yield
     # (Anything below the yield runs when the server is shutting down)
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")
+FRONTEND_URL = os.getenv("FRONTEND_URL")
+FRONTEND_URLS = os.getenv("FRONTEND_URLS")
 ENV = os.getenv("ENV", "development")
 
 # Disable Swagger UI and ReDoc in production
@@ -76,7 +78,7 @@ app = FastAPI(lifespan=lifespan, docs_url=docs_url, redoc_url=redoc_url)
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://localhost:4200"],
+    allow_origins=build_cors_origins(FRONTEND_URL, FRONTEND_URLS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -106,10 +106,12 @@ async function load() {
       <div class="stat"><b>${stats.total_completed_reports}</b>completed</div>
       <div class="stat"><b>${stats.total_incomplete_reports}</b>incomplete</div>`;
     const d = $('#date').value;
-    const reports = await api('/api/dashboard/reports' + (d ? '?date=' + d : ''));
+    // limit=200 = ดูให้ครบในหน้าเดียว (default API = 20). endpoint คืน envelope {items,...}
+    const q = (d ? '?date=' + d + '&' : '?') + 'limit=200';
+    const reports = (await api('/api/dashboard/reports' + q)).items;
     $('#reports').innerHTML = reports.length
       ? reports.map(card).join('') : '<p>No reports.</p>';
-    const forms = await api('/api/dashboard/form-reports' + (d ? '?date=' + d : ''));
+    const forms = (await api('/api/dashboard/form-reports' + q)).items;
     $('#forms').innerHTML = forms.length
       ? forms.map(formCard).join('') : '<p>No form reports.</p>';
     hydrateImages();

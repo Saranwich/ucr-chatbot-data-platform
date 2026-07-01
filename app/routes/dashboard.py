@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response, HTTPException
+from fastapi import APIRouter, Depends, Response, HTTPException, Query
 from app.utils.auth import get_current_user
 from app.utils import storage
 from fastapi.responses import FileResponse
@@ -9,12 +9,24 @@ from sqlalchemy import func, select
 from geoalchemy2.functions import ST_X, ST_Y
 from app.database import get_db
 from app.models import User, CompletedReport, IncompleteReport, FormReport
-from app.schemas import DashboardStats, CompletedReportSchema, IncompleteReportSchema
 from app.utils.survey_loader import SurveyManager, survey_manager
-from typing import List, Optional
-from datetime import datetime
+from typing import Optional
+from datetime import datetime, timezone, timedelta
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+BANGKOK = timezone(timedelta(hours=7))
+
+
+def with_offset(dt: Optional[datetime]):
+    """แปะ +07:00 ให้ค่าที่เก็บเป็นเวลา Bangkok แบบ naive.
+
+    DB เก็บ wall-clock ของ Bangkok ไว้แบบไม่มี tzinfo — ถ้าส่งดิบ ๆ frontend จะ
+    ตีความเป็น UTC. แปะ tz ให้ FastAPI serialize ออกมาเป็น ...+07:00.
+    """
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=BANGKOK)
+    return dt
 
 
 def extract_images(payload: dict) -> list:
@@ -38,18 +50,110 @@ def extract_images(payload: dict) -> list:
     return images
 
 
-def parse_date_filter(date: Optional[str]):
-    """แปลงค่า filter ?date=YYYY-MM-DD.
+def problem_type_of(payload) -> Optional[str]:
+    """ประเภทปัญหา = คำตอบข้อแรก (q_start) เช่น อากาศร้อน / น้ำท่วม / ขยะ."""
+    return payload.get("q_start") if isinstance(payload, dict) else None
 
-    คืน None ถ้าไม่ได้ส่งมา (ไม่กรอง), คืน date ถ้ารูปแบบถูก,
-    โยน HTTP 400 ถ้ารูปแบบผิด — แทนที่จะเงียบๆ แล้วคืนทุก record.
+
+def serialize_completed(row: dict) -> dict:
+    payload = row["payload"]
+    images = extract_images(payload)
+    lat, lon = row["latitude"], row["longitude"]
+    return {
+        "report_id": row["report_id"],
+        "lineuser_id": row["lineuser_id"],
+        "source": "survey",
+        "survey_version": row["survey_version"],
+        "problem_type": problem_type_of(payload),
+        "status": "completed",
+        "is_complete": True,
+        "latitude": lat,
+        "longitude": lon,
+        "has_location": lat is not None and lon is not None,
+        "images": images,
+        "has_image": bool(images),
+        "payload": payload,
+        "created_at": with_offset(row["created_at"]),
+    }
+
+
+def serialize_incomplete(row: dict, question_id, question_text) -> dict:
+    payload = row["payload"]
+    images = extract_images(payload)
+    lat, lon = row["latitude"], row["longitude"]
+    return {
+        "report_id": row["report_id"],
+        "lineuser_id": row["lineuser_id"],
+        "source": "survey",
+        "survey_version": row["survey_version"],
+        "problem_type": problem_type_of(payload),
+        "status": row["status"],
+        "is_complete": False,
+        "latitude": lat,
+        "longitude": lon,
+        "has_location": lat is not None and lon is not None,
+        "images": images,
+        "has_image": bool(images),
+        "drop_off_route_id": row["drop_off_route_id"],
+        "drop_off_step": row["drop_off_step"],
+        "drop_off_question_id": question_id,
+        "drop_off_question_text": question_text,
+        "payload": payload,
+        "created_at": with_offset(row["created_at"]),
+    }
+
+
+def serialize_form(row: dict) -> dict:
+    lat, lon = row["latitude"], row["longitude"]
+    has_image = bool(row["image_path"])
+    return {
+        "report_id": row["report_id"],
+        "lineuser_id": row["lineuser_id"],
+        "source": "form_report",
+        "category": row["category"],
+        "description": row["description"],
+        "status": row["status"],
+        "latitude": lat,
+        "longitude": lon,
+        "has_location": lat is not None and lon is not None,
+        "image_url": f"/api/form-reports/{row['report_id']}/image" if has_image else None,
+        "has_image": has_image,
+        "created_at": with_offset(row["created_at"]),
+    }
+
+
+def envelope(items: list, page: int, limit: int) -> dict:
+    """หุ้ม list ด้วย {items,total,page,limit} + แบ่งหน้า.
+
+    ponytail: slice ใน Python เพราะข้อมูลยังเล็ก (หลักสิบ). ถ้าโตค่อยดัน
+    LIMIT/OFFSET ลง SQL.
     """
+    total = len(items)
+    start = (page - 1) * limit
+    return {"items": items[start:start + limit], "total": total, "page": page, "limit": limit}
+
+
+def parse_date_filter(date: Optional[str]):
+    """แปลง YYYY-MM-DD → date. None ถ้าไม่ส่ง, 400 ถ้ารูปแบบผิด."""
     if not date:
         return None
     try:
         return datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
+
+
+def apply_date_range(query, column, date, date_from, date_to):
+    d = parse_date_filter(date)
+    if d:
+        query = query.where(func.date(column) == d)
+    df = parse_date_filter(date_from)
+    if df:
+        query = query.where(func.date(column) >= df)
+    dt = parse_date_filter(date_to)
+    if dt:
+        query = query.where(func.date(column) <= dt)
+    return query
 
 
 def resolve_drop_off_question(
@@ -68,35 +172,79 @@ def resolve_drop_off_question(
     question = manager.get_question(survey_version, question_id)
     return question_id, question.text if question else None
 
-@router.get("/stats", response_model=DashboardStats)
+
+@router.get("/stats")
 async def get_dashboard_stats(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
     user_count = await db.scalar(select(func.count(User.lineuser_id)))
-    completed_count = await db.scalar(select(func.count(CompletedReport.report_id)))
     incomplete_count = await db.scalar(select(func.count(IncompleteReport.report_id)))
-    
+
+    rows = (await db.execute(select(
+        CompletedReport.survey_version,
+        CompletedReport.payload,
+        CompletedReport.created_at,
+        ST_X(CompletedReport.location_data).label("longitude"),
+        ST_Y(CompletedReport.location_data).label("latitude"),
+    ))).mappings().all()
+
+    by_problem_type: dict = {}
+    by_survey_version: dict = {}
+    daily: dict = {}
+    with_location = 0
+    with_image = 0
+    for r in rows:
+        payload = r["payload"]
+        pt = problem_type_of(payload)
+        if pt:
+            by_problem_type[pt] = by_problem_type.get(pt, 0) + 1
+        v = r["survey_version"]
+        by_survey_version[v] = by_survey_version.get(v, 0) + 1
+        if r["latitude"] is not None and r["longitude"] is not None:
+            with_location += 1
+        if extract_images(payload):
+            with_image += 1
+        if r["created_at"]:
+            day = r["created_at"].date().isoformat()
+            daily[day] = daily.get(day, 0) + 1
+
+    total = len(rows)
     return {
         "total_users": user_count or 0,
-        "total_completed_reports": completed_count or 0,
-        "total_incomplete_reports": incomplete_count or 0
+        "total_completed_reports": total,
+        "total_incomplete_reports": incomplete_count or 0,
+        "by_problem_type": by_problem_type,
+        "by_survey_version": by_survey_version,
+        "with_location": with_location,
+        "without_location": total - with_location,
+        "with_image": with_image,
+        "without_image": total - with_image,
+        "daily": [{"date": d, "count": c} for d, c in sorted(daily.items())],
     }
+
 
 @router.get("/available-dates")
 async def get_available_dates(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # ดึงวันที่ทั้งหมดที่มีการทำรายงาน (CompletedReport)
-    query = select(func.date(CompletedReport.created_at).distinct())
+    # ดึงวันที่ทั้งหมดที่มีการทำรายงาน (CompletedReport) เรียงใหม่→เก่า
+    date_col = func.date(CompletedReport.created_at)
+    query = select(date_col).distinct().order_by(date_col.desc())
     result = await db.execute(query)
     dates = [row[0].strftime("%Y-%m-%d") for row in result.all() if row[0]]
     return {"dates": dates}
 
-@router.get("/reports", response_model=List[CompletedReportSchema])
+
+@router.get("/reports")
 async def get_completed_reports(
-    date: Optional[str] = None, 
+    date: Optional[str] = None,
+    date_from: Optional[str] = Query(None, alias="from"),
+    date_to: Optional[str] = Query(None, alias="to"),
+    problem_type: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -109,24 +257,22 @@ async def get_completed_reports(
         CompletedReport.created_at,
         ST_X(CompletedReport.location_data).label("longitude"),
         ST_Y(CompletedReport.location_data).label("latitude")
-    )
+    ).order_by(CompletedReport.created_at.desc())
 
-    target_date = parse_date_filter(date)
-    if target_date:
-        query = query.where(func.date(CompletedReport.created_at) == target_date)
+    query = apply_date_range(query, CompletedReport.created_at, date, date_from, date_to)
 
     result = await db.execute(query)
-    reports = []
-    for row in result.mappings():
-        item = dict(row)
-        item["images"] = extract_images(item.get("payload"))
-        reports.append(item)
-    return reports
+    items = [serialize_completed(dict(row)) for row in result.mappings()]
+    if problem_type:
+        items = [i for i in items if i["problem_type"] == problem_type]
+    return envelope(items, page, limit)
 
 
-@router.get("/incomplete-reports", response_model=List[IncompleteReportSchema])
+@router.get("/incomplete-reports")
 async def get_incomplete_reports(
     date: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -143,28 +289,27 @@ async def get_incomplete_reports(
         ST_Y(IncompleteReport.location_data).label("latitude"),
     ).order_by(IncompleteReport.created_at.desc())
 
-    target_date = parse_date_filter(date)
-    if target_date:
-        query = query.where(func.date(IncompleteReport.created_at) == target_date)
+    query = apply_date_range(query, IncompleteReport.created_at, date, None, None)
 
     result = await db.execute(query)
-    reports = []
+    items = []
     for row in result.mappings():
-        item = dict(row)
+        row = dict(row)
         question_id, question_text = resolve_drop_off_question(
             survey_manager,
-            item["survey_version"],
-            item["drop_off_route_id"],
-            item["drop_off_step"],
+            row["survey_version"],
+            row["drop_off_route_id"],
+            row["drop_off_step"],
         )
-        item["drop_off_question_id"] = question_id
-        item["drop_off_question_text"] = question_text
-        reports.append(item)
-    return reports
+        items.append(serialize_incomplete(row, question_id, question_text))
+    return envelope(items, page, limit)
+
 
 @router.get("/form-reports")
 async def get_form_reports(
     date: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -181,23 +326,16 @@ async def get_form_reports(
         ST_Y(FormReport.location_data).label("latitude"),
     ).order_by(FormReport.created_at.desc())
 
-    target_date = parse_date_filter(date)
-    if target_date:
-        query = query.where(func.date(FormReport.created_at) == target_date)
+    query = apply_date_range(query, FormReport.created_at, date, None, None)
 
     result = await db.execute(query)
-    reports = []
-    for row in result.mappings():
-        item = dict(row)
-        item["image_url"] = (
-            f"/api/form-reports/{item['report_id']}/image" if item["image_path"] else None
-        )
-        reports.append(item)
-    return reports
+    items = [serialize_form(dict(row)) for row in result.mappings()]
+    return envelope(items, page, limit)
 
-@router.get("/reports/{report_id}", response_model=CompletedReportSchema)
+
+@router.get("/reports/{report_id}")
 async def get_report_detail(
-    report_id: int, 
+    report_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -214,11 +352,9 @@ async def get_report_detail(
     result = await db.execute(query)
     report = result.mappings().first()
     if not report:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Report not found")
-    item = dict(report)
-    item["images"] = extract_images(item.get("payload"))
-    return item
+    return serialize_completed(dict(report))
+
 
 async def fetch_image_content(blob_api, image_id: str) -> bytes:
     """ดึง bytes รูปจาก LINE CDN.
@@ -230,6 +366,7 @@ async def fetch_image_content(blob_api, image_id: str) -> bytes:
         return await blob_api.get_message_content(image_id)
     except Exception:
         raise HTTPException(status_code=404, detail="Image not found or expired")
+
 
 @router.get("/image/{image_id}")
 async def get_line_image(

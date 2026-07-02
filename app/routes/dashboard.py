@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 from geoalchemy2.functions import ST_X, ST_Y
 from app.database import get_db
-from app.models import User, CompletedReport, IncompleteReport, FormReport
+from app.models import User, CompletedReport, IncompleteReport, FormReport, BroadcastReport
 from app.utils.survey_loader import SurveyManager, survey_manager
 from typing import Optional
 from datetime import datetime, timezone, timedelta
@@ -120,6 +120,40 @@ def serialize_form(row: dict) -> dict:
         "has_image": has_image,
         "created_at": with_offset(row["created_at"]),
     }
+
+
+# broadcast alert_type (code) → ชื่อหมวดไทยที่ dashboard group (align กับ survey/form)
+# "both" map เป็น 2 หมวด → serialize จะแตกเป็น 2 หมุดบนแผนที่
+BROADCAST_CATEGORY = {
+    "flood": ["น้ำท่วม/น้ำขัง"],           # ตรงทั้ง survey + form
+    "heat":  ["อากาศร้อน"],                # ตาม survey (form ใช้ "ความร้อน/อุณหภูมิ" — รอ align)
+    "both":  ["น้ำท่วม/น้ำขัง", "อากาศร้อน"],  # ← both = 2 หมุด
+}
+
+
+def serialize_broadcast(row: dict) -> list:
+    """ปั้น broadcast report 1 แถว → list ของ item สำหรับ dashboard.
+
+    flood/heat → 1 item, both → 2 item (คนละ category แต่ location/รูป/เวลาเหมือนกัน)
+    """
+    lat, lon = row["latitude"], row["longitude"]
+    has_image = bool(row["image_path"])
+    base = {
+        "report_id": row["report_id"],
+        "lineuser_id": row["lineuser_id"],
+        "source": "broadcast",
+        "alert_type": row["alert_type"],
+        "confirmed": bool(row["confirmed"]),
+        "community": row["community"],
+        "latitude": lat,
+        "longitude": lon,
+        "has_location": lat is not None and lon is not None,
+        "image_url": f"/api/dashboard/broadcast-image/{row['report_id']}" if has_image else None,  # TODO: endpoint เสิร์ฟรูป
+        "has_image": has_image,
+        "created_at": with_offset(row["created_at"]),
+    }
+    # แตกตาม category ที่ map ไว้ (both → 2 item)
+    return [{**base, "category": cat} for cat in BROADCAST_CATEGORY.get(row["alert_type"], [])]
 
 
 def envelope(items: list, page: int, limit: int) -> dict:
@@ -330,6 +364,39 @@ async def get_form_reports(
 
     result = await db.execute(query)
     items = [serialize_form(dict(row)) for row in result.mappings()]
+    return envelope(items, page, limit)
+
+
+@router.get("/broadcast-reports")
+async def get_broadcast_reports(
+    date: Optional[str] = None,
+    alert_type: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    # รายงานจาก broadcast แจ้งเตือนอากาศ (flood/heat/both) — พล็อตหมุดได้เหมือน report อื่น
+    query = select(
+        BroadcastReport.report_id,
+        BroadcastReport.lineuser_id,
+        BroadcastReport.alert_type,
+        BroadcastReport.confirmed,
+        BroadcastReport.community,
+        BroadcastReport.image_path,
+        BroadcastReport.created_at,
+        ST_X(BroadcastReport.location_data).label("longitude"),
+        ST_Y(BroadcastReport.location_data).label("latitude"),
+    ).order_by(BroadcastReport.created_at.desc())
+
+    query = apply_date_range(query, BroadcastReport.created_at, date, None, None)
+    result = await db.execute(query)
+
+    items = []
+    for row in result.mappings():
+        items.extend(serialize_broadcast(dict(row)))   # extend เพราะ both คืน 2 item
+    if alert_type:
+        items = [i for i in items if i["alert_type"] == alert_type]
     return envelope(items, page, limit)
 
 

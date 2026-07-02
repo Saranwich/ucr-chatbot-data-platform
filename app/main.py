@@ -21,6 +21,7 @@ from app.routes.dashboard import router as dashboard_router
 from app.routes.report import router as report_router
 from app.routes.userdata import router as userdata_router
 from fastapi.middleware.cors import CORSMiddleware
+from mangum import Mangum
 import os
 
 # NEW: The "lifespan" context manager is how FastAPI runs code BEFORE the server starts accepting requests
@@ -158,3 +159,6 @@ async def handle_event_safely(event, line_bot_api, db):
                 )
             except Exception:
                 print(f"emergency reply failed: {traceback.format_exc()}")
+
+
+handler = Mangum(app)

@@ -145,6 +145,7 @@ def serialize_broadcast(row: dict) -> list:
         "alert_type": row["alert_type"],
         "confirmed": bool(row["confirmed"]),
         "community": row["community"],
+        "note": row["note"],
         "latitude": lat,
         "longitude": lon,
         "has_location": lat is not None and lon is not None,
@@ -383,6 +384,7 @@ async def get_broadcast_reports(
         BroadcastReport.alert_type,
         BroadcastReport.confirmed,
         BroadcastReport.community,
+        BroadcastReport.note,
         BroadcastReport.image_path,
         BroadcastReport.created_at,
         ST_X(BroadcastReport.location_data).label("longitude"),
@@ -452,3 +454,19 @@ async def get_line_image(
         content = await fetch_image_content(blob_api, image_id)
         # Returns the image as a standard response with correct media type
         return Response(content=content, media_type="image/jpeg")
+
+
+@router.get("/broadcast-image/{report_id}")
+async def get_broadcast_image(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    # รูปจุดน้ำท่วมจาก broadcast report — เก็บถาวรใน uploads/broadcast/<id>.jpg (utils/storage)
+    key = await db.scalar(
+        select(BroadcastReport.image_path).where(BroadcastReport.report_id == report_id)
+    )
+    stored = storage.local_file(key)
+    if not stored:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(stored, media_type="image/jpeg")

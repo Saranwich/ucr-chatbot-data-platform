@@ -43,3 +43,4 @@ python-jose[cryptography]==3.5.0
 bcrypt==4.2.0
 boto3
 mangum
+google-genai==2.10.0

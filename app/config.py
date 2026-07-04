@@ -16,21 +16,7 @@ EDIT_PROFILE_URL = os.getenv("EDIT_PROFILE_URL")  # ลิงก์เปิด�
 SURVEYS_DIR = BASE_DIR / "app" / "data" / "surveys"
 IMAGES_DIR = BASE_DIR / "app" / "data" / "images"
 
-#add question file path here
-SURVEY_TRIGGER_MAP = {
-    "เริ่มทำแบบสำรวจ": "fdg210626",
-    # คำเทสต์ — ครอบ __...__ ให้ชาวบ้านพิมพ์โดนโดยบังเอิญไม่ได้ แต่เรายังเรียกเทสต์ได้
-    "__devtest__": "devtest",
-    "__d2__": "community_report_v1",
-    "__flex__": "flex_devtest"
-    # อนาคตถ้ามีโปรเจกต์ใหม่ แค่มาเพิ่มตรงนี้ เช่น "รายงานน้ำท่วม": "flood_v2"
-}
-
-# Control keywords ที่ปุ่ม quick-reply ส่งกลับมา (และรับได้เมื่อผู้ใช้พิมพ์เอง)
-# ⚠️ ชั่วคราว: ดู docs/adr/0001-rename-sentinels-to-action-words.md
-# ปลายทางคือย้ายไปเป็น PostbackAction data token (issue #18)
-GO_BACK_KEYWORD = "ย้อนกลับ"
-CONFIRM_KEYWORD = "ยืนยัน"
+# V1 survey trigger map + go-back/confirm keywords ลบแล้ว (survey chat engine ออกไปแล้ว)
 
 # Static Reply Messages
 PROJECT_INFO_TEXT = (

@@ -22,16 +22,8 @@ class User(Base):
     community = Column(String)
     created_at = Column(DateTime, default=get_bangkok_now, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))
 
-class SurveySession(Base):
-    __tablename__ = "survey_sessions"
-    lineuser_id = Column(String, ForeignKey("users.lineuser_id"), primary_key=True)
-    survey_version = Column(String, nullable=False)
-    current_route_id = Column(String, nullable=True)   # which route the user is in
-    current_step = Column(Integer, default=0)          # step index within current_route_id
-    route_history = Column(JSON, default=list, nullable=False)  # stack: [{"route_id": str, "step": int}]
-    payload = Column(JSON, default=dict, nullable=False)
-    pending_multi_select = Column(JSON, default=dict, nullable=False)  # {question_id: [answers]}
-    updated_at = Column(DateTime, default=get_bangkok_now, onupdate=get_bangkok_now, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))
+# SurveySession (live V1 survey state) ลบแล้ว — V2 เก็บ conversation ใน Redis (TTL)
+# completed_reports / incomplete_reports คงไว้: dashboard ยังอ่านข้อมูลสำรวจเก่า
 
 class CompletedReport(Base):
     __tablename__ = "completed_reports"

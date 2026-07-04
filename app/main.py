@@ -41,14 +41,6 @@ async def lifespan(app: FastAPI):
             for col in ("nickname", "age_range", "gender", "community"):
                 await conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
 
-            # survey_sessions gained pending_multi_select (multi-select accumulator)
-            # after the table first shipped — same create_all blind spot. Without this,
-            # a DB created before that column crashes every session insert/select.
-            await conn.execute(text(
-                "ALTER TABLE survey_sessions "
-                "ADD COLUMN IF NOT EXISTS pending_multi_select JSON DEFAULT '{}'::json"
-            ))
-
             # broadcast_reports gained flow-state + note columns after first ship —
             # same create_all blind spot; add idempotently. DEFAULT 'done' ให้แถวเก่า
             # (สร้างก่อนมี column) ถือเป็นรายงานที่จบแล้ว

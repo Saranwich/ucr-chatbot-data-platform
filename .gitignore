@@ -166,3 +166,6 @@ GEMINI.md
 uploads/
 # private keys never belong in the repo
 *.pem
+
+# AI-agent local workspace (planning notes, not product code)
+.agent-workspace/

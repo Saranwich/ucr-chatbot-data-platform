@@ -100,4 +100,8 @@ class BroadcastReport(Base):
     location_data = Column(Geometry('POINT', srid=4326), nullable=True)  # จุดน้ำท่วม (flood/both); heat มักเป็น null
     image_path = Column(String, nullable=True)             # storage key ของรูปจุดน้ำขัง
     community = Column(String, nullable=True)              # snapshot ชุมชนตอนรายงาน
+    # state ของ flow เก็บข้อมูล — บอทดูตรงนี้เพื่อรู้ว่า user คนนี้อยู่ขั้นไหน
+    # awaiting_note → awaiting_location → awaiting_photo → done  (ดู broadcast_flow_handler)
+    status = Column(String, default="done", nullable=False)
+    note = Column(String, nullable=True)                   # ข้อความที่ user เล่า/บ่น (free text)
     created_at = Column(DateTime, default=get_bangkok_now, server_default=text("(now() at time zone 'utc' at time zone 'asia/bangkok')"))

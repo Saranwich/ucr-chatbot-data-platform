@@ -49,6 +49,16 @@ async def lifespan(app: FastAPI):
                 "ADD COLUMN IF NOT EXISTS pending_multi_select JSON DEFAULT '{}'::json"
             ))
 
+            # broadcast_reports gained flow-state + note columns after first ship —
+            # same create_all blind spot; add idempotently. DEFAULT 'done' ให้แถวเก่า
+            # (สร้างก่อนมี column) ถือเป็นรายงานที่จบแล้ว
+            await conn.execute(text(
+                "ALTER TABLE broadcast_reports ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'done'"
+            ))
+            await conn.execute(text(
+                "ALTER TABLE broadcast_reports ADD COLUMN IF NOT EXISTS note VARCHAR"
+            ))
+
             print("✅ Database tables checked/created with Bangkok timezone defaults!")
     except Exception as e:
         print(f"⚠️ Database initialization warning (likely concurrent start): {e}")

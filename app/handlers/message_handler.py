@@ -1,5 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from linebot.v3.webhooks import TextMessageContent
+from linebot.v3.messaging import ReplyMessageRequest, TextMessage
+from app.services.ai_tool import build_question
 from app.handlers.info_handler import handle_info_request
 from app.handlers.stat_handler import handle_stat_request
 from app.handlers.report_handler import handle_report_request
@@ -58,4 +60,8 @@ async def handle_text_message(event, line_bot_api, db: AsyncSession):
         await decline(event, line_bot_api, db, NO_MAP[text])
         return
 
-    # 6. ponytail: free text → AI reply lands here in step 1 (#88); no-op for now
+    # 6. Free text → AI core (step 1: hardcoded reply; Gemini + memory come later)
+    answer = await build_question(text)
+    await line_bot_api.reply_message(
+        ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=answer)])
+    )

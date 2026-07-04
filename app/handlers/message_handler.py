@@ -60,8 +60,8 @@ async def handle_text_message(event, line_bot_api, db: AsyncSession):
         await decline(event, line_bot_api, db, NO_MAP[text])
         return
 
-    # 6. Free text → AI core (step 1: hardcoded reply; Gemini + memory come later)
-    answer = await build_question(text)
+    # 6. Free text → AI core (Gemini + Redis conversation memory)
+    answer = await build_question(event.source.user_id, text)
     await line_bot_api.reply_message(
         ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=answer)])
     )

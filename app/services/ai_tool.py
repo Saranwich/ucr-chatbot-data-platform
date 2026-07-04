@@ -4,6 +4,7 @@
 # system prompt. record_complaint tool + Redis memory + multi-turn come in steps
 # 4-6; the prompt already describes the tool the model will get then.
 """
+from app.services import session
 from app.services.llm import get_response
 
 NONG_MUEANG_SYSTEM_PROMPT = """
@@ -43,9 +44,11 @@ NONG_MUEANG_SYSTEM_PROMPT = """
 """
 
 
-async def build_question(user_text: str) -> str:
-    # step 3: single-turn — user's message + persona system prompt (no memory yet)
-    return await get_response(
-        [{"role": "user", "content": user_text}],
-        system=NONG_MUEANG_SYSTEM_PROMPT,
-    )
+async def build_question(user_id: str, user_text: str) -> str:
+    # step 4: multi-turn memory — persist the user's turn, feed the whole
+    # transcript to the model, persist the reply. (Windowing + completion: #92)
+    await session.append(user_id, "user", user_text)
+    history = await session.load(user_id)
+    reply = await get_response(history, system=NONG_MUEANG_SYSTEM_PROMPT)
+    await session.append(user_id, "model", reply)
+    return reply

@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 
 # แลกได้บรรทัดเดียว — flash-lite ถูก/เร็วสุด (ดูคุณภาพตอน step 5 multi-turn)
-MODEL = "gemini-2.5-flash-lite"
+MODEL = "gemini-3.1-flash-lite"
 
 _client = None
 

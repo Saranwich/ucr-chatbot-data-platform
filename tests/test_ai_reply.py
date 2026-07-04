@@ -13,13 +13,29 @@ class FakeApi:
         self.sent = req.messages
 
 
+class FakeSession:
+    """In-memory stand-in for the Redis transcript store."""
+    def __init__(self):
+        self.msgs = []
+
+    async def append(self, user_id, role, content):
+        self.msgs.append({"role": role, "content": content})
+
+    async def load(self, user_id):
+        return list(self.msgs)
+
+
 def _text_event(text):
-    return SimpleNamespace(reply_token="rt", message=SimpleNamespace(text=text))
+    return SimpleNamespace(
+        reply_token="rt", source=SimpleNamespace(user_id="U1"),
+        message=SimpleNamespace(text=text),
+    )
 
 
 def test_free_text_gets_ai_reply(monkeypatch):
-    # ข้อความทั่วไป → AI core; mock LLM ให้เทสต์ไม่ยิง network จริง
+    # ข้อความทั่วไป → AI core; mock LLM + session ให้เทสต์ไม่แตะ network/Redis จริง
     captured = {}
+    fake_session = FakeSession()
 
     async def fake_llm(messages, system=None):
         captured["messages"] = messages
@@ -27,10 +43,14 @@ def test_free_text_gets_ai_reply(monkeypatch):
         return "โมเดลตอบกลับ"
 
     monkeypatch.setattr(ai_tool, "get_response", fake_llm)
+    monkeypatch.setattr(ai_tool, "session", fake_session)
 
     api = FakeApi()
     asyncio.run(handle_text_message(_text_event("ถนนหน้าบ้านมืดมาก"), api, db=None))
+
     assert api.sent[0].text == "โมเดลตอบกลับ"
-    # ส่งข้อความจริงของผู้ใช้ + persona system prompt เข้าโมเดล
-    assert captured["messages"][0]["content"] == "ถนนหน้าบ้านมืดมาก"
+    # โมเดลได้ transcript ที่มีข้อความผู้ใช้ + persona prompt
+    assert captured["messages"][-1] == {"role": "user", "content": "ถนนหน้าบ้านมืดมาก"}
     assert captured["system"] is ai_tool.NONG_MUEANG_SYSTEM_PROMPT
+    # ทั้งฝั่ง user และ model ถูกเก็บลง session
+    assert [m["role"] for m in fake_session.msgs] == ["user", "model"]

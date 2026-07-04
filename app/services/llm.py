@@ -25,11 +25,14 @@ def _get_client():
     return _client
 
 
-async def get_response(messages: list[dict]) -> str:
+async def get_response(messages: list[dict], system: str | None = None) -> str:
     """messages: [{"role": "user"|"model", "content": str}, ...] -> reply text."""
     contents = [
         types.Content(role=m["role"], parts=[types.Part(text=m["content"])])
         for m in messages
     ]
-    resp = await _get_client().aio.models.generate_content(model=MODEL, contents=contents)
+    config = types.GenerateContentConfig(system_instruction=system) if system else None
+    resp = await _get_client().aio.models.generate_content(
+        model=MODEL, contents=contents, config=config
+    )
     return resp.text

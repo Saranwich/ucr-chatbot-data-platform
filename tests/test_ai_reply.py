@@ -19,11 +19,18 @@ def _text_event(text):
 
 def test_free_text_gets_ai_reply(monkeypatch):
     # ข้อความทั่วไป → AI core; mock LLM ให้เทสต์ไม่ยิง network จริง
-    async def fake_llm(messages):
+    captured = {}
+
+    async def fake_llm(messages, system=None):
+        captured["messages"] = messages
+        captured["system"] = system
         return "โมเดลตอบกลับ"
 
     monkeypatch.setattr(ai_tool, "get_response", fake_llm)
 
     api = FakeApi()
-    asyncio.run(handle_text_message(_text_event("สวัสดีจ้า"), api, db=None))
+    asyncio.run(handle_text_message(_text_event("ถนนหน้าบ้านมืดมาก"), api, db=None))
     assert api.sent[0].text == "โมเดลตอบกลับ"
+    # ส่งข้อความจริงของผู้ใช้ + persona system prompt เข้าโมเดล
+    assert captured["messages"][0]["content"] == "ถนนหน้าบ้านมืดมาก"
+    assert captured["system"] is ai_tool.NONG_MUEANG_SYSTEM_PROMPT

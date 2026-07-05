@@ -24,8 +24,10 @@ def _get_client():
 
 
 def _to_contents(messages: list[dict]) -> list:
+    # ponytail: coerce None/empty content → "" — a Part(text=None) is an empty
+    # oneof and Gemini 400s on it (e.g. a model turn that ended with no text).
     return [
-        types.Content(role=m["role"], parts=[types.Part(text=m["content"])])
+        types.Content(role=m["role"], parts=[types.Part(text=m.get("content") or "")])
         for m in messages
     ]
 
@@ -50,7 +52,12 @@ async def chat(messages: list[dict], system: str | None = None,
 
     resp = await client.aio.models.generate_content(model=MODEL, contents=contents, config=config)
 
-    if resp.function_calls:
+    # ponytail: loop tool rounds — the model may split several record_complaint
+    # calls across turns; keep feeding results until it returns a plain-text reply
+    # (cap 5 so a misbehaving model can't spin forever).
+    for _ in range(5):
+        if not resp.function_calls:
+            break
         contents.append(resp.candidates[0].content)  # the model's tool-call turn
         for fc in resp.function_calls:
             if tool_handler:
@@ -59,7 +66,6 @@ async def chat(messages: list[dict], system: str | None = None,
                 role="tool",
                 parts=[types.Part.from_function_response(name=fc.name, response={"ok": True})],
             ))
-        # ponytail: single round-trip — one batch of tool calls then a text reply
         resp = await client.aio.models.generate_content(model=MODEL, contents=contents, config=config)
 
-    return resp.text
+    return resp.text or ""  # model can end a tool turn with no text; caller supplies a fallback

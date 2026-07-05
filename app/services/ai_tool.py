@@ -5,19 +5,30 @@
 # 4-6; the prompt already describes the tool the model will get then.
 """
 from app.services import llm, report, session
+from app.services.lookups import CATEGORIES
 
 # record_complaint — provider-neutral tool spec (llm.py turns it into an SDK tool).
-# 4 fields: category + notes required; location + severity optional (§6.5).
+# category + notes required; severity + title + location optional.
+# ponytail: severity enum = low/med/high here, but DBML reports.severity CHECK is
+# low/medium/high — "med" vs "medium" drift; reconcile at the DB seam in M3.
 RECORD_COMPLAINT = {
     "name": "record_complaint",
     "description": "บันทึกปัญหาชุมชน 1 เรื่อง เมื่อได้ข้อมูลครบ — เรียกแยกทีละเรื่อง",
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "category": {"type": "STRING", "description": "ประเภท/หมวดหมู่ของปัญหา"},
+            "category": {
+                "type": "STRING",
+                "description": "ประเภท/หมวดหมู่ของปัญหา — เลือกได้เฉพาะค่าในลิสต์นี้: "
+                + ", ".join(CATEGORIES),
+            },
             "notes": {"type": "STRING", "description": "รายละเอียดของปัญหา"},
+            "severity": {
+                "type": "STRING",
+                "description": "ความรุนแรง/ผลกระทบ ถ้ามี — เลือกได้เฉพาะ: low, med, high",
+            },
+            "title": {"type": "STRING", "description": "สรุปปัญหาสั้นๆ 1 บรรทัด"},
             "location": {"type": "STRING", "description": "สถานที่ (พิกัดหรือชื่อ) ถ้ามี"},
-            "severity": {"type": "STRING", "description": "ความรุนแรง/ผลกระทบ ถ้ามี"},
         },
         "required": ["category", "notes"],
     },
@@ -72,7 +83,8 @@ async def build_question(user_id: str, user_text: str) -> str:
 
     def record(name: str, args: dict) -> None:
         print(f"session done — {name}: {args}")
-        report.save(user_id, args)
+        # hook เติม field ที่ producer (AI) ต้องกำหนดเอง ก่อนบันทึกลง reports
+        report.save(user_id, {**args, "source": "ai", "status": "completed", "is_complete": True})
 
     reply = await llm.chat(
         history,
@@ -80,5 +92,7 @@ async def build_question(user_id: str, user_text: str) -> str:
         tools=[RECORD_COMPLAINT],
         tool_handler=record,
     )
+    # ponytail: model บางทีจบ turn หลังเรียก tool โดยไม่มีข้อความ → fallback กันส่ง text ว่าง/None
+    reply = reply or "ขอบคุณค่ะ เมืองรับเรื่องไว้ให้แล้วนะคะ 🙏 ถ้ามีเรื่องอื่นในชุมชนอยากเล่าเพิ่ม บอกเมืองได้เลยค่ะ"
     await session.append(user_id, "model", reply)
     return reply

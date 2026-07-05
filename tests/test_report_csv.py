@@ -13,6 +13,6 @@ def test_save_appends_rows(tmp_path, monkeypatch):
     rows = list(csv.DictReader(path.open(encoding="utf-8")))
     assert len(rows) == 2
     assert rows[0]["category"] == "ไฟฟ้าสาธารณะ"
-    assert rows[0]["location"] == "ซอย 5"
-    assert rows[1]["location"] == ""      # optional fields blank, not missing
+    assert rows[0]["location_text"] == "ซอย 5"
+    assert rows[1]["location_text"] == ""  # optional fields blank, not missing
     assert rows[1]["severity"] == ""

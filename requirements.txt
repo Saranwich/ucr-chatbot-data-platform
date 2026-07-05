@@ -45,3 +45,7 @@ boto3
 mangum
 google-genai==2.10.0
 redis==8.0.1
+
+# --- test / dev ---
+pytest==8.3.5
+pytest-asyncio==0.24.0

@@ -4,7 +4,7 @@
 # system prompt. record_complaint tool + Redis memory + multi-turn come in steps
 # 4-6; the prompt already describes the tool the model will get then.
 """
-from app.services import llm, session
+from app.services import llm, report, session
 
 # record_complaint — provider-neutral tool spec (llm.py turns it into an SDK tool).
 # 4 fields: category + notes required; location + severity optional (§6.5).
@@ -24,11 +24,6 @@ RECORD_COMPLAINT = {
 }
 
 HISTORY_WINDOW = 10  # ป้อนแค่ ~10 ข้อความล่าสุดให้โมเดล (กัน context โตไม่จบ)
-
-
-def _record(name: str, args: dict) -> None:
-    # ponytail: log only — #93 persists to CSV via database_manager
-    print(f"session done — {name}: {args}")
 
 NONG_MUEANG_SYSTEM_PROMPT = """
 คุณคือ "น้องเมือง" มาสคอตประจำโครงการพัฒนาชุมชน
@@ -74,11 +69,16 @@ async def build_question(user_id: str, user_text: str) -> str:
     # can report more problems in the same chat. Persist the model's reply.
     await session.append(user_id, "user", user_text)
     history = (await session.load(user_id))[-HISTORY_WINDOW:]
+
+    def record(name: str, args: dict) -> None:
+        print(f"session done — {name}: {args}")
+        report.save(user_id, args)
+
     reply = await llm.chat(
         history,
         system=NONG_MUEANG_SYSTEM_PROMPT,
         tools=[RECORD_COMPLAINT],
-        tool_handler=_record,
+        tool_handler=record,
     )
     await session.append(user_id, "model", reply)
     return reply

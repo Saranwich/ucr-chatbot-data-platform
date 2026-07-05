@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from linebot.v3.webhooks import MessageEvent
 
-import app.main as main
+import app.routes.line as line
 from app.config import SYSTEM_ERROR_TEXT
 
 
@@ -20,12 +20,12 @@ def _event():
 
 
 def test_emergency_reply_sent_when_handler_raises(monkeypatch):
-    monkeypatch.setattr(main, "route_message_event",
+    monkeypatch.setattr(line, "route_message_event",
                         AsyncMock(side_effect=RuntimeError("boom")))
     bot = MagicMock()
     bot.reply_message = AsyncMock()
 
-    asyncio.run(main.handle_event_safely(_event(), bot, None))
+    asyncio.run(line.handle_event_safely(_event(), bot, None))
 
     bot.reply_message.assert_awaited_once()
     sent = bot.reply_message.await_args.args[0]
@@ -34,22 +34,22 @@ def test_emergency_reply_sent_when_handler_raises(monkeypatch):
 
 
 def test_failing_rescue_does_not_crash(monkeypatch):
-    monkeypatch.setattr(main, "route_message_event",
+    monkeypatch.setattr(line, "route_message_event",
                         AsyncMock(side_effect=RuntimeError("boom")))
     bot = MagicMock()
     bot.reply_message = AsyncMock(side_effect=RuntimeError("line down"))
 
     # must not raise even though both the handler AND the rescue fail
-    asyncio.run(main.handle_event_safely(_event(), bot, None))
+    asyncio.run(line.handle_event_safely(_event(), bot, None))
     bot.reply_message.assert_awaited_once()
 
 
 def test_no_emergency_reply_on_success(monkeypatch):
-    monkeypatch.setattr(main, "route_message_event", AsyncMock())
+    monkeypatch.setattr(line, "route_message_event", AsyncMock())
     bot = MagicMock()
     bot.reply_message = AsyncMock()
 
-    asyncio.run(main.handle_event_safely(_event(), bot, None))
+    asyncio.run(line.handle_event_safely(_event(), bot, None))
 
-    main.route_message_event.assert_awaited_once()
+    line.route_message_event.assert_awaited_once()
     bot.reply_message.assert_not_awaited()  # the wrapper sends nothing on success

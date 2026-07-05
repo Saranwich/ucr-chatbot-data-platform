@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from fastapi import HTTPException
 
-from app.routes.dashboard import fetch_image_content
+from app.services.dashboard import fetch_image_content
 
 
 class _FakeBlob:

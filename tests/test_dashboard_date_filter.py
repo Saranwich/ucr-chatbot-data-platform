@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 from fastapi import HTTPException
 
-from app.routes.dashboard import parse_date_filter
+from app.services.dashboard import parse_date_filter
 
 
 def test_none_means_no_filter():

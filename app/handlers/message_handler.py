@@ -1,9 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from linebot.v3.webhooks import TextMessageContent, LocationMessageContent, ImageMessageContent
+from linebot.v3.webhooks import TextMessageContent
+from linebot.v3.messaging import ReplyMessageRequest, TextMessage
+from app.services.ai_tool import build_question
 from app.handlers.info_handler import handle_info_request
 from app.handlers.stat_handler import handle_stat_request
 from app.handlers.report_handler import handle_report_request
-from app.handlers.chatbot_handler import handle_chatbot_chat, handle_chatbot_location, handle_chatbot_image
 from app.handlers.manual_handler import handle_manual_request
 from app.handlers.broadcast_flow_handler import (
     get_active_report, continue_flow, start_report, decline, YES_MAP, NO_MAP,
@@ -19,13 +20,10 @@ async def route_message_event(event, line_bot_api, db: AsyncSession):
         await continue_flow(event, line_bot_api, db, active)
         return
 
-    message = event.message
-    if isinstance(message, TextMessageContent):
+    if isinstance(event.message, TextMessageContent):
         await handle_text_message(event, line_bot_api, db)
-    elif isinstance(message, LocationMessageContent):
-        await handle_chatbot_location(event, line_bot_api, db)
-    elif isinstance(message, ImageMessageContent):
-        await handle_chatbot_image(event, line_bot_api, db)
+    # ponytail: non-broadcast location/image ไม่มีปลายทางจนกว่า AI flow (step 1, #88)
+    #           จะต่อ services/ai_tool เข้ามารับ — ตอนนี้ปล่อยผ่าน
 
 
 async def handle_text_message(event, line_bot_api, db: AsyncSession):
@@ -62,5 +60,8 @@ async def handle_text_message(event, line_bot_api, db: AsyncSession):
         await decline(event, line_bot_api, db, NO_MAP[text])
         return
 
-    # 6. Route to Chatbot Handler (Default for other text/surveys)
-    await handle_chatbot_chat(event, line_bot_api, db, text)
+    # 6. Free text → AI core (Gemini + Redis conversation memory)
+    answer = await build_question(event.source.user_id, text)
+    await line_bot_api.reply_message(
+        ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=answer)])
+    )

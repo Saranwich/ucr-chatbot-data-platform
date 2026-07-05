@@ -166,3 +166,9 @@ GEMINI.md
 uploads/
 # private keys never belong in the repo
 *.pem
+
+# AI-agent local workspace (planning notes, not product code)
+.agent-workspace/
+
+# V2 fake report store (CSV stand-in until Postgres)
+reports.csv

@@ -17,6 +17,9 @@ class FakeSession:
     async def load(self, user_id):
         return list(self.msgs)
 
+    async def dump_transcript(self, user_id):
+        pass
+
 
 def test_record_complaint_writes_full_schema_row(tmp_path, monkeypatch):
     # เขียน CSV ลง tmp เพื่อไม่ไปแตะ reports.csv จริง

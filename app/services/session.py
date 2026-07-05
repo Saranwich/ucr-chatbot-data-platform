@@ -12,6 +12,8 @@ import os
 
 import redis.asyncio as redis
 
+from app.utils import storage
+
 SESSION_TTL = 1800  # 30 min — abandoned chats expire on their own
 _client = None
 
@@ -40,3 +42,17 @@ async def append(user_id: str, role: str, content: str) -> None:
     client, key = _get_client(), _key(user_id)
     await client.rpush(key, json.dumps({"role": role, "content": content}, ensure_ascii=False))
     await client.expire(key, SESSION_TTL)
+
+
+async def dump_transcript(user_id: str) -> None:
+    """Overwrite conversations/<user_id>.json with the transcript so far.
+
+    # ponytail: dump-on-record archive — sessions otherwise just TTL-expire with no
+    # hook, so we snapshot the whole transcript through the storage seam (local
+    # uploads/ now, S3 later). Keeps the [{"role","content"}, ...] shape as-is.
+    """
+    transcript = await load(user_id)
+    storage.save_blob(
+        f"conversations/{user_id}.json",
+        json.dumps(transcript, ensure_ascii=False).encode("utf-8"),
+    )

@@ -81,10 +81,14 @@ async def build_question(user_id: str, user_text: str) -> str:
     await session.append(user_id, "user", user_text)
     history = (await session.load(user_id))[-HISTORY_WINDOW:]
 
+    recorded = False
+
     def record(name: str, args: dict) -> None:
+        nonlocal recorded
         print(f"session done — {name}: {args}")
         # hook เติม field ที่ producer (AI) ต้องกำหนดเอง ก่อนบันทึกลง reports
         report.save(user_id, {**args, "source": "ai", "status": "completed", "is_complete": True})
+        recorded = True
 
     reply = await llm.chat(
         history,
@@ -92,6 +96,11 @@ async def build_question(user_id: str, user_text: str) -> str:
         tools=[RECORD_COMPLAINT],
         tool_handler=record,
     )
+    # ponytail: tool_handler เป็น sync (สัญญาของ llm) เลย await Redis ในนั้นไม่ได้ →
+    # dump ตรงนี้แทน หลังจบ turn ที่มีการบันทึก ผลเท่ากับ dump-on-record เพราะ transcript
+    # ใน Redis ไม่เปลี่ยนระหว่างรอบ tool; overwrite เก็บ transcript ที่ครบสุดไว้เสมอ
+    if recorded:
+        await session.dump_transcript(user_id)
     # ponytail: model บางทีจบ turn หลังเรียก tool โดยไม่มีข้อความ → fallback กันส่ง text ว่าง/None
     reply = reply or "ขอบคุณค่ะ เมืองรับเรื่องไว้ให้แล้วนะคะ 🙏 ถ้ามีเรื่องอื่นในชุมชนอยากเล่าเพิ่ม บอกเมืองได้เลยค่ะ"
     await session.append(user_id, "model", reply)

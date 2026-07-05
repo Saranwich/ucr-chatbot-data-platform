@@ -6,6 +6,8 @@ Profile (nickname / age_range / gender / community) อยู่เป็นค�
 Auth แบบเดียวกับ report form: LIFF access token ใน Authorization header
 verify กับ LINE เพื่อได้ lineuser_id ที่เชื่อถือได้ ต่างกันตรงที่หน้านี้
 **ไม่มีโหมด anonymous** — ไม่รู้ว่าเป็นใครก็ไม่มีแถวให้แก้ (401)
+
+Thin route — profile DB logic lives in services/user.py.
 """
 from typing import Optional
 
@@ -14,12 +16,11 @@ from fastapi.responses import HTMLResponse
 from pathlib import Path
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 from app.config import EDIT_PROFILE_ID
 from app.database import get_db
-from app.models import User
 from app.utils.liff_auth import resolve_lineuser_id
+from app.services import user as user_service
 
 router = APIRouter(tags=["userdata"])
 
@@ -53,19 +54,7 @@ async def get_profile(
     db: AsyncSession = Depends(get_db),
 ):
     lineuser_id = await _require_lineuser_id(authorization)
-    result = await db.execute(select(User).where(User.lineuser_id == lineuser_id))
-    user = result.scalars().first()
-    if user is None:
-        # ยังไม่เคยมีแถว (เช่น เปิด LIFF ก่อนเคยคุยกับบอท) — ฟอร์มเปล่า
-        return {"nickname": None, "age_range": None, "gender": None, "community": None,
-                "has_completed_profile": False}
-    return {
-        "nickname": user.nickname,
-        "age_range": user.age_range,
-        "gender": user.gender,
-        "community": user.community,
-        "has_completed_profile": bool(user.has_completed_profile),
-    }
+    return await user_service.get_profile(db, lineuser_id)
 
 
 @router.put("/api/userdata/profile")
@@ -75,16 +64,5 @@ async def save_profile(
     db: AsyncSession = Depends(get_db),
 ):
     lineuser_id = await _require_lineuser_id(authorization)
-    result = await db.execute(select(User).where(User.lineuser_id == lineuser_id))
-    user = result.scalars().first()
-    if user is None:
-        user = User(lineuser_id=lineuser_id)
-        db.add(user)
-
-    user.nickname = profile.nickname
-    user.age_range = profile.age_range
-    user.gender = profile.gender
-    user.community = profile.community
-    user.has_completed_profile = 1
-    await db.commit()
+    await user_service.save_profile(db, lineuser_id, profile)
     return {"ok": True}

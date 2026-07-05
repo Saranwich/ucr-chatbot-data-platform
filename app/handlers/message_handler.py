@@ -1,14 +1,19 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from linebot.v3.webhooks import TextMessageContent
-from linebot.v3.messaging import ReplyMessageRequest, TextMessage
+
+from app.config import PROJECT_INFO_TEXT, SUMMARY_PLACEHOLDER_TEXT, REPORT_DEVELOPMENT_TEXT
+from app.services import line as line_service
 from app.services.ai_tool import build_question
-from app.handlers.info_handler import handle_info_request
-from app.handlers.stat_handler import handle_stat_request
-from app.handlers.report_handler import handle_report_request
-from app.handlers.manual_handler import handle_manual_request
 from app.handlers.broadcast_flow_handler import (
     get_active_report, continue_flow, start_report, decline, YES_MAP, NO_MAP,
 )
+
+# ปุ่ม rich menu ที่ตอบด้วยข้อความคงที่ (คู่มือเป็น Flex แยกไว้ด้านล่าง)
+RICH_MENU_REPLIES = {
+    "ข้อมูลโครงการ": PROJECT_INFO_TEXT,
+    "สรุปผล": SUMMARY_PLACEHOLDER_TEXT,
+    "รายงานปัญหา": REPORT_DEVELOPMENT_TEXT,
+}
 
 
 async def route_message_event(event, line_bot_api, db: AsyncSession):
@@ -27,32 +32,19 @@ async def route_message_event(event, line_bot_api, db: AsyncSession):
 
 
 async def handle_text_message(event, line_bot_api, db: AsyncSession):
-    """Main Router for incoming text messages."""
+    """Route incoming text: rich-menu buttons, broadcast confirm/decline, else AI."""
     text = event.message.text.strip()
 
-    # 1. Route to Info Handler
-    if text == "ข้อมูลโครงการ":
-        await handle_info_request(event, line_bot_api)
+    # 1. Rich-menu static replies
+    if text in RICH_MENU_REPLIES:
+        await line_service.reply_text(line_bot_api, event.reply_token, RICH_MENU_REPLIES[text])
         return
-
-    # 2. Route to Stat Handler
-    if text == "สรุปผล":
-        await handle_stat_request(event, line_bot_api)
-        return
-
-    # 3. Route to Report Handler (Fallback for 'รายงานปัญหา' text)
-    if text == "รายงานปัญหา":
-        await handle_report_request(event, line_bot_api)
-        return
-
-    # 4. Route to Manual Handler
     if text == "คู่มือการใช้งาน":
-        await handle_manual_request(event, line_bot_api)
+        await line_service.reply_messages(line_bot_api, event.reply_token, line_service.build_manual_messages())
         return
 
-    # 5. Weather broadcast — ปุ่มยืนยัน (เริ่มเก็บข้อมูล) / ปฏิเสธ
-    #    (ตรงนี้ยังไม่มี active report เพราะเพิ่งกดปุ่มแรกจาก broadcast → พอสร้าง report แล้ว
-    #     message ถัดๆ ไปจะโดน active-check ใน route_message_event ดักไป continue_flow เอง)
+    # 2. Weather broadcast — ปุ่มยืนยัน (เริ่มเก็บข้อมูล) / ปฏิเสธ
+    #    (message ถัดๆ ไปจะโดน active-check ใน route_message_event ดักไป continue_flow เอง)
     if text in YES_MAP:
         await start_report(event, line_bot_api, db, YES_MAP[text])
         return
@@ -60,8 +52,6 @@ async def handle_text_message(event, line_bot_api, db: AsyncSession):
         await decline(event, line_bot_api, db, NO_MAP[text])
         return
 
-    # 6. Free text → AI core (Gemini + Redis conversation memory)
+    # 3. Free text → AI core (Gemini + Redis conversation memory)
     answer = await build_question(event.source.user_id, text)
-    await line_bot_api.reply_message(
-        ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=answer)])
-    )
+    await line_service.reply_text(line_bot_api, event.reply_token, answer)

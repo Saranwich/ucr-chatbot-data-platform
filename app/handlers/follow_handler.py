@@ -4,10 +4,10 @@ upsert แถว User ทันที แล้วทักทาย. คน re-
 คนใหม่ได้คำทักทายเริ่มต้น (V2: ไม่ชวนกรอก profile แล้ว — ทำผ่าน Userdata LIFF อย่างเดียว)
 """
 from sqlalchemy.ext.asyncio import AsyncSession
-from linebot.v3.messaging import ReplyMessageRequest, TextMessage
 
 from app.config import WELCOME_TEXT, WELCOME_BACK_TEXT
 from app.services.user import get_or_create_user
+from app.services import line as line_service
 
 
 async def handle_follow(event, line_bot_api, db: AsyncSession):
@@ -18,6 +18,4 @@ async def handle_follow(event, line_bot_api, db: AsyncSession):
     await db.commit()
 
     text = WELCOME_BACK_TEXT if has_profile else WELCOME_TEXT
-    await line_bot_api.reply_message(
-        ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=text)])
-    )
+    await line_service.reply_text(line_bot_api, event.reply_token, text)

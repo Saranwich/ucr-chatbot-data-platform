@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app.routes.dashboard import serialize_completed, serialize_form, envelope, with_offset
+from app.services.dashboard import serialize_completed, serialize_form, envelope, with_offset
 
 
 def _completed_row(**over):

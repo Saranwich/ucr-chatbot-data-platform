@@ -1,6 +1,7 @@
 import asyncio
 
-from app.routes.report import point_wkt, unique_image_name
+from app.services.form_report import point_wkt
+from app.utils.storage import unique_image_name
 from app.utils.liff_auth import resolve_lineuser_id
 
 

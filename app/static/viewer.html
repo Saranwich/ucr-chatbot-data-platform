@@ -38,6 +38,8 @@
 <div id="reports"></div>
 <h2>แจ้งปัญหา (form reports)</h2>
 <div id="forms"></div>
+<h2>Broadcast (แจ้งเตือนอากาศ)</h2>
+<div id="broadcasts"></div>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -96,6 +98,18 @@ function formCard(r) {
   </div>`;
 }
 
+function broadcastCard(r) {
+  const loc = (r.latitude != null && r.longitude != null)
+    ? `<a href="https://maps.google.com/?q=${r.latitude},${r.longitude}" target="_blank">📍 ${r.latitude.toFixed(5)}, ${r.longitude.toFixed(5)}</a>` : '';
+  const img = r.image_url ? `<img class="thumb" data-src="${r.image_url}">` : '';
+  const confirmed = r.confirmed ? '✅ เจอ' : '❌ ไม่เจอ';
+  return `<div class="card">
+    <h3>#${r.report_id} · ${r.alert_type} → ${r.category} · ${confirmed}</h3>
+    <div class="meta">${r.created_at} · ${r.lineuser_id || 'anonymous'} · ${r.community || '-'} ${loc ? '· ' + loc : ''}</div>
+    <div>${r.note || ''}</div>${img}
+  </div>`;
+}
+
 async function load() {
   $('#err').textContent = '';
   localStorage.setItem('token', $('#token').value.trim());
@@ -106,12 +120,17 @@ async function load() {
       <div class="stat"><b>${stats.total_completed_reports}</b>completed</div>
       <div class="stat"><b>${stats.total_incomplete_reports}</b>incomplete</div>`;
     const d = $('#date').value;
-    const reports = await api('/api/dashboard/reports' + (d ? '?date=' + d : ''));
+    // limit=200 = ดูให้ครบในหน้าเดียว (default API = 20). endpoint คืน envelope {items,...}
+    const q = (d ? '?date=' + d + '&' : '?') + 'limit=200';
+    const reports = (await api('/api/dashboard/reports' + q)).items;
     $('#reports').innerHTML = reports.length
       ? reports.map(card).join('') : '<p>No reports.</p>';
-    const forms = await api('/api/dashboard/form-reports' + (d ? '?date=' + d : ''));
+    const forms = (await api('/api/dashboard/form-reports' + q)).items;
     $('#forms').innerHTML = forms.length
       ? forms.map(formCard).join('') : '<p>No form reports.</p>';
+    const broadcasts = (await api('/api/dashboard/broadcast-reports' + q)).items;
+    $('#broadcasts').innerHTML = broadcasts.length
+      ? broadcasts.map(broadcastCard).join('') : '<p>No broadcast reports.</p>';
     hydrateImages();
   } catch (e) {
     $('#err').textContent = e.message;

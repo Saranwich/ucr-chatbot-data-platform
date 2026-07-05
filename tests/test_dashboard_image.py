@@ -1,4 +1,4 @@
-from app.routes.dashboard import extract_images
+from app.services.dashboard import extract_images
 
 
 def test_no_images_returns_empty_list():

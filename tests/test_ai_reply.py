@@ -37,20 +37,22 @@ def test_free_text_gets_ai_reply(monkeypatch):
     captured = {}
     fake_session = FakeSession()
 
-    async def fake_llm(messages, system=None):
+    async def fake_chat(messages, system=None, tools=None, tool_handler=None):
         captured["messages"] = messages
         captured["system"] = system
+        captured["tools"] = tools
         return "โมเดลตอบกลับ"
 
-    monkeypatch.setattr(ai_tool, "get_response", fake_llm)
+    monkeypatch.setattr(ai_tool.llm, "chat", fake_chat)
     monkeypatch.setattr(ai_tool, "session", fake_session)
 
     api = FakeApi()
     asyncio.run(handle_text_message(_text_event("ถนนหน้าบ้านมืดมาก"), api, db=None))
 
     assert api.sent[0].text == "โมเดลตอบกลับ"
-    # โมเดลได้ transcript ที่มีข้อความผู้ใช้ + persona prompt
+    # โมเดลได้ transcript ที่มีข้อความผู้ใช้ + persona prompt + record_complaint tool
     assert captured["messages"][-1] == {"role": "user", "content": "ถนนหน้าบ้านมืดมาก"}
     assert captured["system"] is ai_tool.NONG_MUEANG_SYSTEM_PROMPT
+    assert captured["tools"] == [ai_tool.RECORD_COMPLAINT]
     # ทั้งฝั่ง user และ model ถูกเก็บลง session
     assert [m["role"] for m in fake_session.msgs] == ["user", "model"]

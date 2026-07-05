@@ -4,8 +4,31 @@
 # system prompt. record_complaint tool + Redis memory + multi-turn come in steps
 # 4-6; the prompt already describes the tool the model will get then.
 """
-from app.services import session
-from app.services.llm import get_response
+from app.services import llm, session
+
+# record_complaint — provider-neutral tool spec (llm.py turns it into an SDK tool).
+# 4 fields: category + notes required; location + severity optional (§6.5).
+RECORD_COMPLAINT = {
+    "name": "record_complaint",
+    "description": "บันทึกปัญหาชุมชน 1 เรื่อง เมื่อได้ข้อมูลครบ — เรียกแยกทีละเรื่อง",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "category": {"type": "STRING", "description": "ประเภท/หมวดหมู่ของปัญหา"},
+            "notes": {"type": "STRING", "description": "รายละเอียดของปัญหา"},
+            "location": {"type": "STRING", "description": "สถานที่ (พิกัดหรือชื่อ) ถ้ามี"},
+            "severity": {"type": "STRING", "description": "ความรุนแรง/ผลกระทบ ถ้ามี"},
+        },
+        "required": ["category", "notes"],
+    },
+}
+
+HISTORY_WINDOW = 10  # ป้อนแค่ ~10 ข้อความล่าสุดให้โมเดล (กัน context โตไม่จบ)
+
+
+def _record(name: str, args: dict) -> None:
+    # ponytail: log only — #93 persists to CSV via database_manager
+    print(f"session done — {name}: {args}")
 
 NONG_MUEANG_SYSTEM_PROMPT = """
 คุณคือ "น้องเมือง" มาสคอตประจำโครงการพัฒนาชุมชน
@@ -45,10 +68,17 @@ NONG_MUEANG_SYSTEM_PROMPT = """
 
 
 async def build_question(user_id: str, user_text: str) -> str:
-    # step 4: multi-turn memory — persist the user's turn, feed the whole
-    # transcript to the model, persist the reply. (Windowing + completion: #92)
+    # step 5: windowed multi-turn + function-calling. Persist the user's turn,
+    # feed the last ~10 messages with the record_complaint tool; when the model
+    # records a report, _record logs it and the session stays alive so the user
+    # can report more problems in the same chat. Persist the model's reply.
     await session.append(user_id, "user", user_text)
-    history = await session.load(user_id)
-    reply = await get_response(history, system=NONG_MUEANG_SYSTEM_PROMPT)
+    history = (await session.load(user_id))[-HISTORY_WINDOW:]
+    reply = await llm.chat(
+        history,
+        system=NONG_MUEANG_SYSTEM_PROMPT,
+        tools=[RECORD_COMPLAINT],
+        tool_handler=_record,
+    )
     await session.append(user_id, "model", reply)
     return reply

@@ -16,6 +16,13 @@ EDIT_PROFILE_URL = os.getenv("EDIT_PROFILE_URL")  # ลิงก์เปิด�
 SURVEYS_DIR = BASE_DIR / "app" / "data" / "surveys"
 IMAGES_DIR = BASE_DIR / "app" / "data" / "images"
 
+# Forecast รายวันจากทีม data (Lambda อัพขึ้น S3 ทุกตี 1) — ใช้ใน services/forecast.py
+# override ได้ผ่าน .env เผื่อทีม data ย้าย bucket
+FORECAST_BASE_URL = os.getenv(
+    "FORECAST_BASE_URL",
+    "https://ucr-forecatst-bucket.s3.ap-southeast-1.amazonaws.com/forecast",
+)
+
 # V1 survey trigger map + go-back/confirm keywords ลบแล้ว (survey chat engine ออกไปแล้ว)
 
 # Static Reply Messages

@@ -1,7 +1,8 @@
-"""Dashboard data layer — queries + serialization for the admin API.
+"""Dashboard data layer — reads the single central `reports` table (+ report_images).
 
-Routes in routes/dashboard.py stay thin and call these. Same JSON contract as
-before; this only moves the logic out of the route module (main→routes→services).
+V2 cutover (#81): every channel (ai / form_report / broadcast / survey-backfill)
+lands one `reports` row distinguished by `source`, so the dashboard reads ONE table
+and serializes ONE unified shape. Routes in routes/dashboard.py stay thin.
 
 # ponytail: these raise HTTPException (400/404) directly — fine for one small app;
 # not worth a separate error-translation layer.
@@ -13,12 +14,9 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2.functions import ST_X, ST_Y
-from linebot.v3.messaging import Configuration, AsyncApiClient, AsyncMessagingApiBlob
 
-from app.config import CHANNEL_ACCESS_TOKEN
-from app.models import User, CompletedReport, IncompleteReport, FormReport, BroadcastReport
+from app.models import User, Report, ReportImage, Category
 from app.utils import storage
-from app.utils.survey_loader import SurveyManager, survey_manager
 
 BANGKOK = timezone(timedelta(hours=7))
 
@@ -36,11 +34,10 @@ def with_offset(dt: Optional[datetime]):
 
 
 def extract_images(payload: dict) -> list:
-    """ดึงรูปทั้งหมดออกมาจาก payload JSONB.
+    """ดึงรูปทั้งหมดออกมาจาก payload JSONB (ของเก่า survey backfill เก็บรูปใน payload).
 
-    รูปถูกเก็บใน payload ใต้ key ของคำถาม (ชื่อต่างกันทุก survey เช่น q_photo,
-    q_flood_photo) เป็น dict {image_id, image_url}. ฟังก์ชันนี้สแกนหาทุกตัวที่
-    เป็น dict มี image_id แล้วรวมเป็นลิสต์เดียว — รองรับ 0, 1, หรือหลายรูป.
+    รูปถูกเก็บใน payload ใต้ key ของคำถาม (ชื่อต่างกันทุก survey เช่น q_photo) เป็น
+    dict {image_id, image_url}. ฟังก์ชันนี้สแกนหาทุกตัวที่เป็น dict มี image_id.
     """
     if not isinstance(payload, dict):
         return []
@@ -56,111 +53,36 @@ def extract_images(payload: dict) -> list:
     return images
 
 
-def problem_type_of(payload) -> Optional[str]:
-    """ประเภทปัญหา = คำตอบข้อแรก (q_start) เช่น อากาศร้อน / น้ำท่วม / ขยะ."""
-    return payload.get("q_start") if isinstance(payload, dict) else None
+def serialize_report(row: dict, images: Optional[list] = None) -> dict:
+    """ปั้น 1 แถว reports → shape เดียวตาม contract #81 (null แทน omit).
 
-
-def serialize_completed(row: dict) -> dict:
-    payload = row["payload"]
-    images = extract_images(payload)
-    lat, lon = row["latitude"], row["longitude"]
-    return {
-        "report_id": row["report_id"],
-        "lineuser_id": row["lineuser_id"],
-        "source": "survey",
-        "survey_version": row["survey_version"],
-        "problem_type": problem_type_of(payload),
-        "status": "completed",
-        "is_complete": True,
-        "latitude": lat,
-        "longitude": lon,
-        "has_location": lat is not None and lon is not None,
-        "images": images,
-        "has_image": bool(images),
-        "payload": payload,
-        "created_at": with_offset(row["created_at"]),
-    }
-
-
-def serialize_incomplete(row: dict, question_id, question_text) -> dict:
-    payload = row["payload"]
-    images = extract_images(payload)
-    lat, lon = row["latitude"], row["longitude"]
-    return {
-        "report_id": row["report_id"],
-        "lineuser_id": row["lineuser_id"],
-        "source": "survey",
-        "survey_version": row["survey_version"],
-        "problem_type": problem_type_of(payload),
-        "status": row["status"],
-        "is_complete": False,
-        "latitude": lat,
-        "longitude": lon,
-        "has_location": lat is not None and lon is not None,
-        "images": images,
-        "has_image": bool(images),
-        "drop_off_route_id": row["drop_off_route_id"],
-        "drop_off_step": row["drop_off_step"],
-        "drop_off_question_id": question_id,
-        "drop_off_question_text": question_text,
-        "payload": payload,
-        "created_at": with_offset(row["created_at"]),
-    }
-
-
-def serialize_form(row: dict) -> dict:
-    lat, lon = row["latitude"], row["longitude"]
-    has_image = bool(row["image_path"])
-    return {
-        "report_id": row["report_id"],
-        "lineuser_id": row["lineuser_id"],
-        "source": "form_report",
-        "category": row["category"],
-        "description": row["description"],
-        "status": row["status"],
-        "latitude": lat,
-        "longitude": lon,
-        "has_location": lat is not None and lon is not None,
-        "image_url": f"/api/form-reports/{row['report_id']}/image" if has_image else None,
-        "has_image": has_image,
-        "created_at": with_offset(row["created_at"]),
-    }
-
-
-# broadcast alert_type (code) → ชื่อหมวดไทยที่ dashboard group (align กับ survey/form)
-# "both" map เป็น 2 หมวด → serialize จะแตกเป็น 2 หมุดบนแผนที่
-BROADCAST_CATEGORY = {
-    "flood": ["น้ำท่วม/น้ำขัง"],           # ตรงทั้ง survey + form
-    "heat":  ["อากาศร้อน"],                # ตาม survey (form ใช้ "ความร้อน/อุณหภูมิ" — รอ align)
-    "both":  ["น้ำท่วม/น้ำขัง", "อากาศร้อน"],  # ← both = 2 หมุด
-}
-
-
-def serialize_broadcast(row: dict) -> list:
-    """ปั้น broadcast report 1 แถว → list ของ item สำหรับ dashboard.
-
-    flood/heat → 1 item, both → 2 item (คนละ category แต่ location/รูป/เวลาเหมือนกัน)
+    lat/lon มาจาก ST_X/ST_Y (longitude/latitude), category = categories.value (join),
+    images = แถวใน report_images (serve ผ่าน /api/dashboard/image/{image_id}).
     """
+    images = images or []
     lat, lon = row["latitude"], row["longitude"]
-    has_image = bool(row["image_path"])
-    base = {
+    return {
         "report_id": row["report_id"],
         "lineuser_id": row["lineuser_id"],
-        "source": "broadcast",
-        "alert_type": row["alert_type"],
-        "confirmed": bool(row["confirmed"]),
-        "community": row["community"],
-        "note": row["note"],
+        "conversation_id": row["conversation_id"],
+        "community_id": row["community_id"],
+        "source": row["source"],
+        "source_ref": row["source_ref"],
+        "category": row["category"],
+        "notes": row["notes"],
+        "severity": row["severity"],
+        "title": row["title"],
+        "status": row["status"],
+        "is_complete": bool(row["is_complete"]),
         "latitude": lat,
         "longitude": lon,
         "has_location": lat is not None and lon is not None,
-        "image_url": f"/api/dashboard/broadcast-image/{row['report_id']}" if has_image else None,  # TODO: endpoint เสิร์ฟรูป
-        "has_image": has_image,
+        "extraction_confidence": row["extraction_confidence"],
+        "images": images,
+        "has_image": bool(images),
+        "payload": row["payload"],
         "created_at": with_offset(row["created_at"]),
     }
-    # แตกตาม category ที่ map ไว้ (both → 2 item)
-    return [{**base, "category": cat} for cat in BROADCAST_CATEGORY.get(row["alert_type"], [])]
 
 
 def envelope(items: list, page: int, limit: int) -> dict:
@@ -197,51 +119,70 @@ def apply_date_range(query, column, date, date_from, date_to):
     return query
 
 
-def resolve_drop_off_question(
-    manager: SurveyManager,
-    survey_version: str,
-    route_id: Optional[str],
-    step: Optional[int],
-):
-    """Resolve a saved route position without failing on changed survey files."""
-    if route_id is None or step is None:
-        return None, None
-    route = manager.get_route(survey_version, route_id)
-    if route is None or step < 0 or step >= len(route.questions):
-        return None, None
-    question_id = route.questions[step]
-    question = manager.get_question(survey_version, question_id)
-    return question_id, question.text if question else None
+# ── unified reports query ─────────────────────────────────────────────────────
+def _base_report_query():
+    """reports LEFT JOIN categories, with lat/lon via ST_X/ST_Y — the #81 columns."""
+    return select(
+        Report.report_id, Report.lineuser_id, Report.conversation_id,
+        Report.community_id, Report.source, Report.source_ref,
+        Category.value.label("category"), Report.notes, Report.severity,
+        Report.title, Report.status, Report.is_complete,
+        Report.extraction_confidence, Report.payload, Report.created_at,
+        ST_X(Report.location_data).label("longitude"),
+        ST_Y(Report.location_data).label("latitude"),
+    ).select_from(Report).join(Category, Report.category_id == Category.id, isouter=True)
+
+
+async def _images_for(db: AsyncSession, report_ids: list) -> dict:
+    """report_id → [{image_id, image_url}]. One extra query, grouped in Python.
+
+    ponytail: data ยังเล็ก — 1 query แล้ว group ในโค้ด (ไม่ต้อง join/aggregate ใน SQL).
+    """
+    if not report_ids:
+        return {}
+    rows = (await db.execute(
+        select(ReportImage.report_id, ReportImage.image_id)
+        .where(ReportImage.report_id.in_(report_ids))
+    )).all()
+    out: dict = {}
+    for rid, iid in rows:
+        out.setdefault(rid, []).append({"image_id": iid, "image_url": f"/api/dashboard/image/{iid}"})
+    return out
+
+
+async def _serialize_rows(db: AsyncSession, query) -> list:
+    rows = [dict(r) for r in (await db.execute(query)).mappings()]
+    imgs = await _images_for(db, [r["report_id"] for r in rows])
+    return [serialize_report(r, imgs.get(r["report_id"], [])) for r in rows]
 
 
 # ── queries (each takes a db session, returns dashboard-ready data) ───────────
 async def get_stats(db: AsyncSession) -> dict:
     user_count = await db.scalar(select(func.count(User.lineuser_id)))
-    incomplete_count = await db.scalar(select(func.count(IncompleteReport.report_id)))
+    rows = (await db.execute(
+        select(
+            Report.report_id, Report.source, Report.status, Report.is_complete,
+            Category.value.label("category"), Report.created_at,
+            ST_X(Report.location_data).label("longitude"),
+            ST_Y(Report.location_data).label("latitude"),
+        ).select_from(Report).join(Category, Report.category_id == Category.id, isouter=True)
+    )).mappings().all()
+    img_report_ids = set((await db.execute(select(ReportImage.report_id).distinct())).scalars().all())
 
-    rows = (await db.execute(select(
-        CompletedReport.survey_version,
-        CompletedReport.payload,
-        CompletedReport.created_at,
-        ST_X(CompletedReport.location_data).label("longitude"),
-        ST_Y(CompletedReport.location_data).label("latitude"),
-    ))).mappings().all()
-
-    by_problem_type: dict = {}
-    by_survey_version: dict = {}
+    by_source: dict = {}
+    by_category: dict = {}
+    by_status: dict = {}
     daily: dict = {}
     with_location = 0
     with_image = 0
     for r in rows:
-        payload = r["payload"]
-        pt = problem_type_of(payload)
-        if pt:
-            by_problem_type[pt] = by_problem_type.get(pt, 0) + 1
-        v = r["survey_version"]
-        by_survey_version[v] = by_survey_version.get(v, 0) + 1
+        by_source[r["source"]] = by_source.get(r["source"], 0) + 1
+        if r["category"]:
+            by_category[r["category"]] = by_category.get(r["category"], 0) + 1
+        by_status[r["status"]] = by_status.get(r["status"], 0) + 1
         if r["latitude"] is not None and r["longitude"] is not None:
             with_location += 1
-        if extract_images(payload):
+        if r["report_id"] in img_report_ids:
             with_image += 1
         if r["created_at"]:
             day = r["created_at"].date().isoformat()
@@ -250,10 +191,10 @@ async def get_stats(db: AsyncSession) -> dict:
     total = len(rows)
     return {
         "total_users": user_count or 0,
-        "total_completed_reports": total,
-        "total_incomplete_reports": incomplete_count or 0,
-        "by_problem_type": by_problem_type,
-        "by_survey_version": by_survey_version,
+        "total_reports": total,
+        "by_source": by_source,
+        "by_category": by_category,
+        "by_status": by_status,
         "with_location": with_location,
         "without_location": total - with_location,
         "with_image": with_image,
@@ -263,8 +204,7 @@ async def get_stats(db: AsyncSession) -> dict:
 
 
 async def get_available_dates(db: AsyncSession) -> dict:
-    # ดึงวันที่ทั้งหมดที่มีการทำรายงาน (CompletedReport) เรียงใหม่→เก่า
-    date_col = func.date(CompletedReport.created_at)
+    date_col = func.date(Report.created_at)
     query = select(date_col).distinct().order_by(date_col.desc())
     result = await db.execute(query)
     dates = [row[0].strftime("%Y-%m-%d") for row in result.all() if row[0]]
@@ -272,126 +212,53 @@ async def get_available_dates(db: AsyncSession) -> dict:
 
 
 async def list_completed(db, date, date_from, date_to, problem_type, page, limit) -> dict:
-    query = select(
-        CompletedReport.report_id,
-        CompletedReport.lineuser_id,
-        CompletedReport.survey_version,
-        CompletedReport.payload,
-        CompletedReport.created_at,
-        ST_X(CompletedReport.location_data).label("longitude"),
-        ST_Y(CompletedReport.location_data).label("latitude"),
-    ).order_by(CompletedReport.created_at.desc())
-
-    query = apply_date_range(query, CompletedReport.created_at, date, date_from, date_to)
-
-    result = await db.execute(query)
-    items = [serialize_completed(dict(row)) for row in result.mappings()]
+    # /reports = unified feed ของทุก source (source field แยกช่องทาง). problem_type = category.
+    query = _base_report_query()
+    query = apply_date_range(query, Report.created_at, date, date_from, date_to)
     if problem_type:
-        items = [i for i in items if i["problem_type"] == problem_type]
-    return envelope(items, page, limit)
+        query = query.where(Category.value == problem_type)
+    query = query.order_by(Report.created_at.desc())
+    return envelope(await _serialize_rows(db, query), page, limit)
 
 
 async def list_incomplete(db, date, page, limit) -> dict:
-    query = select(
-        IncompleteReport.report_id,
-        IncompleteReport.lineuser_id,
-        IncompleteReport.survey_version,
-        IncompleteReport.drop_off_route_id,
-        IncompleteReport.drop_off_step,
-        IncompleteReport.payload,
-        IncompleteReport.status,
-        IncompleteReport.created_at,
-        ST_X(IncompleteReport.location_data).label("longitude"),
-        ST_Y(IncompleteReport.location_data).label("latitude"),
-    ).order_by(IncompleteReport.created_at.desc())
-
-    query = apply_date_range(query, IncompleteReport.created_at, date, None, None)
-
-    result = await db.execute(query)
-    items = []
-    for row in result.mappings():
-        row = dict(row)
-        question_id, question_text = resolve_drop_off_question(
-            survey_manager,
-            row["survey_version"],
-            row["drop_off_route_id"],
-            row["drop_off_step"],
-        )
-        items.append(serialize_incomplete(row, question_id, question_text))
-    return envelope(items, page, limit)
+    # รายงานที่ยังไม่ครบ (survey backfill drop-off = is_complete false)
+    query = _base_report_query().where(Report.is_complete.is_(False))
+    query = apply_date_range(query, Report.created_at, date, None, None)
+    query = query.order_by(Report.created_at.desc())
+    return envelope(await _serialize_rows(db, query), page, limit)
 
 
 async def list_form(db, date, page, limit) -> dict:
-    # แจ้งปัญหาจาก LIFF form — รูปเสิร์ฟผ่าน /api/form-reports/{id}/image (ไม่ใช่ payload)
-    query = select(
-        FormReport.report_id,
-        FormReport.lineuser_id,
-        FormReport.category,
-        FormReport.description,
-        FormReport.status,
-        FormReport.image_path,
-        FormReport.created_at,
-        ST_X(FormReport.location_data).label("longitude"),
-        ST_Y(FormReport.location_data).label("latitude"),
-    ).order_by(FormReport.created_at.desc())
-
-    query = apply_date_range(query, FormReport.created_at, date, None, None)
-
-    result = await db.execute(query)
-    items = [serialize_form(dict(row)) for row in result.mappings()]
-    return envelope(items, page, limit)
+    query = _base_report_query().where(Report.source == "form_report")
+    query = apply_date_range(query, Report.created_at, date, None, None)
+    query = query.order_by(Report.created_at.desc())
+    return envelope(await _serialize_rows(db, query), page, limit)
 
 
 async def list_broadcast(db, date, alert_type, page, limit) -> dict:
-    # รายงานจาก broadcast แจ้งเตือนอากาศ (flood/heat/both) — พล็อตหมุดได้เหมือน report อื่น
-    query = select(
-        BroadcastReport.report_id,
-        BroadcastReport.lineuser_id,
-        BroadcastReport.alert_type,
-        BroadcastReport.confirmed,
-        BroadcastReport.community,
-        BroadcastReport.note,
-        BroadcastReport.image_path,
-        BroadcastReport.created_at,
-        ST_X(BroadcastReport.location_data).label("longitude"),
-        ST_Y(BroadcastReport.location_data).label("latitude"),
-    ).order_by(BroadcastReport.created_at.desc())
-
-    query = apply_date_range(query, BroadcastReport.created_at, date, None, None)
-    result = await db.execute(query)
-
-    items = []
-    for row in result.mappings():
-        items.extend(serialize_broadcast(dict(row)))   # extend เพราะ both คืน 2 item
+    # broadcast: alert_type (flood/heat/both) เก็บใน source_ref
+    query = _base_report_query().where(Report.source == "broadcast")
+    query = apply_date_range(query, Report.created_at, date, None, None)
     if alert_type:
-        items = [i for i in items if i["alert_type"] == alert_type]
-    return envelope(items, page, limit)
+        query = query.where(Report.source_ref == alert_type)
+    query = query.order_by(Report.created_at.desc())
+    return envelope(await _serialize_rows(db, query), page, limit)
 
 
 async def get_report_detail(db, report_id: int) -> dict:
-    query = select(
-        CompletedReport.report_id,
-        CompletedReport.lineuser_id,
-        CompletedReport.survey_version,
-        CompletedReport.payload,
-        CompletedReport.created_at,
-        ST_X(CompletedReport.location_data).label("longitude"),
-        ST_Y(CompletedReport.location_data).label("latitude"),
-    ).where(CompletedReport.report_id == report_id)
-
-    result = await db.execute(query)
-    report = result.mappings().first()
-    if not report:
+    query = _base_report_query().where(Report.report_id == report_id)
+    items = await _serialize_rows(db, query)
+    if not items:
         raise HTTPException(status_code=404, detail="Report not found")
-    return serialize_completed(dict(report))
+    return items[0]
 
 
 # ── images ───────────────────────────────────────────────────────────────────
 async def fetch_image_content(blob_api, image_id: str) -> bytes:
-    """ดึง bytes รูปจาก LINE CDN.
+    """ดึง bytes รูปจาก LINE CDN (seam เดิม — เก็บไว้เผื่อ proxy รูปที่ยังไม่ persist).
 
-    รูปถูก proxy สดจาก LINE ซึ่งลบทิ้งหลังผ่านไปสักพัก. ถ้ารูปหมดอายุ/หาไม่เจอ
-    โยน HTTP 404 แทนที่จะปล่อยให้ exception หลุดไปเป็น 500.
+    ถ้ารูปหมดอายุ/หาไม่เจอ โยน HTTP 404 แทนที่จะปล่อยเป็น 500.
     """
     try:
         return await blob_api.get_message_content(image_id)
@@ -399,24 +266,9 @@ async def fetch_image_content(blob_api, image_id: str) -> bytes:
         raise HTTPException(status_code=404, detail="Image not found or expired")
 
 
-def survey_image_path(image_id: str) -> Optional[str]:
-    """เส้นทางไฟล์รูป survey ที่เก็บถาวรแล้ว (uploads/survey/<id>.jpg) หรือ None."""
-    return storage.local_file(f"survey/{image_id}.jpg")
-
-
-async def fetch_line_image_bytes(image_id: str) -> bytes:
-    """proxy สดจาก LINE CDN (สำหรับรูปเก่าที่ยังไม่ถูกเก็บถาวร)."""
-    configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
-    async with AsyncApiClient(configuration) as api_client:
-        blob_api = AsyncMessagingApiBlob(api_client)
-        return await fetch_image_content(blob_api, image_id)
-
-
-async def broadcast_image_path(db, report_id: int) -> str:
-    # รูปจุดน้ำท่วมจาก broadcast report — เก็บถาวรใน uploads/broadcast/<id>.jpg (utils/storage)
-    key = await db.scalar(
-        select(BroadcastReport.image_path).where(BroadcastReport.report_id == report_id)
-    )
+async def report_image_path(db, image_id: int) -> str:
+    """local path ของรูปใน report_images (serve store-first). 404 ถ้าไม่มี/ไฟล์หาย."""
+    key = await db.scalar(select(ReportImage.image_key).where(ReportImage.image_id == image_id))
     stored = storage.local_file(key)
     if not stored:
         raise HTTPException(status_code=404, detail="Image not found")

@@ -5,12 +5,8 @@ import traceback
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 from mangum import Mangum
 
-from app.config import SURVEYS_DIR
-from app.database import engine, Base
-from app.utils.survey_loader import survey_manager
 from app.cors import build_cors_origins
 from app.routes.dashboard import router as dashboard_router
 from app.routes.report import router as report_router
@@ -22,42 +18,9 @@ from app.routes.system import router as system_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. จัดการ Database
-    try:
-        async with engine.begin() as conn:
-            # Enable PostGIS extension if not exists
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
-
-            # Create tables if not exist
-            await conn.run_sync(Base.metadata.create_all)
-
-            # users gained profile columns after the table first shipped;
-            # create_all never ALTERs existing tables, so add them idempotently here.
-            for col in ("nickname", "age_range", "gender", "community"):
-                await conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
-
-            # broadcast_reports gained flow-state + note columns after first ship —
-            # same create_all blind spot; add idempotently. DEFAULT 'done' ให้แถวเก่า
-            # (สร้างก่อนมี column) ถือเป็นรายงานที่จบแล้ว
-            await conn.execute(text(
-                "ALTER TABLE broadcast_reports ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'done'"
-            ))
-            await conn.execute(text(
-                "ALTER TABLE broadcast_reports ADD COLUMN IF NOT EXISTS note VARCHAR"
-            ))
-
-            print("✅ Database tables checked/created with Bangkok timezone defaults!")
-    except Exception as e:
-        print(f"⚠️ Database initialization warning (likely concurrent start): {e}")
-
-    # 2. โหลด Survey JSON ทั้งโฟลเดอร์ (dashboard ยังอ่านข้อมูลสำรวจเก่าอยู่)
-    try:
-        survey_manager.load_all_surveys_in_directory(SURVEYS_DIR)
-        print("✅ All survey JSONs loaded successfully during startup!")
-    except Exception as e:
-        print(f"❌ Failed to load survey JSONs: {e}")
-        raise e
-
+    # Schema is Alembic-owned now (alembic upgrade head as a deploy step) — the app
+    # no longer runs create_all/ALTER at boot. See alembic/versions/. The dormant V1
+    # survey-JSON load was removed in M4 (legacy tables dropped, survey_loader deleted).
     yield
     # (Anything below the yield runs when the server is shutting down)
 

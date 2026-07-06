@@ -1,17 +1,24 @@
 from datetime import datetime
 
-from app.services.dashboard import serialize_completed, serialize_form, envelope, with_offset
+from app.services.dashboard import serialize_report, envelope, with_offset
 
 
-def _completed_row(**over):
+def _report_row(**over):
     row = {
         "report_id": 17,
         "lineuser_id": "U1",
-        "survey_version": "fdg140626",
-        "payload": {
-            "q_start": "น้ำท่วม/น้ำขัง",
-            "q_photo": {"image_id": "img1"},
-        },
+        "conversation_id": 3,
+        "community_id": 6,
+        "source": "ai",
+        "source_ref": None,
+        "category": "น้ำท่วม/น้ำขัง",
+        "notes": "น้ำท่วมซอย",
+        "severity": "high",
+        "title": "น้ำท่วม",
+        "status": "completed",
+        "is_complete": True,
+        "extraction_confidence": 0.9,
+        "payload": None,
         "created_at": datetime(2026, 6, 14, 3, 11, 10),
         "latitude": 14.07,
         "longitude": 100.6,
@@ -20,19 +27,22 @@ def _completed_row(**over):
     return row
 
 
-def test_serialize_completed_derives_fields():
-    r = serialize_completed(_completed_row())
-    assert r["problem_type"] == "น้ำท่วม/น้ำขัง"
-    assert r["source"] == "survey"
+def test_serialize_report_derives_fields():
+    r = serialize_report(_report_row(), images=[{"image_id": 5, "image_url": "/api/dashboard/image/5"}])
+    assert r["source"] == "ai"
+    assert r["category"] == "น้ำท่วม/น้ำขัง"
+    assert r["severity"] == "high"
+    assert r["title"] == "น้ำท่วม"
     assert r["is_complete"] is True
     assert r["status"] == "completed"
     assert r["has_location"] is True
     assert r["has_image"] is True
-    assert r["images"][0]["image_url"] == "/api/dashboard/image/img1"
+    assert r["images"][0]["image_url"] == "/api/dashboard/image/5"
+    assert r["extraction_confidence"] == 0.9
 
 
-def test_serialize_completed_flags_missing_location_and_image():
-    r = serialize_completed(_completed_row(payload={"q_start": "อากาศร้อน"}, latitude=None, longitude=None))
+def test_serialize_report_flags_missing_location_and_image():
+    r = serialize_report(_report_row(latitude=None, longitude=None))
     assert r["has_location"] is False
     assert r["has_image"] is False
     assert r["images"] == []
@@ -40,20 +50,9 @@ def test_serialize_completed_flags_missing_location_and_image():
 
 def test_created_at_gets_bangkok_offset():
     # naive Bangkok wall-clock → serialize เป็น ...+07:00
-    r = serialize_completed(_completed_row())
+    r = serialize_report(_report_row())
     assert r["created_at"].isoformat() == "2026-06-14T03:11:10+07:00"
     assert with_offset(None) is None
-
-
-def test_serialize_form_shape():
-    r = serialize_form({
-        "report_id": 29, "lineuser_id": "U2", "category": "จุดเสี่ยง",
-        "description": "d", "status": "new", "image_path": "reports/x.jpg",
-        "created_at": datetime(2026, 6, 26, 9, 30), "latitude": 13.8, "longitude": 100.5,
-    })
-    assert r["source"] == "form_report"
-    assert r["has_image"] is True
-    assert r["image_url"] == "/api/form-reports/29/image"
 
 
 def test_envelope_paginates():

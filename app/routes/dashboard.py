@@ -1,7 +1,7 @@
 """Admin dashboard API — thin endpoints. Logic lives in services/dashboard.py."""
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Response, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,23 +86,11 @@ async def get_report_detail(
 
 
 @router.get("/image/{image_id}")
-async def get_line_image(
-    image_id: str,
-    current_user: dict = Depends(get_current_user),
-):
-    # รูปที่เก็บถาวรแล้วเสิร์ฟจาก store ตรง ๆ — ของเก่า fallback ไป proxy สดจาก LINE CDN
-    stored = svc.survey_image_path(image_id)
-    if stored:
-        return FileResponse(stored, media_type="image/jpeg")
-    content = await svc.fetch_line_image_bytes(image_id)
-    return Response(content=content, media_type="image/jpeg")
-
-
-@router.get("/broadcast-image/{report_id}")
-async def get_broadcast_image(
-    report_id: int,
+async def get_report_image(
+    image_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    stored = await svc.broadcast_image_path(db, report_id)
+    # รูปทุก source เก็บใน report_images (store-first) — serve ผ่าน image_id เดียว (#81 images[])
+    stored = await svc.report_image_path(db, image_id)
     return FileResponse(stored, media_type="image/jpeg")

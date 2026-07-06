@@ -28,12 +28,19 @@ def unique_image_name(original_filename):
     return f"{uuid.uuid4().hex}{ext}"
 
 
-def save_image(key: str, data: bytes) -> str:
-    """เก็บ bytes ของรูปตาม storage key แล้วคืน key เดิม"""
+def save_blob(key: str, data: bytes) -> str:
+    """เก็บ bytes ตาม storage key แล้วคืน key เดิม (generic: รูปหรือไฟล์ข้อความ)"""
+    # ponytail: S3 seam สำหรับ text ด้วย — local uploads/ ตอนนี้, ย้ายขึ้น S3 ทีหลัง
+    # ด้วยการเปลี่ยนไส้ในตรงนี้ที่เดียว key เดิมใช้ต่อได้เลย
     path = UPLOAD_DIR / key
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
     return key
+
+
+def save_image(key: str, data: bytes) -> str:
+    """เก็บ bytes ของรูปตาม storage key แล้วคืน key เดิม — รูปก็คือ blob แบบหนึ่ง"""
+    return save_blob(key, data)
 
 
 def local_file(key: Optional[str]) -> Optional[Path]:
@@ -42,3 +49,9 @@ def local_file(key: Optional[str]) -> Optional[Path]:
         return None
     path = UPLOAD_DIR / key
     return path if path.exists() else None
+
+
+def read_blob(key: Optional[str]) -> Optional[bytes]:
+    """bytes ที่เก็บไว้ตาม key หรือ None ถ้าไม่มี (คู่กับ save_blob)"""
+    path = local_file(key)
+    return path.read_bytes() if path else None

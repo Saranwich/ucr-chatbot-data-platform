@@ -10,10 +10,14 @@ from app.services import report
 
 
 class FakeSession:
-    """Stand-in for database_manager.get_session() — captures the added row."""
+    """Stand-in for database_manager.get_session() — captures the added rows."""
     def __init__(self, category_id=7):
-        self.captured = None
+        self.added = []
         self._category_id = category_id
+
+    @property
+    def captured(self):
+        return self.added[0] if self.added else None   # แถว Report มาก่อนเสมอ
 
     async def __aenter__(self):
         return self
@@ -28,7 +32,11 @@ class FakeSession:
         return None                        # no user row → community_id stays null
 
     def add(self, obj):
-        self.captured = obj
+        self.added.append(obj)
+
+    async def flush(self):
+        if self.added:
+            self.added[0].report_id = 42   # flush ให้ report_id ก่อน commit (แถวรูปใช้ FK)
 
     async def commit(self):
         pass
@@ -69,3 +77,21 @@ def test_save_leaves_category_null_when_unknown(monkeypatch):
     asyncio.run(report.save("U2", {"category": "ไม่มีในลิสต์", "notes": "x",
                                     "source": "ai", "status": "completed", "is_complete": True}))
     assert fake.captured.category_id is None
+
+
+def test_save_attaches_location_and_images(monkeypatch):
+    # lat/lon → PostGIS WKT ใน location_data; image_keys → แถว report_images ชี้ report_id
+    fake = FakeSession()
+    monkeypatch.setattr(report, "get_session", lambda: fake)
+
+    asyncio.run(report.save("U3", {
+        "category": "ไฟฟ้าสาธารณะ", "notes": "x",
+        "source": "ai", "status": "completed", "is_complete": True,
+        "lat": 13.87, "lon": 100.57,
+        "image_keys": ["reports/a.jpg", "reports/b.jpg"],
+    }))
+
+    assert fake.captured.location_data == "SRID=4326;POINT(100.57 13.87)"  # (lon lat)!
+    image_rows = fake.added[1:]
+    assert [r.image_key for r in image_rows] == ["reports/a.jpg", "reports/b.jpg"]
+    assert all(r.report_id == 42 for r in image_rows)

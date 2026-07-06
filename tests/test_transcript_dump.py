@@ -29,8 +29,16 @@ def test_recording_dumps_full_transcript(tmp_path, monkeypatch):
     async def fake_load(user_id):
         return list(store)
 
+    async def fake_pop_images(user_id):
+        return []
+
+    async def fake_pop_location(user_id):
+        return None
+
     monkeypatch.setattr(session, "append", fake_append)
     monkeypatch.setattr(session, "load", fake_load)
+    monkeypatch.setattr(session, "pop_pending_images", fake_pop_images)
+    monkeypatch.setattr(session, "pop_pending_location", fake_pop_location)
     monkeypatch.setattr(storage, "UPLOAD_DIR", tmp_path)  # blob ลง tmp ไม่แตะ uploads/ จริง
 
     async def fake_save(*a, **k):  # ไม่เขียน reports จริง (async seam)

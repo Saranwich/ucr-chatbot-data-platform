@@ -64,6 +64,47 @@ async def clear_broadcast_mode(user_id: str) -> None:
     await _get_client().delete(_mode_key(user_id))
 
 
+# ── ของฝากรอแนบ report — รูป/พิกัดที่ส่งมาระหว่างคุย แนบตอน record_complaint ──
+# Gemini คุยเป็น text — ไฟล์/พิกัดไม่เข้าโมเดล แค่พักไว้ที่นี่ (TTL เดียวกับ transcript)
+# แล้ว record() hook pop ไปแนบกับ report ที่บันทึก; หมดเวลา = ลืมไปพร้อม session
+
+def _images_key(user_id: str) -> str:
+    return f"pending_images:{user_id}"
+
+
+def _location_key(user_id: str) -> str:
+    return f"pending_location:{user_id}"
+
+
+async def add_pending_image(user_id: str, image_key: str) -> None:
+    client, key = _get_client(), _images_key(user_id)
+    await client.rpush(key, image_key)
+    await client.expire(key, SESSION_TTL)
+
+
+async def pop_pending_images(user_id: str) -> list[str]:
+    """storage keys ของรูปที่รออยู่ทั้งหมด (เคลียร์ทิ้งหลังอ่าน — แนบได้ report เดียว)"""
+    client, key = _get_client(), _images_key(user_id)
+    keys = await client.lrange(key, 0, -1)
+    await client.delete(key)
+    return keys
+
+
+async def set_pending_location(user_id: str, latitude: float, longitude: float) -> None:
+    await _get_client().setex(_location_key(user_id), SESSION_TTL, f"{latitude},{longitude}")
+
+
+async def pop_pending_location(user_id: str) -> tuple[float, float] | None:
+    """(lat, lon) ที่รออยู่ หรือ None (เคลียร์ทิ้งหลังอ่าน)"""
+    client, key = _get_client(), _location_key(user_id)
+    raw = await client.get(key)
+    if raw is None:
+        return None
+    await client.delete(key)
+    lat, lon = raw.split(",")
+    return float(lat), float(lon)
+
+
 async def dump_transcript(user_id: str) -> str:
     """Overwrite conversations/<user_id>.json with the transcript so far; return the key.
 

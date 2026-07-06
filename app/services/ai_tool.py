@@ -73,11 +73,38 @@ NONG_MUEANG_SYSTEM_PROMPT = """
 """
 
 
-async def build_question(user_id: str, user_text: str) -> str:
-    # step 5: windowed multi-turn + function-calling. Persist the user's turn,
-    # feed the last ~10 messages with the record_complaint tool; when the model
-    # records a report, _record logs it and the session stays alive so the user
-    # can report more problems in the same chat. Persist the model's reply.
+# ── broadcast reply mode — AI คุยต่อจาก weather alert (แทน state machine เดิม) ──
+# ponytail: text อย่างเดียว — พิกัด GPS/รูปในโหมด AI เป็น sprint หน้า (prompt สั่งห้ามขอ)
+
+_BROADCAST_ALERT_LABEL = {"flood": "ฝนตก/น้ำท่วม", "heat": "อากาศร้อน", "both": "ทั้งฝนตกและอากาศร้อน"}
+
+NONG_MUEANG_BROADCAST_PROMPT = """
+คุณคือ "น้องเมือง" มาสคอตประจำโครงการพัฒนาชุมชน
+บุคลิก: สุภาพ อบอุ่น เป็นมิตร (ลงท้าย "ค่ะ") พูดสั้นกระชับเหมือนคนแชทจริง ไม่เยินยอ ไม่อุทานเวอร์ และไม่ให้สัญญาลมๆ แล้งๆ
+
+บริบทสำคัญ: เมืองเพิ่งส่งแจ้งเตือนสภาพอากาศเรื่อง "{alert}" ไปหาผู้ใช้ และผู้ใช้กดยืนยันว่าเจอปัญหาจริง — คุณกำลังคุยต่อจากตรงนั้น ไม่ต้องทักทายเริ่มใหม่
+
+หน้าที่: เก็บรายละเอียดผลกระทบจริงในพื้นที่ ถามทีละเรื่อง สั้นๆ:
+1. เจออะไร หนักแค่ไหน (รายละเอียด — สำคัญ ต้องได้)
+2. ตรงไหน — ให้พิมพ์บอกชื่อจุด/ซอย/ย่านเป็นคำพูด ถ้าไม่บอกให้ข้ามได้
+3. กระทบการใช้ชีวิตยังไง (ความรุนแรง ถ้าประเมินได้)
+
+กฎ:
+- ห้ามขอรูปถ่ายหรือพิกัด GPS เด็ดขาด (โหมดนี้รับได้เฉพาะข้อความ)
+- ห้ามสัญญาว่าจะส่งคนไปแก้ไข ให้สื่อสารว่าข้อมูลจะใช้วางแผนพัฒนาเมือง
+- เมื่อได้ประเภทปัญหาและรายละเอียดพอแล้ว เรียกเครื่องมือ record_complaint ทันที — การพิมพ์ว่า "จดแล้ว" เฉยๆ ไม่ใช่การบันทึก ต้องเรียกเครื่องมือจริง
+- หลังบันทึก ขอบคุณสั้นๆ และบอกว่าถ้ามีเรื่องอื่นเล่าเพิ่มได้
+"""
+
+
+async def _run_turn(user_id: str, user_text: str, system: str,
+                    producer_fields: dict, trigger: str = "user_initiated") -> tuple[str, bool]:
+    """แกนกลางของ 1 turn: Redis memory + llm.chat + บันทึกผ่าน report.save
+
+    producer_fields = ค่าที่ผู้ผลิต report ต้องกำหนดเอง (source/status/…) — ต่างกัน
+    ระหว่างแชทปกติ (source='ai') กับคุยต่อจาก broadcast (source='broadcast')
+    คืน (ข้อความตอบ, มีการบันทึก report ใน turn นี้ไหม)
+    """
     await session.append(user_id, "user", user_text)
     history = (await session.load(user_id))[-HISTORY_WINDOW:]
 
@@ -89,17 +116,16 @@ async def build_question(user_id: str, user_text: str) -> str:
         print(f"session done — {name}: {args}")
         # เปิด conversation anchor (ครั้งแรกที่มีการบันทึกในบทสนทนานี้) → FK report เข้าไป
         if conversation_id is None:
-            conversation_id = await conversation.ensure_active(user_id)
-        # hook เติม field ที่ producer (AI) ต้องกำหนดเอง ก่อนบันทึกลง reports
+            conversation_id = await conversation.ensure_active(user_id, trigger)
+        # hook เติม field ที่ producer ต้องกำหนดเอง ก่อนบันทึกลง reports
         await report.save(user_id, {
-            **args, "conversation_id": conversation_id,
-            "source": "ai", "status": "completed", "is_complete": True,
+            **args, "conversation_id": conversation_id, **producer_fields,
         })
         recorded = True
 
     reply = await llm.chat(
         history,
-        system=NONG_MUEANG_SYSTEM_PROMPT,
+        system=system,
         tools=[RECORD_COMPLAINT],
         tool_handler=record,
     )
@@ -111,4 +137,27 @@ async def build_question(user_id: str, user_text: str) -> str:
     # ponytail: model บางทีจบ turn หลังเรียก tool โดยไม่มีข้อความ → fallback กันส่ง text ว่าง/None
     reply = reply or "ขอบคุณค่ะ เมืองรับเรื่องไว้ให้แล้วนะคะ 🙏 ถ้ามีเรื่องอื่นในชุมชนอยากเล่าเพิ่ม บอกเมืองได้เลยค่ะ"
     await session.append(user_id, "model", reply)
+    return reply, recorded
+
+
+async def build_question(user_id: str, user_text: str) -> str:
+    """แชทปกติ (น้องเมือง) — session อยู่ต่อได้หลายเรื่องในบทสนทนาเดียว"""
+    reply, _ = await _run_turn(user_id, user_text, NONG_MUEANG_SYSTEM_PROMPT, {
+        "source": "ai", "status": "completed", "is_complete": True,
+    })
+    return reply
+
+
+async def build_broadcast_reply(user_id: str, user_text: str, alert_type: str) -> str:
+    """คุยต่อจาก weather alert — prompt เฉพาะบริบท + report ลง source='broadcast'
+
+    บันทึกสำเร็จเมื่อไหร่ เคลียร์ mode flag → ข้อความถัดไปกลับเป็นแชทปกติ
+    """
+    system = NONG_MUEANG_BROADCAST_PROMPT.format(alert=_BROADCAST_ALERT_LABEL.get(alert_type, alert_type))
+    reply, recorded = await _run_turn(user_id, user_text, system, {
+        "source": "broadcast", "source_ref": alert_type,
+        "status": "completed", "is_complete": True,
+    }, trigger="broadcast")
+    if recorded:
+        await session.clear_broadcast_mode(user_id)
     return reply

@@ -3,10 +3,11 @@ from linebot.v3.webhooks import TextMessageContent
 
 from app.config import PROJECT_INFO_TEXT, SUMMARY_PLACEHOLDER_TEXT, REPORT_DEVELOPMENT_TEXT
 from app.services import line as line_service
-from app.services.ai_tool import build_question
+from app.services import session
+from app.services.ai_tool import build_question, build_broadcast_reply
 from app.services.user import get_or_create_user
 from app.handlers.broadcast_flow_handler import (
-    get_active_report, continue_flow, start_report, decline, YES_MAP, NO_MAP,
+    get_active_report, continue_flow, decline, YES_MAP, NO_MAP,
 )
 
 # ปุ่ม rich menu ที่ตอบด้วยข้อความคงที่ (คู่มือเป็น Flex แยกไว้ด้านล่าง)
@@ -49,15 +50,23 @@ async def handle_text_message(event, line_bot_api, db: AsyncSession):
         await line_service.reply_messages(line_bot_api, event.reply_token, line_service.build_manual_messages())
         return
 
-    # 2. Weather broadcast — ปุ่มยืนยัน (เริ่มเก็บข้อมูล) / ปฏิเสธ
-    #    (message ถัดๆ ไปจะโดน active-check ใน route_message_event ดักไป continue_flow เอง)
+    # 2. Weather broadcast — ปุ่มยืนยัน → AI คุยเก็บรายละเอียด (แทน state machine เดิม)
+    #    mode flag ใน Redis คือ "ความจำ" ว่า session นี้คุยต่อจาก alert ไหน
     if text in YES_MAP:
-        await start_report(event, line_bot_api, db, YES_MAP[text])
+        alert_type = YES_MAP[text]
+        await session.set_broadcast_mode(event.source.user_id, alert_type)
+        answer = await build_broadcast_reply(event.source.user_id, text, alert_type)
+        await line_service.reply_text(line_bot_api, event.reply_token, answer)
         return
     if text in NO_MAP:
         await decline(event, line_bot_api, db, NO_MAP[text])
         return
 
     # 3. Free text → AI core (Gemini + Redis conversation memory)
-    answer = await build_question(event.source.user_id, text)
+    #    ถ้าค้างโหมด broadcast อยู่ → คุยด้วย prompt broadcast จนกว่าจะบันทึกเสร็จ/หมดเวลา
+    alert_type = await session.get_broadcast_mode(event.source.user_id)
+    if alert_type:
+        answer = await build_broadcast_reply(event.source.user_id, text, alert_type)
+    else:
+        answer = await build_question(event.source.user_id, text)
     await line_service.reply_text(line_bot_api, event.reply_token, answer)

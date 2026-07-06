@@ -14,6 +14,8 @@ class FakeSession:
     """In-memory stand-in for the Redis transcript store (no live Redis)."""
     def __init__(self):
         self.msgs = []
+        self.mode = None
+        self.mode_cleared = False
 
     async def append(self, user_id, role, content):
         self.msgs.append({"role": role, "content": content})
@@ -23,6 +25,10 @@ class FakeSession:
 
     async def dump_transcript(self, user_id):
         return f"conversations/{user_id}.json"
+
+    async def clear_broadcast_mode(self, user_id):
+        self.mode = None
+        self.mode_cleared = True
 
 
 def test_record_complaint_calls_report_save(monkeypatch):
@@ -76,3 +82,43 @@ def test_record_complaint_calls_report_save(monkeypatch):
     assert rep["is_complete"] is True
     # FK ไปยัง conversation anchor ที่เปิดตอนบันทึกเรื่องแรก
     assert rep["conversation_id"] == 5
+
+
+def test_broadcast_reply_records_source_broadcast(monkeypatch):
+    """คุยต่อจาก weather alert → report ลง source='broadcast' + เคลียร์ mode เมื่อบันทึกเสร็จ"""
+    fake_session = FakeSession()
+    monkeypatch.setattr(ai_tool, "session", fake_session)
+
+    triggers = []
+    async def fake_ensure(user_id, trigger="user_initiated"):
+        triggers.append(trigger)
+        return 7
+    async def fake_attach(conversation_id, archive_key):
+        pass
+    monkeypatch.setattr(ai_tool.conversation, "ensure_active", fake_ensure)
+    monkeypatch.setattr(ai_tool.conversation, "attach_archive", fake_attach)
+
+    saved = []
+    async def fake_save(lineuser_id, rep):
+        saved.append((lineuser_id, rep))
+    monkeypatch.setattr(report, "save", fake_save)
+
+    systems = []
+    async def fake_chat(messages, system=None, tools=None, tool_handler=None):
+        systems.append(system)
+        await tool_handler("record_complaint", {
+            "category": "น้ำท่วม/น้ำขัง", "notes": "น้ำขังหน้าปากซอย เดินลำบาก",
+        })
+        return "ขอบคุณค่ะ เมืองจดไว้ให้แล้ว"
+    monkeypatch.setattr(ai_tool.llm, "chat", fake_chat)
+
+    reply = asyncio.run(ai_tool.build_broadcast_reply("U2", "มีน้ำท่วมขัง", "flood"))
+    assert reply == "ขอบคุณค่ะ เมืองจดไว้ให้แล้ว"
+
+    _, rep = saved[0]
+    assert rep["source"] == "broadcast"
+    assert rep["source_ref"] == "flood"
+    assert rep["conversation_id"] == 7
+    assert triggers == ["broadcast"]                    # conversation anchor รู้ที่มา
+    assert "ห้ามขอรูปถ่ายหรือพิกัด GPS" in systems[0]    # ใช้ prompt broadcast ไม่ใช่ตัวปกติ
+    assert fake_session.mode_cleared                    # บันทึกแล้ว → กลับโหมดแชทปกติ

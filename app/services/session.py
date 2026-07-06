@@ -44,6 +44,26 @@ async def append(user_id: str, role: str, content: str) -> None:
     await client.expire(key, SESSION_TTL)
 
 
+# ── broadcast mode flag — session นี้กำลังคุยต่อจาก alert ไหนอยู่ ──
+# แทน "ความจำ" ที่เดิมเป็นแถว reports.status (state machine) — ตอนนี้ AI คุยแทน
+# flag หมดอายุพร้อมกรอบเวลาเดียวกับ transcript
+
+def _mode_key(user_id: str) -> str:
+    return f"broadcast_mode:{user_id}"
+
+
+async def set_broadcast_mode(user_id: str, alert_type: str) -> None:
+    await _get_client().setex(_mode_key(user_id), SESSION_TTL, alert_type)
+
+
+async def get_broadcast_mode(user_id: str) -> str | None:
+    return await _get_client().get(_mode_key(user_id))
+
+
+async def clear_broadcast_mode(user_id: str) -> None:
+    await _get_client().delete(_mode_key(user_id))
+
+
 async def dump_transcript(user_id: str) -> str:
     """Overwrite conversations/<user_id>.json with the transcript so far; return the key.
 

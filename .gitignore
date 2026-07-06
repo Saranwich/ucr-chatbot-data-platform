@@ -173,3 +173,4 @@ uploads/
 # V2 fake report store (CSV stand-in until Postgres)
 reports.csv
 mock_forecast/
+dump.rdb

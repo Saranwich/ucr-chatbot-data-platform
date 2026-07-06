@@ -5,7 +5,27 @@ Broadcast keeps its own builders in handlers/broadcast_flow_handler.py (Pim's).
 from linebot.v3.messaging import (
     ReplyMessageRequest, TextMessage,
     FlexMessage, FlexBubble, FlexBox, FlexText, FlexSeparator,
+    Configuration, AsyncApiClient, AsyncMessagingApiBlob,
 )
+
+from app.config import CHANNEL_ACCESS_TOKEN
+from app.utils import storage
+
+
+async def persist_message_image(message_id: str, key_prefix: str) -> str | None:
+    """ดึง bytes รูปจาก LINE CDN มาเก็บถาวรทันที (CDN ลบรูปทิ้งหลังผ่านไปสักพัก)
+
+    คืน storage key เช่น 'reports/<message_id>.jpg' หรือ None ถ้าพลาด —
+    การเก็บรูปพลาดต้องไม่ทำให้แชทพัง
+    """
+    try:
+        configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
+        async with AsyncApiClient(configuration) as api_client:
+            content = await AsyncMessagingApiBlob(api_client).get_message_content(message_id)
+        return storage.save_image(f"{key_prefix}/{message_id}.jpg", content)
+    except Exception as e:
+        print(f"⚠️ persist image {message_id} failed: {e}")
+        return None
 
 
 async def reply_text(line_bot_api, reply_token, text: str):

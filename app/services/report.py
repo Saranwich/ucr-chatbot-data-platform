@@ -8,7 +8,7 @@
 from sqlalchemy import select
 
 from app.database.database_manager import get_session
-from app.models import Report, Category, Community, User
+from app.models import Report, ReportImage, Category, Community, User
 
 
 async def category_id_for(db, category: str | None):
@@ -66,7 +66,11 @@ async def save(lineuser_id: str, report: dict) -> int:
     `report` carries the tool args (category/notes/severity/title/location) plus the
     producer-set fields the record() hook adds (source/status/is_complete). Optional
     keys (conversation_id/community_id/source_ref/payload/…) default to null.
+    Attachments the user sent mid-chat ride along as lat/lon (→ PostGIS point)
+    and image_keys (→ report_images rows).
     """
+    lat, lon = report.get("lat"), report.get("lon")
+    location_data = f"SRID=4326;POINT({lon} {lat})" if lat is not None and lon is not None else None
     async with get_session() as db:
         row = Report(
             conversation_id=report.get("conversation_id"),
@@ -81,11 +85,15 @@ async def save(lineuser_id: str, report: dict) -> int:
             status=report.get("status"),
             is_complete=bool(report.get("is_complete")),
             location_text=report.get("location"),  # tool arg 'location' → column location_text
+            location_data=location_data,
             extraction_confidence=report.get("extraction_confidence"),
             confidence_by_field=report.get("confidence_by_field"),
             payload=report.get("payload"),
         )
         db.add(row)
+        await db.flush()  # ได้ report_id ก่อน commit — ให้แถวรูป FK ชี้ได้
+        for key in report.get("image_keys") or ():
+            db.add(ReportImage(report_id=row.report_id, image_key=key))
         await db.commit()
         await db.refresh(row)
         return row.report_id

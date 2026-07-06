@@ -16,6 +16,8 @@ class FakeSession:
         self.msgs = []
         self.mode = None
         self.mode_cleared = False
+        self.pending_images = []
+        self.pending_location = None
 
     async def append(self, user_id, role, content):
         self.msgs.append({"role": role, "content": content})
@@ -29,6 +31,14 @@ class FakeSession:
     async def clear_broadcast_mode(self, user_id):
         self.mode = None
         self.mode_cleared = True
+
+    async def pop_pending_images(self, user_id):
+        keys, self.pending_images = self.pending_images, []
+        return keys
+
+    async def pop_pending_location(self, user_id):
+        loc, self.pending_location = self.pending_location, None
+        return loc
 
 
 def test_record_complaint_calls_report_save(monkeypatch):
@@ -120,5 +130,41 @@ def test_broadcast_reply_records_source_broadcast(monkeypatch):
     assert rep["source_ref"] == "flood"
     assert rep["conversation_id"] == 7
     assert triggers == ["broadcast"]                    # conversation anchor รู้ที่มา
-    assert "ห้ามขอรูปถ่ายหรือพิกัด GPS" in systems[0]    # ใช้ prompt broadcast ไม่ใช่ตัวปกติ
+    assert "เมืองเพิ่งส่งแจ้งเตือนสภาพอากาศ" in systems[0]  # ใช้ prompt broadcast ไม่ใช่ตัวปกติ
     assert fake_session.mode_cleared                    # บันทึกแล้ว → กลับโหมดแชทปกติ
+
+
+def test_pending_attachments_land_on_report(monkeypatch):
+    """รูป/พิกัดที่ส่งระหว่างคุย → pop จาก session มาแนบกับ report ที่บันทึก (ครั้งเดียว)"""
+    fake_session = FakeSession()
+    fake_session.pending_images = ["reports/img1.jpg", "reports/img2.jpg"]
+    fake_session.pending_location = (13.87, 100.57)
+    monkeypatch.setattr(ai_tool, "session", fake_session)
+
+    async def fake_ensure(user_id, trigger="user_initiated"):
+        return 9
+    async def fake_attach(conversation_id, archive_key):
+        pass
+    monkeypatch.setattr(ai_tool.conversation, "ensure_active", fake_ensure)
+    monkeypatch.setattr(ai_tool.conversation, "attach_archive", fake_attach)
+
+    saved = []
+    async def fake_save(lineuser_id, rep):
+        saved.append(rep)
+    monkeypatch.setattr(report, "save", fake_save)
+
+    async def fake_chat(messages, system=None, tools=None, tool_handler=None):
+        await tool_handler("record_complaint", {
+            "category": "ไฟฟ้าสาธารณะ", "notes": "ไฟถนนดับ",
+        })
+        return "ขอบคุณค่ะ"
+    monkeypatch.setattr(ai_tool.llm, "chat", fake_chat)
+
+    asyncio.run(ai_tool.build_question("U3", "[ระบบ: ผู้ใช้ส่งรูปภาพประกอบ 1 รูป]"))
+
+    rep = saved[0]
+    assert rep["image_keys"] == ["reports/img1.jpg", "reports/img2.jpg"]
+    assert (rep["lat"], rep["lon"]) == (13.87, 100.57)
+    # pop เคลียร์ของฝากแล้ว — บันทึกเรื่องถัดไปต้องไม่ติดรูป/พิกัดชุดเดิม
+    assert fake_session.pending_images == []
+    assert fake_session.pending_location is None

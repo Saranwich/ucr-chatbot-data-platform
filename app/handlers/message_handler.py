@@ -4,6 +4,7 @@ from linebot.v3.webhooks import TextMessageContent
 from app.config import PROJECT_INFO_TEXT, SUMMARY_PLACEHOLDER_TEXT, REPORT_DEVELOPMENT_TEXT
 from app.services import line as line_service
 from app.services.ai_tool import build_question
+from app.services.user import get_or_create_user
 from app.handlers.broadcast_flow_handler import (
     get_active_report, continue_flow, start_report, decline, YES_MAP, NO_MAP,
 )
@@ -18,6 +19,11 @@ RICH_MENU_REPLIES = {
 
 async def route_message_event(event, line_bot_api, db: AsyncSession):
     """Single router for a MessageEvent: dispatch by content type."""
+    # ★ กันแถว users ให้มีก่อนเสมอ: คนที่เพิ่มเพื่อนก่อน deploy/ก่อน DB นี้จะไม่มี
+    #   FollowEvent → ไม่มีแถว users แต่ conversations/reports FK ชี้มาที่ users
+    #   (commit ทันทีเพื่อให้ session แยกของ AI flow มองเห็นแถวนี้)
+    await get_or_create_user(db, event.source.user_id)
+    await db.commit()
     # ★ ถ้า user กำลังกรอก broadcast report ค้างอยู่ → route ทุก message (text/location/image)
     #   เข้า flow ก่อน (บอทดู status ว่ารอ note/location/photo อยู่ แล้วจัดการให้ถูก)
     active = await get_active_report(db, event.source.user_id)

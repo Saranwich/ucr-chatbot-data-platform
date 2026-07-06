@@ -2,9 +2,10 @@
 broadcast_flow_handler.py — state machine เก็บข้อมูลหลัง user ตอบ broadcast แจ้งเตือน
 
 user กดปุ่มยืนยัน (มีน้ำท่วมขัง / ร้อนมาก / ทั้งฝนทั้งร้อน) → เริ่มเก็บข้อมูลทีละสเต็ป:
-    awaiting_note → awaiting_location → awaiting_photo → done
-บอทดู BroadcastReport.status ของ report ที่ยัง active เพื่อรู้ว่า message ที่เข้ามาคืออะไร
+    awaiting_note → awaiting_location → awaiting_photo → completed
+บอทดู reports.status (source='broadcast') ของ report ที่ยัง active เพื่อรู้ว่า message ที่เข้ามาคืออะไร
 (เพราะ LINE ยิงข้อความมาแยกกัน ไม่จำ context ให้ — status คือ "ความจำ" ของบอท)
+V2: ไม่มีตาราง broadcast_reports แล้ว — ทั้ง flow เขียน/อ่านแถวเดียวในตาราง reports กลาง
 """
 from linebot.v3.messaging import (
     ReplyMessageRequest, TextMessage,
@@ -16,9 +17,13 @@ from geoalchemy2.elements import WKTElement
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import BroadcastReport, User
+from app.models import User, Report, ReportImage
+from app.services import report as report_service
 from app.config import CHANNEL_ACCESS_TOKEN
 from app.utils import storage
+
+# broadcast flow steps ที่ยังกรอกไม่จบ (report ที่ status อยู่ในนี้ = active อยู่)
+_AWAITING = ("awaiting_note", "awaiting_location", "awaiting_photo")
 
 
 # ── สัญญากับปุ่มใน broadcast (ต้องตรงกับ text ใน weather_broadcast._MESSAGE_CONFIG) ──
@@ -106,44 +111,74 @@ async def _persist_image(image_id: str) -> str | None:
         return None
 
 
+# broadcast alert_type → หมวดหลักในตาราง categories
+# ponytail: 'both' ยุบเป็น flood ในแถวรวม (report มี category เดียว) — source_ref
+# ยังเก็บ alert_type จริงไว้ ('both') ให้ dashboard แยกได้ถ้าต้องการ
+_BROADCAST_CATEGORY_VALUE = {"flood": "น้ำท่วม/น้ำขัง", "heat": "อากาศร้อน", "both": "น้ำท่วม/น้ำขัง"}
+
+
 async def get_active_report(db: AsyncSession, lineuser_id: str):
-    """report ที่ user กำลังกรอกค้างอยู่ (status != done) — ตัวชี้ว่าเขาอยู่ใน flow"""
+    """report ที่ user กำลังกรอกค้างอยู่ (status อยู่ในสเต็ป awaiting_*) — อยู่ใน flow"""
     result = await db.execute(
-        select(BroadcastReport)
+        select(Report)
         .where(
-            BroadcastReport.lineuser_id == lineuser_id,
-            BroadcastReport.status != "done",
+            Report.lineuser_id == lineuser_id,
+            Report.source == "broadcast",
+            Report.status.in_(_AWAITING),
         )
-        .order_by(BroadcastReport.report_id.desc())
+        .order_by(Report.report_id.desc())
     )
     return result.scalars().first()
 
 
 async def start_report(event, line_bot_api, db: AsyncSession, alert_type: str):
-    """user กด "ใช่" → สร้าง report (confirmed=1) + เริ่มถาม note"""
+    """user กด "ใช่" → สร้างแถว reports (source='broadcast', ยังไม่ครบ) + เริ่มถาม note.
+
+    แถวนี้ทำหน้าที่เป็น "ความจำ" ของ flow ด้วย (status = สเต็ปที่กรอกถึง) จนกรอกจบ
+    ค่อย flip เป็น completed — ไม่มีตาราง broadcast_reports แล้ว (M4).
+    """
     user_id = event.source.user_id
-    user = await db.get(User, user_id)
-    db.add(BroadcastReport(
-        lineuser_id=user_id, alert_type=alert_type, confirmed=1,
-        community=user.community if user else None, status="awaiting_note",
+    db.add(Report(
+        lineuser_id=user_id or None,
+        community_id=await report_service.community_id_for(db, user_id),
+        source="broadcast", source_ref=alert_type,
+        category_id=await report_service.category_id_for(db, _BROADCAST_CATEGORY_VALUE.get(alert_type)),
+        status="awaiting_note", is_complete=False,
     ))
     await db.commit()
     await _reply(line_bot_api, event.reply_token, _note_prompt(alert_type))
 
 
 async def decline(event, line_bot_api, db: AsyncSession, alert_type: str):
-    """user กด "ไม่" → เก็บแถวเบาๆ (confirmed=0, จบทันที) + ขอบคุณ"""
+    """user กด "ไม่" → เก็บแถวเบาๆ (status='cancelled', จบทันที) + ขอบคุณ.
+
+    # ponytail: บ้านจริงของ "ปฏิเสธ" คือ outreach.response='declined' (ยังไม่ wire) —
+    # ระหว่างนี้เก็บเป็นแถว reports status='cancelled' is_complete=False คงพฤติกรรมเดิม
+    # (แถว confirmed=0 เดิม) ให้นับ response rate ได้
+    """
     user_id = event.source.user_id
-    user = await db.get(User, user_id)
-    db.add(BroadcastReport(
-        lineuser_id=user_id, alert_type=alert_type, confirmed=0,
-        community=user.community if user else None, status="done",
+    db.add(Report(
+        lineuser_id=user_id or None,
+        community_id=await report_service.community_id_for(db, user_id),
+        source="broadcast", source_ref=alert_type,
+        category_id=await report_service.category_id_for(db, _BROADCAST_CATEGORY_VALUE.get(alert_type)),
+        status="cancelled", is_complete=False,
     ))
     await db.commit()
     await _reply(line_bot_api, event.reply_token, DECLINE)
 
 
-async def continue_flow(event, line_bot_api, db: AsyncSession, report: BroadcastReport):
+async def _finish(db: AsyncSession, report: Report, image_key: str | None) -> None:
+    """flow จบ → flip แถว reports เป็น completed + แนบรูป (ถ้ามี)."""
+    report.status = "completed"
+    report.is_complete = True
+    await db.flush()
+    if image_key:
+        db.add(ReportImage(report_id=report.report_id, image_key=image_key))
+    await db.commit()
+
+
+async def continue_flow(event, line_bot_api, db: AsyncSession, report: Report):
     """message เข้ามาระหว่าง report ยัง active → จัดการตาม report.status"""
     msg = event.message
     is_text = isinstance(msg, TextMessageContent)
@@ -153,12 +188,12 @@ async def continue_flow(event, line_bot_api, db: AsyncSession, report: Broadcast
     if report.status == "awaiting_note":
         if is_text:
             if not skipped:
-                report.note = msg.text.strip()
+                report.notes = msg.text.strip()
             report.status = "awaiting_location"          # ทุก type เก็บ location + รูป เหมือนกัน
             await db.commit()
             await _reply(line_bot_api, event.reply_token, _location_prompt())
         else:
-            await _reply(line_bot_api, event.reply_token, _note_prompt(report.alert_type))  # ยังไม่ถึงขั้นส่ง → ถามซ้ำ
+            await _reply(line_bot_api, event.reply_token, _note_prompt(report.source_ref))  # ยังไม่ถึงขั้นส่ง → ถามซ้ำ
 
     # ── รอ location (แชร์พิกัด หรือ ข้าม) ──
     elif report.status == "awaiting_location":
@@ -177,13 +212,11 @@ async def continue_flow(event, line_bot_api, db: AsyncSession, report: Broadcast
     # ── รอ photo (ส่งรูป หรือ ข้าม) → จบ ──
     elif report.status == "awaiting_photo":
         if isinstance(msg, ImageMessageContent):
-            report.image_path = await _persist_image(msg.id)   # ดึง bytes จริง → storage key (None ถ้าพลาด)
-            report.status = "done"
-            await db.commit()
+            image_key = await _persist_image(msg.id)   # ดึง bytes จริง → storage key (None ถ้าพลาด)
+            await _finish(db, report, image_key)        # flip แถว reports → completed + แนบรูป
             await _reply(line_bot_api, event.reply_token, THANK_YOU)
         elif skipped:
-            report.status = "done"
-            await db.commit()
+            await _finish(db, report, None)
             await _reply(line_bot_api, event.reply_token, THANK_YOU)
         else:
             await _reply(line_bot_api, event.reply_token, _photo_prompt())

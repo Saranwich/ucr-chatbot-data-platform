@@ -4,7 +4,7 @@
 # system prompt. record_complaint tool + Redis memory + multi-turn come in steps
 # 4-6; the prompt already describes the tool the model will get then.
 """
-from app.services import llm, report, session
+from app.services import llm, report, session, conversation
 from app.services.lookups import CATEGORIES
 
 # record_complaint — provider-neutral tool spec (llm.py turns it into an SDK tool).
@@ -82,12 +82,19 @@ async def build_question(user_id: str, user_text: str) -> str:
     history = (await session.load(user_id))[-HISTORY_WINDOW:]
 
     recorded = False
+    conversation_id = None  # lazily opened when the first report of this chat lands
 
-    def record(name: str, args: dict) -> None:
-        nonlocal recorded
+    async def record(name: str, args: dict) -> None:
+        nonlocal recorded, conversation_id
         print(f"session done — {name}: {args}")
+        # เปิด conversation anchor (ครั้งแรกที่มีการบันทึกในบทสนทนานี้) → FK report เข้าไป
+        if conversation_id is None:
+            conversation_id = await conversation.ensure_active(user_id)
         # hook เติม field ที่ producer (AI) ต้องกำหนดเอง ก่อนบันทึกลง reports
-        report.save(user_id, {**args, "source": "ai", "status": "completed", "is_complete": True})
+        await report.save(user_id, {
+            **args, "conversation_id": conversation_id,
+            "source": "ai", "status": "completed", "is_complete": True,
+        })
         recorded = True
 
     reply = await llm.chat(
@@ -96,11 +103,11 @@ async def build_question(user_id: str, user_text: str) -> str:
         tools=[RECORD_COMPLAINT],
         tool_handler=record,
     )
-    # ponytail: tool_handler เป็น sync (สัญญาของ llm) เลย await Redis ในนั้นไม่ได้ →
-    # dump ตรงนี้แทน หลังจบ turn ที่มีการบันทึก ผลเท่ากับ dump-on-record เพราะ transcript
-    # ใน Redis ไม่เปลี่ยนระหว่างรอบ tool; overwrite เก็บ transcript ที่ครบสุดไว้เสมอ
+    # หลังจบ turn ที่มีการบันทึก: dump transcript ผ่าน storage seam แล้วชี้ archive_key
+    # ของ conversation ไปที่ไฟล์นั้น (overwrite เก็บ transcript ครบสุดไว้เสมอ)
     if recorded:
-        await session.dump_transcript(user_id)
+        archive_key = await session.dump_transcript(user_id)
+        await conversation.attach_archive(conversation_id, archive_key)
     # ponytail: model บางทีจบ turn หลังเรียก tool โดยไม่มีข้อความ → fallback กันส่ง text ว่าง/None
     reply = reply or "ขอบคุณค่ะ เมืองรับเรื่องไว้ให้แล้วนะคะ 🙏 ถ้ามีเรื่องอื่นในชุมชนอยากเล่าเพิ่ม บอกเมืองได้เลยค่ะ"
     await session.append(user_id, "model", reply)

@@ -32,11 +32,22 @@ def test_recording_dumps_full_transcript(tmp_path, monkeypatch):
     monkeypatch.setattr(session, "append", fake_append)
     monkeypatch.setattr(session, "load", fake_load)
     monkeypatch.setattr(storage, "UPLOAD_DIR", tmp_path)  # blob ลง tmp ไม่แตะ uploads/ จริง
-    monkeypatch.setattr(report, "save", lambda *a, **k: None)  # ไม่เขียน reports.csv จริง
+
+    async def fake_save(*a, **k):  # ไม่เขียน reports จริง (async seam)
+        pass
+    monkeypatch.setattr(report, "save", fake_save)
+
+    # conversation anchor — stub the DB seam
+    async def fake_ensure(user_id, trigger="user_initiated"):
+        return 1
+    async def fake_attach(conversation_id, archive_key):
+        pass
+    monkeypatch.setattr(ai_tool.conversation, "ensure_active", fake_ensure)
+    monkeypatch.setattr(ai_tool.conversation, "attach_archive", fake_attach)
 
     async def fake_chat(messages, system=None, tools=None, tool_handler=None):
-        # จำลอง Gemini เรียก record_complaint แล้วตอบกลับ
-        tool_handler("record_complaint", {"category": CATEGORIES[0], "notes": "ไฟถนนดับ"})
+        # จำลอง Gemini เรียก record_complaint (tool_handler เป็น async) แล้วตอบกลับ
+        await tool_handler("record_complaint", {"category": CATEGORIES[0], "notes": "ไฟถนนดับ"})
         return "ขอบคุณค่ะ เมืองจดไว้ให้แล้ว"
 
     monkeypatch.setattr(ai_tool.llm, "chat", fake_chat)

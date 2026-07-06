@@ -4,6 +4,7 @@ Swap providers/models here and nowhere else. Requirements: <10s latency,
 function calling, strong Thai. Callers pass provider-neutral messages/tools;
 all google.genai types stay inside this module.
 """
+import inspect
 import os
 
 from google import genai
@@ -44,7 +45,8 @@ async def chat(messages: list[dict], system: str | None = None,
     """One turn. messages: [{"role": "user"|"model", "content": str}].
 
     If the model calls tool(s), run tool_handler(name, args) for each, feed the
-    results back, and return the model's follow-up text. tool_handler is sync.
+    results back, and return the model's follow-up text. tool_handler may be sync
+    or a coroutine function (report.save is async) — we await it when it is.
     """
     contents = _to_contents(messages)
     config = types.GenerateContentConfig(system_instruction=system, tools=_to_tools(tools))
@@ -61,7 +63,9 @@ async def chat(messages: list[dict], system: str | None = None,
         contents.append(resp.candidates[0].content)  # the model's tool-call turn
         for fc in resp.function_calls:
             if tool_handler:
-                tool_handler(fc.name, dict(fc.args))
+                result = tool_handler(fc.name, dict(fc.args))
+                if inspect.isawaitable(result):
+                    await result
             contents.append(types.Content(
                 role="tool",
                 parts=[types.Part.from_function_response(name=fc.name, response={"ok": True})],

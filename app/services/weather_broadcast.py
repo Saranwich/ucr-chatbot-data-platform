@@ -1,15 +1,13 @@
 """
-weather_broadcast.py — อ่านพยากรณ์อากาศจาก S3 แล้วตัดสินใจว่าจะแจ้งเตือนอะไรบ้าง
+weather_broadcast.py — ตัดสินจาก forecast ว่าต้องแจ้งเตือนอะไร + แต่งข้อความ (ข้อ ② ของ flow)
 
-ฟีเจอร์นี้จะรันเป็น Lambda (EventBridge ปลุกเป็นรอบๆ) แต่เราเริ่มจาก "หัวใจ" ก่อน =
-อ่าน forecast JSON แล้วแปลงเป็นรายการ event ที่ต้องแจ้ง พร้อมบอกว่าแต่ละอันเป็น
-heat / flood / both
-
-ส่วนที่ยังไม่ทำในไฟล์นี้ (ค่อยเติมทีหลัง):
-- ดึงไฟล์จาก S3 จริง
-- กรองว่า event ไหน "ถึงเวลาส่ง" ในรอบ EventBridge นี้
-- หา user ตามชุมชน + multicast ผ่าน LINE
+service นี้ทำเรื่องเดียว: forecast JSON → รายการ alert event ต่อชุมชน → LINE messages
+ไม่ดึงไฟล์เอง (forecast.py), ไม่หา user (user.py), ไม่ยิง push (broadcast.py) —
+ตัวเชื่อมทั้งหมดคือ weather.run_broadcast
 """
+import datetime as dt
+
+from linebot.v3.messaging import TextMessage, FlexMessage, FlexContainer
 
 # ── เกณฑ์ตัดสิน ────────────────────────────────────────────────
 # แยกเป็นค่าคงที่ ปรับที่เดียวจบ + อ่านง่ายกว่าเลข/สตริงลอยๆ กลางโค้ด
@@ -45,7 +43,8 @@ def parse_forecast(data: dict) -> list[dict]:
     """
     events = []
     for entry in data.get("WeatherForecasts", []):
-        location = entry.get("location", {})            # ตอนนี้เป็นจังหวัด (mock), อนาคตเป็นชุมชน
+        community = entry.get("name")                   # ชื่อชุมชน (แมตช์ตาราง communities)
+        location = entry.get("location", {})
 
         for f in entry.get("forecasts", []):            # แต่ละช่วงเวลาของพื้นที่นั้น
             alert = classify_alert(
@@ -56,6 +55,7 @@ def parse_forecast(data: dict) -> list[dict]:
                 continue
 
             events.append({
+                "community": community,                 # None ได้ (entry เก่าแบบจังหวัด) → unmatched
                 "location": location,
                 "time": f["time"],
                 "temperature": f["temperature"],
@@ -79,16 +79,30 @@ def _strength(event: dict) -> float:
 
 
 def pick_strongest_per_location(events: list[dict]) -> list[dict]:
-    """ยุบ event ให้เหลือ 'อันเดียวต่อพื้นที่' — เลือกช่วงเวลาที่แรงสุด
+    """ยุบ event ให้เหลือ 'อันเดียวต่อชุมชน' — เลือกช่วงเวลาที่แรงสุด
 
-    กันสแปม: 1 พื้นที่ควรถูกถามแค่วันละครั้ง เอาช่วงที่ผลกระทบชัดสุด
+    กันสแปม: 1 ชุมชนควรถูกถามแค่วันละครั้ง เอาช่วงที่ผลกระทบชัดสุด
     """
     strongest: dict = {}
     for e in events:
-        key = e["location"].get("province")             # ← อนาคตเปลี่ยนเป็น community
+        key = e["community"]
         if key not in strongest or _strength(e) > _strength(strongest[key]):
             strongest[key] = e
     return list(strongest.values())
+
+
+def filter_due(events: list[dict], now: dt.datetime) -> list[dict]:
+    """เฉพาะ event ที่ `time` ตกในชั่วโมงเดียวกับ now — รอบยิงของ scheduler รายชั่วโมง
+
+    now ต้องเป็น aware datetime โซนไทย (time ในไฟล์มากับ +07:00)
+    ชั่วโมงที่ผ่านไปแล้ว = ข้าม ไม่ส่งย้อนหลัง
+    """
+    due = []
+    for e in events:
+        t = dt.datetime.fromisoformat(e["time"])
+        if (t.date(), t.hour) == (now.date(), now.hour):
+            due.append(e)
+    return due
 
 
 # ── ข้อความ broadcast แต่ละแบบ ─────────────────────────────────
@@ -154,3 +168,18 @@ def build_message(alert_type: str) -> list[dict]:
         {"type": "text", "text": cfg["greeting"]},
         _confirm_bubble(cfg["question"], cfg["yes"], cfg["no"], cfg["color"]),
     ]
+
+
+def to_sdk_messages(messages: list[dict]) -> list:
+    """แปลง raw dict จาก build_message → SDK objects ที่ broadcast.push_to_users รับ
+
+    (send_test_broadcast.py ยิง HTTP ตรงเลยใช้ dict ได้ แต่ AsyncMessagingApi ต้องการ Message)
+    """
+    out = []
+    for m in messages:
+        if m["type"] == "flex":
+            out.append(FlexMessage(alt_text=m["altText"],
+                                   contents=FlexContainer.from_dict(m["contents"])))
+        else:
+            out.append(TextMessage(text=m["text"]))
+    return out

@@ -34,6 +34,32 @@ async def community_id_for(db, lineuser_id: str | None):
     return None
 
 
+async def community_id_by_name(db, name: str | None):
+    """communities.name → id, or None (ชื่อจาก forecast อาจสะกดไม่ตรง — exact match เท่านั้น)"""
+    if not name:
+        return None
+    return await db.scalar(select(Community.community_id).where(Community.name == name))
+
+
+# สเต็ปของ broadcast flow ที่ยังกรอกไม่จบ — ต้องตรงกับ _AWAITING ใน broadcast_flow_handler
+BROADCAST_AWAITING = ("awaiting_note", "awaiting_location", "awaiting_photo")
+
+
+async def has_unfinished_broadcast(db, lineuser_id: str) -> bool:
+    """user ยังค้าง broadcast flow เก่าอยู่ไหม — ห้ามยิง alert ใหม่ใส่ (state machine จะชนกัน:
+    ปุ่ม "ใช่" ที่กดจะโดน get_active_report ดักไปเป็น note ของเรื่องเก่า)"""
+    found = await db.scalar(
+        select(Report.report_id)
+        .where(
+            Report.lineuser_id == lineuser_id,
+            Report.source == "broadcast",
+            Report.status.in_(BROADCAST_AWAITING),
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
 async def save(lineuser_id: str, report: dict) -> int:
     """Insert one extracted report; return its report_id.
 

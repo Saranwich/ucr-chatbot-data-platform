@@ -22,7 +22,7 @@ sys.path.insert(0, str(root))
 
 import app.config_loader                        # โหลดค่าใน .env เข้า env
 from app.config import CHANNEL_ACCESS_TOKEN
-from scripts.weather_broadcast import build_message
+from app.services.weather_broadcast import build_message
 
 
 def push_to_user(user_id: str, messages: list[dict], token: str, dry_run: bool = False) -> None:

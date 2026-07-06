@@ -1,8 +1,9 @@
 """User service — the users table lives here (get/create/update)."""
+from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.models import User
+from app.models import Community, User
 
 
 async def get_or_create_user(db: AsyncSession, user_id: str) -> User:
@@ -14,6 +15,19 @@ async def get_or_create_user(db: AsyncSession, user_id: str) -> User:
         db.add(user)
         await db.flush()
     return user
+
+
+async def get_users_by_community(db: AsyncSession, community_name: str) -> list[str]:
+    """lineuser_id ของทุกคนในชุมชนนี้ — FK เป็นหลัก, legacy varchar กันตก
+
+    คนที่ยังไม่กรอกชุมชนใน profile ไม่ติดมาด้วย (นโยบาย broadcast: ไม่รู้พื้นที่ = ข้าม)
+    """
+    result = await db.execute(
+        select(User.lineuser_id)
+        .outerjoin(Community, User.community_id == Community.community_id)
+        .where(or_(Community.name == community_name, User.community == community_name))
+    )
+    return list(result.scalars().all())
 
 
 async def get_profile(db: AsyncSession, lineuser_id: str) -> dict:

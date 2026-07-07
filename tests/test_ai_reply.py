@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import app.services.ai_tool as ai_tool
+import app.handlers.message_handler as message_handler
 from app.handlers.message_handler import handle_text_message
 
 
@@ -45,6 +46,12 @@ def test_free_text_gets_ai_reply(monkeypatch):
 
     monkeypatch.setattr(ai_tool.llm, "chat", fake_chat)
     monkeypatch.setattr(ai_tool, "session", fake_session)
+
+    # _ai_reply เช็คโหมด broadcast ผ่านโมดูล session จริงของ message_handler —
+    # ต้อง patch ด้วย ไม่งั้นเทสต์วิ่งชน Redis จริง (แดงบนเครื่องที่ไม่มี Redis)
+    async def fake_mode(user_id):
+        return None
+    monkeypatch.setattr(message_handler.session, "get_broadcast_mode", fake_mode)
 
     api = FakeApi()
     asyncio.run(handle_text_message(_text_event("ถนนหน้าบ้านมืดมาก"), api, db=None))

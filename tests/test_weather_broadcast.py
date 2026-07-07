@@ -78,3 +78,22 @@ def test_to_sdk_messages():
     assert isinstance(msgs[0], TextMessage)
     assert isinstance(msgs[1], FlexMessage)
     assert msgs[1].alt_text == _MESSAGE_CONFIG["flood"]["question"]
+
+
+def test_parse_forecast_skips_malformed_hours():
+    # ข้อมูลจริงมีรูขาดได้ (#106 ข้อ 3) — ช่วงที่ time/temperature หาย ต้องข้าม ไม่ล้มทั้ง run
+    data = {"WeatherForecasts": [{
+        "name": "ชุมชนคนรักถิ่น", "location": {},
+        "forecasts": [
+            {"temperature": 36.5, "condition_label": "แจ่มใส"},                # time หายทั้ง key
+            {"time": "2026-07-07T12:00:00+07:00", "temperature": None,
+             "condition_label": "มีฝน"},                                       # temperature เป็น null
+            {"time": "2026-07-07T14:00:00+07:00", "temperature": 36.5,
+             "rainfall": None, "condition_label": None},                       # ดี (null → ค่า default)
+        ],
+    }]}
+    events = parse_forecast(data)
+    assert len(events) == 1
+    assert events[0]["time"] == "2026-07-07T14:00:00+07:00"
+    assert events[0]["alert"] == "heat"
+    assert events[0]["rainfall"] == 0          # rainfall null ไม่ทำ _strength ล้ม

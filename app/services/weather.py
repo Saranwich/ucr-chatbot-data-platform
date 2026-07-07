@@ -1,10 +1,11 @@
 """Weather broadcast home (V2, Pim). Push/trigger side + outreach log.
 
-The broadcast REPLY flow lives in handlers/broadcast_flow_handler.py; the push/
-trigger side lands here: run_broadcast() is the orchestrator that only "connects"
-the one-thing services (forecast → weather_broadcast → user → broadcast) — no
-domain logic of its own. This file also owns the outreach push-log (DBML: outreach)
-+ the anti-spam frequency cap — the queryable "who did we ping, when, did they reply".
+The broadcast REPLY flow is the AI conversation (ai_tool.build_broadcast_reply,
+armed by the Redis broadcast_mode flag); the push/trigger side lands here:
+run_broadcast() is the orchestrator that only "connects" the one-thing services
+(forecast → weather_broadcast → user → broadcast) — no domain logic of its own.
+This file also owns the outreach push-log (DBML: outreach) + the anti-spam
+frequency cap — the queryable "who did we ping, when, did they reply".
 """
 import datetime as dt
 from datetime import timedelta
@@ -15,7 +16,7 @@ from app.database.database_manager import get_session
 from app.models import Outreach
 from app.models._common import get_bangkok_now
 from app.services import broadcast, forecast, session, weather_broadcast
-from app.services.report import community_id_by_name, has_unfinished_broadcast
+from app.services.report import community_id_by_name
 from app.services.user import get_users_by_community
 
 _BANGKOK = dt.timezone(dt.timedelta(hours=7))
@@ -30,7 +31,7 @@ async def log_outreach(lineuser_id: str, alert_type: str,
                        conversation_id: int | None = None) -> int:
     """Record one push (1 push = 1 row); return its outreach_id.
 
-    response stays null until the user replies (broadcast_flow_handler links it back).
+    response stays null until "declined/answered" gets wired back (deferred — #106 ข้อ 4).
     """
     async with get_session() as db:
         row = Outreach(
@@ -87,9 +88,8 @@ async def run_broadcast(date=None, force: bool = False, only_due: bool = False) 
 
             recipients = []
             for uid in user_ids:
-                # กำลังคุยตอบ alert อยู่ (Redis broadcast_mode = ความจริงของ flow ใหม่)
-                # หรือค้างแถว awaiting_* ยุค state machine — ห้ามยิงทับเสมอ แม้ force
-                if await session.get_broadcast_mode(uid) or await has_unfinished_broadcast(db, uid):
+                # กำลังคุยตอบ alert อยู่ (Redis broadcast_mode) — ห้ามยิงทับเสมอ แม้ force
+                if await session.get_broadcast_mode(uid):
                     summary["skipped_active"].append(uid)
                 elif not force and await recently_contacted(uid):
                     summary["skipped_cap"].append(uid)

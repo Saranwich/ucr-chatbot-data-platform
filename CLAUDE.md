@@ -59,8 +59,8 @@ A LINE Messaging API chatbot that crowdsources hyper-local environmental and inf
    services/weather.run_broadcast   ← orchestrator, connects only:
      forecast.get_daily (S3 JSON) → weather_broadcast (classify >35°C=heat /
      rain label=flood, strongest per community, filter_due, build flex) →
-     user.get_users_by_community → guards (7-day cap in outreach, unfinished
-     broadcast) → broadcast.push_to_users (per-user failure isolation) → log_outreach
+     user.get_users_by_community → guards (7-day cap in outreach, mid-conversation
+     skip) → broadcast.push_to_users (per-user failure isolation) → log_outreach
         │
    user กด "ใช่" บนการ์ด → กลับเข้าเส้น 1 → AI คุยเก็บผลกระทบ → reports source='broadcast'
 
@@ -98,7 +98,7 @@ S3 seam later).
 
 - **Decide:** `weather_broadcast.classify_alert` — temp > 35.0 °C = heat, `condition_label` in rain labels = flood; strongest event per community per day; community names matched **exactly** against `communities` (typos in forecast data land in `unmatched`).
 - **Recipients:** `user.get_users_by_community` (FK first, legacy varchar fallback; users without a community are skipped by policy).
-- **Guards:** 7-day anti-spam cap per user (`outreach` log; `force=true` skips it — demo lever) and *never-skipped* unfinished-broadcast guard (`report.has_unfinished_broadcast`).
+- **Guards:** 7-day anti-spam cap per user (`outreach` log; `force=true` skips it — demo lever) and the *never-skipped* mid-conversation guard: a user whose Redis `broadcast_mode` flag is set is never pushed again, even with force.
 - **Send:** `broadcast.push_to_users` — per-user isolation, one blocked user never kills the round. Every push logged to `outreach`.
 - **Triggers:** hourly lifespan task fires events whose forecast `time` falls in the current hour (dev/uvicorn only — dies on Lambda; EventBridge = next sprint, #82), or `POST /api/broadcast/run` with `{"date": "...", "force": true}`.
 - **Dev mock:** `scripts/make_mock_forecast.py` writes real-shaped forecast JSON; serve with `python -m http.server 9000 -d mock_forecast` + `FORECAST_BASE_URL=http://localhost:9000/forecast`.
@@ -117,7 +117,7 @@ S3 seam later).
 | `Category` | `categories` | report categories, seeded; AI tool enum locked to these values |
 | `User` | `users` | `lineuser_id` PK, profile fields, `community_id` FK (+ legacy `community` varchar) |
 
-Legacy V1 survey tables were **dropped** (migration `0002_drop_legacy`) after `app/scripts/backfill_surveys.py` folded them into `reports` (source='survey', `_backfill` marker in payload).
+Legacy V1 survey tables were **dropped** (migration `0002_drop_legacy`) after a one-shot backfill folded them into `reports` (source='survey', `_backfill` marker in payload; the script itself was removed after it ran — see git history).
 
 ---
 
@@ -143,14 +143,14 @@ Env vars (`CHANNEL_SECRET`, `CHANNEL_ACCESS_TOKEN`, `DATABASE_URL`, `LIFF_REPORT
 ### `app/handlers/` (per-surface dispatch)
 - **`message_handler.py`** — routes text/image/location: rich-menu replies, broadcast confirm (`YES_MAP` → broadcast_mode + AI) / decline (`NO_MAP`), attachments → pending stash + marker, free text → AI core.
 - **`follow_handler.py`** — `FollowEvent`: upsert `User`, welcome text.
-- **`broadcast_flow_handler.py`** — **legacy** state-machine reply flow (`awaiting_*`), kept only as a guard for old unfinished rows; new broadcast replies go through the AI. Owns `YES_MAP`/`NO_MAP` (the button-text contract with `weather_broadcast._MESSAGE_CONFIG`).
+- **`broadcast_flow_handler.py`** — the broadcast **button contract** (`YES_MAP`/`NO_MAP`, must match `weather_broadcast._MESSAGE_CONFIG`) + `decline()` (the "ไม่" path → cancelled row). The old `awaiting_*` state machine was deleted once the DB held zero unfinished rows; replies go through the AI.
 
 ### `app/services/` (one file per domain; orchestrators connect, never own domain logic)
 - **`ai_tool.py`** — AI core: `NONG_MUEANG_SYSTEM_PROMPT` + `NONG_MUEANG_BROADCAST_PROMPT`, `RECORD_COMPLAINT` tool spec, `_run_turn` (memory + llm.chat + record hook), `build_question`, `build_broadcast_reply`.
 - **`llm.py`** — the **only** Gemini import. `chat()` with tool-call rounds (cap 5). Swap providers here alone.
 - **`session.py`** — Redis: transcript (`chat:`), `broadcast_mode:`, `pending_images:`, `pending_location:`, `dump_transcript` → storage. `SESSION_TTL = 1800`.
 - **`conversation.py`** — conversations anchor (`ensure_active`, `attach_archive`).
-- **`report.py`** — `save()` → `reports` (+ `report_images`, PostGIS point); `category_id_for`, `community_id_*`, `has_unfinished_broadcast`.
+- **`report.py`** — `save()` → `reports` (+ `report_images`, PostGIS point); `category_id_for`, `community_id_*`.
 - **`weather.py`** — broadcast **orchestrator** `run_broadcast(date, force, only_due)` + outreach log/cap (`log_outreach`, `recently_contacted`, CAP_DAYS=7).
 - **`weather_broadcast.py`** — decision + message: `classify_alert`, `parse_forecast`, `pick_strongest_per_location`, `filter_due`, `build_message`, `to_sdk_messages`.
 - **`forecast.py`** — fetch daily forecast JSON from S3 (`get_daily`; 404/403 → None; else `ForecastUnavailable`).

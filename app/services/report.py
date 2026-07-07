@@ -46,8 +46,11 @@ BROADCAST_AWAITING = ("awaiting_note", "awaiting_location", "awaiting_photo")
 
 
 async def has_unfinished_broadcast(db, lineuser_id: str) -> bool:
-    """user ยังค้าง broadcast flow เก่าอยู่ไหม — ห้ามยิง alert ใหม่ใส่ (state machine จะชนกัน:
-    ปุ่ม "ใช่" ที่กดจะโดน get_active_report ดักไปเป็น note ของเรื่องเก่า)"""
+    """user ยังค้างแถว awaiting_* ยุค state machine เก่าไหม — ห้ามยิง alert ใหม่ใส่
+    (ปุ่ม "ใช่" ที่กดจะโดน get_active_report ดักไปเป็น note ของเรื่องเก่า)
+
+    ดักเฉพาะแถว legacy — บทสนทนา broadcast สดของ flow ใหม่อยู่ใน Redis
+    (`session.get_broadcast_mode`) ซึ่ง run_broadcast เช็คเองอีกชั้นคู่กัน"""
     found = await db.scalar(
         select(Report.report_id)
         .where(

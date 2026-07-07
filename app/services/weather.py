@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from app.database.database_manager import get_session
 from app.models import Outreach
 from app.models._common import get_bangkok_now
-from app.services import broadcast, forecast, weather_broadcast
+from app.services import broadcast, forecast, session, weather_broadcast
 from app.services.report import community_id_by_name, has_unfinished_broadcast
 from app.services.user import get_users_by_community
 
@@ -87,7 +87,9 @@ async def run_broadcast(date=None, force: bool = False, only_due: bool = False) 
 
             recipients = []
             for uid in user_ids:
-                if await has_unfinished_broadcast(db, uid):
+                # กำลังคุยตอบ alert อยู่ (Redis broadcast_mode = ความจริงของ flow ใหม่)
+                # หรือค้างแถว awaiting_* ยุค state machine — ห้ามยิงทับเสมอ แม้ force
+                if await session.get_broadcast_mode(uid) or await has_unfinished_broadcast(db, uid):
                     summary["skipped_active"].append(uid)
                 elif not force and await recently_contacted(uid):
                     summary["skipped_cap"].append(uid)

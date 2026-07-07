@@ -47,9 +47,15 @@ def parse_forecast(data: dict) -> list[dict]:
         location = entry.get("location", {})
 
         for f in entry.get("forecasts", []):            # แต่ละช่วงเวลาของพื้นที่นั้น
+            time, temperature = f.get("time"), f.get("temperature")
+            if time is None or temperature is None:     # ข้อมูลจริงมีรูขาดได้ — ข้ามช่วงนี้ อย่าล้มทั้ง run
+                print(f"⚠️ forecast: ช่วงเวลาข้อมูลไม่ครบ (time={time!r}, "
+                      f"temperature={temperature!r}) — ข้ามของ {community!r}")
+                continue
+
             alert = classify_alert(
-                f.get("temperature", 0),
-                f.get("condition_label", ""),
+                temperature,
+                f.get("condition_label") or "",
             )
             if alert is None:                           # ช่วงนี้ไม่เข้าเงื่อนไข → ข้าม
                 continue
@@ -57,9 +63,9 @@ def parse_forecast(data: dict) -> list[dict]:
             events.append({
                 "community": community,                 # None ได้ (entry เก่าแบบจังหวัด) → unmatched
                 "location": location,
-                "time": f["time"],
-                "temperature": f["temperature"],
-                "rainfall": f.get("rainfall", 0),
+                "time": time,
+                "temperature": temperature,
+                "rainfall": f.get("rainfall") or 0,     # null ใน JSON → 0 (กัน _strength ล้ม)
                 "alert": alert,                         # "heat" / "flood" / "both"
             })
 

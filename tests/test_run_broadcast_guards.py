@@ -1,8 +1,7 @@
 """run_broadcast: กติกา "ห้ามยิงทับคนที่กำลังตอบ alert ค้าง" ต้องกันแม้ force=True (#106 ข้อ 1)
 
-flow ใหม่เก็บสถานะ "กำลังคุย" ใน Redis (broadcast_mode) ไม่ใช่แถว awaiting_* —
-เทสนี้ stub ทุก seam รอบ orchestrator แล้วยืนยันว่า user ที่ mode ติดอยู่
-ลง skipped_active และไม่ถูก push
+สถานะ "กำลังคุย" อยู่ใน Redis (broadcast_mode) — เทสนี้ stub ทุก seam รอบ
+orchestrator แล้วยืนยันว่า user ที่ mode ติดอยู่ลง skipped_active และไม่ถูก push
 """
 import asyncio
 
@@ -42,10 +41,6 @@ def test_broadcast_mode_user_skipped_even_with_force(monkeypatch):
     async def fake_mode(uid):
         return "flood" if uid == "U_busy" else None
     monkeypatch.setattr(weather.session, "get_broadcast_mode", fake_mode)
-
-    async def fake_unfinished(db, uid):
-        return False                       # ไม่มีแถว awaiting_* legacy
-    monkeypatch.setattr(weather, "has_unfinished_broadcast", fake_unfinished)
 
     async def fake_recent(uid):
         return True                        # ทุกคนติด cap — force ต้องข้าม cap ได้ แต่ห้ามข้าม mode

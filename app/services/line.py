@@ -1,6 +1,7 @@
 """LINE message building + reply helpers, reusable across handlers.
 
-Broadcast keeps its own builders in handlers/broadcast_flow_handler.py (Pim's).
+Broadcast alert cards are built in services/weather_broadcast.py (message side
+of the push pipeline).
 """
 from linebot.v3.messaging import (
     ReplyMessageRequest, TextMessage,

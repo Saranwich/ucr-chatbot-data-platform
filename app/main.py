@@ -1,65 +1,56 @@
+import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 import os
 import traceback
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 from mangum import Mangum
 
-from app.config import SURVEYS_DIR
-from app.database import engine, Base
-from app.utils.survey_loader import survey_manager
 from app.cors import build_cors_origins
+from app.routes.broadcast import router as broadcast_router
 from app.routes.dashboard import router as dashboard_router
 from app.routes.report import router as report_router
 from app.routes.userdata import router as userdata_router
 from app.routes.line import router as line_router
 from app.routes.viewer import router as viewer_router
 from app.routes.system import router as system_router
+from app.services.weather import run_broadcast
+
+_BANGKOK = timezone(timedelta(hours=7))
+
+
+async def _broadcast_scheduler():
+    """ตื่นทุกต้นชั่วโมง (เวลาไทย) → ยิง broadcast เฉพาะ event ที่ถึงเวลาในชั่วโมงนั้น
+
+    เวลายิงมาจาก `time` ในไฟล์ forecast เอง ไม่ fix รายวัน — run_broadcast(only_due=True)
+    เป็นคนกรอง. พังรอบไหน log แล้วรอรอบถัดไป ห้ามให้ task ตาย.
+    # ponytail: asyncio loop ใช้ได้เฉพาะ process ยาวๆ (uvicorn) — บน Lambda ไม่ทำงาน,
+    # ย้ายไป EventBridge ตอน deploy จริง (sprint หน้า)
+    """
+    while True:
+        now = datetime.now(_BANGKOK)
+        next_tick = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        await asyncio.sleep((next_tick - now).total_seconds())
+        try:
+            summary = await run_broadcast(only_due=True)
+            if summary["sent"] or summary["failed"] or summary["unmatched"]:
+                print(f"⏰ broadcast tick: {summary}")
+        except Exception:
+            print(f"broadcast scheduler tick failed: {traceback.format_exc()}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. จัดการ Database
-    try:
-        async with engine.begin() as conn:
-            # Enable PostGIS extension if not exists
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
-
-            # Create tables if not exist
-            await conn.run_sync(Base.metadata.create_all)
-
-            # users gained profile columns after the table first shipped;
-            # create_all never ALTERs existing tables, so add them idempotently here.
-            for col in ("nickname", "age_range", "gender", "community"):
-                await conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
-
-            # broadcast_reports gained flow-state + note columns after first ship —
-            # same create_all blind spot; add idempotently. DEFAULT 'done' ให้แถวเก่า
-            # (สร้างก่อนมี column) ถือเป็นรายงานที่จบแล้ว
-            await conn.execute(text(
-                "ALTER TABLE broadcast_reports ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'done'"
-            ))
-            await conn.execute(text(
-                "ALTER TABLE broadcast_reports ADD COLUMN IF NOT EXISTS note VARCHAR"
-            ))
-
-            print("✅ Database tables checked/created with Bangkok timezone defaults!")
-    except Exception as e:
-        print(f"⚠️ Database initialization warning (likely concurrent start): {e}")
-
-    # 2. โหลด Survey JSON ทั้งโฟลเดอร์ (dashboard ยังอ่านข้อมูลสำรวจเก่าอยู่)
-    try:
-        survey_manager.load_all_surveys_in_directory(SURVEYS_DIR)
-        print("✅ All survey JSONs loaded successfully during startup!")
-    except Exception as e:
-        print(f"❌ Failed to load survey JSONs: {e}")
-        raise e
-
+    # Schema is Alembic-owned now (alembic upgrade head as a deploy step) — the app
+    # no longer runs create_all/ALTER at boot. See alembic/versions/. The dormant V1
+    # survey-JSON load was removed in M4 (legacy tables dropped, survey_loader deleted).
+    scheduler = asyncio.create_task(_broadcast_scheduler())
     yield
     # (Anything below the yield runs when the server is shutting down)
+    scheduler.cancel()
 
 
 FRONTEND_URL = os.getenv("FRONTEND_URL")
@@ -82,6 +73,7 @@ app.add_middleware(
 
 # Routers — endpoints live in app/routes/, main.py only binds them
 app.include_router(line_router)
+app.include_router(broadcast_router)
 app.include_router(dashboard_router)
 app.include_router(report_router)
 app.include_router(userdata_router)

@@ -1,31 +1,80 @@
-"""Report persistence (V2) — fake CSV store for now.
+"""Report persistence (V2) — insert into the central `reports` table.
 
-# ponytail: CSV stand-in so the full chat → extract → save flow runs end to end.
-# Swap save() for a Postgres insert (session from database_manager) once Pim's
-# report schema lands. Columns already match §6.5: category + notes required,
-# location + severity optional.
+# ponytail: this used to be a CSV stand-in that mirrored the full reports schema;
+# the swap to Postgres is this single seam (async). category string → category_id FK
+# (unknown value = null, see below); location string → location_text; location_data
+# (geometry) stays null for AI reports until the location-pin upgrade (DBML defers).
 """
-import csv
-import os
-from datetime import datetime, timedelta, timezone
+from sqlalchemy import select
 
-_CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "reports.csv")
-_FIELDS = ["created_at", "lineuser_id", "category", "notes", "location", "severity"]
+from app.database.database_manager import get_session
+from app.models import Report, ReportImage, Category, Community, User
 
 
-def save(lineuser_id: str, report: dict) -> None:
-    """Append one completed report as a CSV row (writes a header on first use)."""
-    row = {
-        "created_at": datetime.now(timezone(timedelta(hours=7))).isoformat(),
-        "lineuser_id": lineuser_id,
-        "category": report.get("category", ""),
-        "notes": report.get("notes", ""),
-        "location": report.get("location", ""),
-        "severity": report.get("severity", ""),
-    }
-    new_file = not os.path.exists(_CSV_PATH)
-    with open(_CSV_PATH, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=_FIELDS)
-        if new_file:
-            writer.writeheader()
-        writer.writerow(row)
+async def category_id_for(db, category: str | None):
+    """categories.value → id, or None. Shared by every reports writer.
+
+    # ponytail: enum is locked at the tool spec + seeded categories, so create-if-missing
+    # is out of scope — an unknown value (drift) lands null rather than inventing a row.
+    """
+    if not category:
+        return None
+    return await db.scalar(select(Category.id).where(Category.value == category))
+
+
+async def community_id_for(db, lineuser_id: str | None):
+    """Best-effort community snapshot from the user's profile (FK, else legacy varchar)."""
+    user = await db.get(User, lineuser_id) if lineuser_id else None
+    if user is None:
+        return None
+    if user.community_id is not None:
+        return user.community_id
+    if user.community:
+        return await db.scalar(select(Community.community_id).where(Community.name == user.community))
+    return None
+
+
+async def community_id_by_name(db, name: str | None):
+    """communities.name → id, or None (ชื่อจาก forecast อาจสะกดไม่ตรง — exact match เท่านั้น)"""
+    if not name:
+        return None
+    return await db.scalar(select(Community.community_id).where(Community.name == name))
+
+
+async def save(lineuser_id: str, report: dict) -> int:
+    """Insert one extracted report; return its report_id.
+
+    `report` carries the tool args (category/notes/severity/title/location) plus the
+    producer-set fields the record() hook adds (source/status/is_complete). Optional
+    keys (conversation_id/community_id/source_ref/payload/…) default to null.
+    Attachments the user sent mid-chat ride along as lat/lon (→ PostGIS point)
+    and image_keys (→ report_images rows).
+    """
+    lat, lon = report.get("lat"), report.get("lon")
+    location_data = f"SRID=4326;POINT({lon} {lat})" if lat is not None and lon is not None else None
+    async with get_session() as db:
+        row = Report(
+            conversation_id=report.get("conversation_id"),
+            lineuser_id=lineuser_id or None,
+            community_id=report.get("community_id") or await community_id_for(db, lineuser_id),
+            source=report.get("source"),
+            source_ref=report.get("source_ref"),
+            category_id=await category_id_for(db, report.get("category")),
+            notes=report.get("notes"),
+            severity=report.get("severity"),
+            title=report.get("title"),
+            status=report.get("status"),
+            is_complete=bool(report.get("is_complete")),
+            location_text=report.get("location"),  # tool arg 'location' → column location_text
+            location_data=location_data,
+            extraction_confidence=report.get("extraction_confidence"),
+            confidence_by_field=report.get("confidence_by_field"),
+            payload=report.get("payload"),
+        )
+        db.add(row)
+        await db.flush()  # ได้ report_id ก่อน commit — ให้แถวรูป FK ชี้ได้
+        for key in report.get("image_keys") or ():
+            db.add(ReportImage(report_id=row.report_id, image_key=key))
+        await db.commit()
+        await db.refresh(row)
+        return row.report_id

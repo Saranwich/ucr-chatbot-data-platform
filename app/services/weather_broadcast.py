@@ -12,8 +12,9 @@ from linebot.v3.messaging import TextMessage, FlexMessage, FlexContainer
 # ── เกณฑ์ตัดสิน ────────────────────────────────────────────────
 # แยกเป็นค่าคงที่ ปรับที่เดียวจบ + อ่านง่ายกว่าเลข/สตริงลอยๆ กลางโค้ด
 HEAT_THRESHOLD = 35.0                                   # °C ตั้งแต่เท่านี้ = ร้อน
-RAIN_LABELS = {"มีฝน", "ฝนหนัก", "พายุ", "ฝนตกหนัก"}    # condition_label ที่นับว่า "ฝนตก"
-#           ↑ ต้องครบทุกค่าที่ source ส่งได้ ไม่งั้น label ใหม่จะหลุด (ขอ list เต็มจากเพื่อน)
+RAIN_LABELS = {"มีฝน", "ฝนหนัก", "ฝนฟ้าคะนอง", "พายุ", "ฝนตกหนัก"}    # condition_label ที่นับว่า "ฝนตก"
+#           ↑ ต้องครบทุกค่าที่ source ส่งได้ ไม่งั้น label ใหม่จะหลุด
+#             (ครบชุดของ forecast Lambda: COND_LABEL ฝั่ง TMD + WMO_LABEL ฝั่ง Open-Meteo fallback)
 
 
 def classify_alert(temperature: float, condition_label: str) -> str | None:

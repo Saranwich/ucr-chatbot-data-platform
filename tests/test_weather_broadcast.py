@@ -37,6 +37,7 @@ DATA = {
 def test_classify_alert():
     assert classify_alert(36.0, "แจ่มใส") == "heat"
     assert classify_alert(30.0, "มีฝน") == "flood"
+    assert classify_alert(30.0, "ฝนฟ้าคะนอง") == "flood"  # cond=7 (TMD) / WMO 95-99 (Open-Meteo)
     assert classify_alert(36.0, "มีฝน") == "both"
     assert classify_alert(30.0, "แจ่มใส") is None
     assert classify_alert(35.0, "แจ่มใส") is None  # เกณฑ์คือ "เกิน" 35 ไม่ใช่ "ถึง"

@@ -11,10 +11,10 @@ communities/categories from services/lookups.
 # + the master-data seed. Trade-off: structural changes ride model edits, not
 # hand-written op.create_table — fine while 0001 is the greenfield baseline; the
 # first real ALTER migration writes explicit ops against this as the base.
-# ponytail: no CHECK constraints on source/severity/status — DBML lists them but the
-# tool spec emits severity 'low/med/high' vs DBML 'low/medium/high'; the enum is
-# enforced app-side (tool spec) + by FK (category_id). Add CHECKs once that drift
-# is reconciled.
+# ponytail: no CHECK constraints on source/severity/status — DBML lists them. The
+# severity enum is now low/medium/high on both sides (tool spec reconciled to DBML);
+# enforced app-side (tool spec) + by FK (category_id). A CHECK migration can layer on
+# top of this baseline now that the drift is gone.
 
 Revision ID: 0001_v2_reports_schema
 Revises:

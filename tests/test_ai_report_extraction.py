@@ -168,3 +168,11 @@ def test_pending_attachments_land_on_report(monkeypatch):
     # pop เคลียร์ของฝากแล้ว — บันทึกเรื่องถัดไปต้องไม่ติดรูป/พิกัดชุดเดิม
     assert fake_session.pending_images == []
     assert fake_session.pending_location is None
+
+
+def test_severity_enum_reconciled_to_medium():
+    """severity enum ตรงกับ DBML (low/medium/high) — กัน drift 'med' กลับมา + ยังสั่งให้ AI ประเมินเอง"""
+    desc = ai_tool.RECORD_COMPLAINT["parameters"]["properties"]["severity"]["description"]
+    assert "low, medium, high" in desc          # reconciled กับ reports.severity CHECK
+    assert "med, high" not in desc              # เดิม drift เป็น 'low, med, high'
+    assert "ประเมิน" in desc                     # AI ประเมินเอง ไม่ได้ให้ผู้ใช้บอกระดับ

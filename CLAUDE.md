@@ -90,7 +90,7 @@ S3 seam later).
 
 **Images & location:** the model stays text-only. Files/coordinates never enter Gemini — the handler stashes them in Redis (`pending_images:` / `pending_location:`) and injects a `[ระบบ: ...]` text marker so the AI acknowledges and moves on. Attachments stick to the first report recorded after they arrive.
 
-**Extraction target:** `category` + `notes` required; `severity`/`title`/`location` optional (see `RECORD_COMPLAINT` in `ai_tool.py`). Known drift: tool emits severity `med`, DBML says `medium` (no DB CHECK — reconcile at the tool spec).
+**Extraction target:** `category` + `notes` required; `severity`/`title`/`location` optional (see `RECORD_COMPLAINT` in `ai_tool.py`). `severity` is `low`/`medium`/`high` (matches DBML; the AI grades it from the described impact rather than asking the user to self-rate — no DB CHECK yet).
 
 ---
 

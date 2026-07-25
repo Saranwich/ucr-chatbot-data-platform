@@ -48,16 +48,29 @@ async def get_profile(db: AsyncSession, lineuser_id: str) -> dict:
 
 
 async def save_profile(db: AsyncSession, lineuser_id: str, profile) -> None:
-    """Upsert the profile columns; marks the profile complete."""
+    """Upsert the profile columns; marks the profile complete.
+
+    community_id (FK) is resolved from communities.name — exact match only.
+    An unmatched dropdown value still saves to the legacy varchar column (no
+    data lost) but is logged, since it means the dropdown drifted from the
+    communities table.
+    """
     result = await db.execute(select(User).where(User.lineuser_id == lineuser_id))
     user = result.scalars().first()
     if user is None:
         user = User(lineuser_id=lineuser_id)
         db.add(user)
 
+    community_id = await db.scalar(
+        select(Community.community_id).where(Community.name == profile.community)
+    )
+    if community_id is None:
+        print(f"⚠️ save_profile: community name not in communities table: {profile.community!r}")
+
     user.nickname = profile.nickname
     user.age_range = profile.age_range
     user.gender = profile.gender
     user.community = profile.community
+    user.community_id = community_id
     user.has_completed_profile = 1
     await db.commit()

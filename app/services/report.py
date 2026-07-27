@@ -29,9 +29,7 @@ async def community_id_for(db, lineuser_id: str | None):
         return None
     if user.community_id is not None:
         return user.community_id
-    if user.community:
-        return await db.scalar(select(Community.community_id).where(Community.name == user.community))
-    return None
+    return await community_id_by_name(db, user.community)  # guard None/ชื่อไม่ตรงอยู่ในตัว helper
 
 
 async def community_id_by_name(db, name: str | None):

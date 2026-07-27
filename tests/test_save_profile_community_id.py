@@ -60,7 +60,7 @@ def test_save_profile_sets_community_id_for_new_user():
     assert fake.committed
 
 
-def test_save_profile_leaves_community_id_null_for_unmatched_name():
+def test_save_profile_leaves_community_id_null_for_unmatched_name(capsys):
     fake = FakeSession(existing_user=None, community_id=None)
 
     asyncio.run(user_service.save_profile(fake, "U1", _profile("ชื่อที่ไม่มีใน communities")))
@@ -69,6 +69,25 @@ def test_save_profile_leaves_community_id_null_for_unmatched_name():
     assert row.community == "ชื่อที่ไม่มีใน communities"
     assert row.community_id is None
     assert fake.committed
+    # ชื่อหลุด enum = dropdown drift จริง ต้องเตือน
+    assert "not in communities table" in capsys.readouterr().out
+
+
+def test_save_profile_accepts_no_community_without_warning(capsys):
+    """#121: "ไม่เลือกชุมชน" เป็นคำตอบปกติ ไม่ใช่ drift — ห้าม query ห้ามเตือน
+
+    fake ตั้งไว้ให้คืน 5 ถ้ามีการ lookup เกิดขึ้น: ถ้า guard หาย เทสต์นี้จะจับได้
+    ทั้งจาก community_id ที่ไม่ควรมีค่า และจาก warning ปลอมที่ไม่ควรพิมพ์
+    """
+    fake = FakeSession(existing_user=None, community_id=5)
+
+    asyncio.run(user_service.save_profile(fake, "U1", _profile(None)))
+
+    row = fake.saved_user
+    assert row.community is None
+    assert row.community_id is None
+    assert fake.committed
+    assert "not in communities table" not in capsys.readouterr().out
 
 
 def test_save_profile_updates_community_id_on_existing_user():

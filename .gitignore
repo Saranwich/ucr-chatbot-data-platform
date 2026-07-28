@@ -174,3 +174,6 @@ uploads/
 reports.csv
 mock_forecast/
 dump.rdb
+
+# personal scratch notes (not product docs)
+local/

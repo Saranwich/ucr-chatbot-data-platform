@@ -1,0 +1,155 @@
+"""ที่เก็บรายงานที่คุยจบแล้ว — ของถาวร ห้ามหาย
+
+อยู่ใน Postgres + PostGIS ตารางอยู่ที่ `schema.sql` รากโปรเจกต์ รันมือครั้งเดียว
+คนเรียกส่ง dict ธรรมดาเข้ามา ได้ id กลับไป ไม่ต้องรู้ว่าข้างล่างเป็นอะไร
+
+geom มาจาก ST_MakePoint(longitude, latitude) — **longitude มาก่อน** ไม่ใช่ latitude
+แถวที่ไม่มี geom จะไม่ขึ้นเป็นหมุดบนแผนที่ แต่ยังใช้นับสถิติได้ ทีมปักมือทีหลังได้
+"""
+
+import json
+import logging
+
+import asyncpg
+
+log = logging.getLogger(__name__)
+
+# ช่องที่ลงตารางได้ ไล่ชื่อเองทีละช่อง **ห้ามยัด dict ทั้งก้อนเข้า INSERT**
+#
+# เพราะ _sanitize() ใน services/survey.py ปล่อยช่องที่ไม่รู้จักผ่านมาได้ (มันกรอง
+# แค่ "ค่า" ที่นอกรายการ ไม่ได้กรอง "ชื่อช่อง") วันที่โมเดลกุชื่อช่องขึ้นมาเอง
+# รายชื่อนี้คือด่านที่จับได้
+COLUMNS = (
+    "session_id",
+    "source",
+    "categories",
+    "notes",
+    "title",
+    "severity",
+    "affect_desc",
+    "affect_tags",
+    "frequency",
+    "time_of_day",
+    "cause_said",
+    "occurred_said",
+    "location_text",
+    "no_location",
+    "no_photo",
+)
+
+# ช่องที่ไม่ได้ลงคอลัมน์ตรง ๆ แต่รู้จัก — พิกัดกลายเป็น geom รูปแยกไปอีกตาราง
+_HANDLED = {"latitude", "longitude", "images"}
+
+_SELECT = ", ".join(("r.id", *(f"r.{name}" for name in COLUMNS), "r.created_at"))
+
+# id ติดมาด้วยเพราะเป็นตัวที่ใช้ขอไฟล์รูป — คนอ่านไม่ต้องรู้จัก key เลยก็ได้
+_IMAGES = """
+    COALESCE(
+        json_agg(
+            json_build_object('id', i.id, 'key', i.image_key, 'descr', i.descr)
+            ORDER BY i.id
+        ) FILTER (WHERE i.id IS NOT NULL),
+        '[]'
+    ) AS images
+"""
+
+
+async def save_report(pool: asyncpg.Pool, report: dict) -> int:
+    """เก็บรายงาน 1 ใบพร้อมรูปของมัน คืน id กลับไป
+
+    ใบกับรูปลงในธุรกรรมเดียวกัน — ได้ทั้งคู่หรือไม่ได้เลย ไม่มีใบที่รูปหลุดหาย
+    """
+    unknown = set(report) - set(COLUMNS) - _HANDLED
+    if unknown:
+        # ทิ้งเฉพาะช่องที่ไม่รู้จัก ไม่ทิ้งทั้งใบ — เรื่องที่ชาวบ้านเล่ามาสำคัญกว่า
+        # ช่องที่โมเดลกุขึ้นมา แต่ต้องได้ยินเสียงมัน ไม่ใช่หายไปเงียบ ๆ
+        log.warning("ช่องที่ไม่มีในตาราง ไม่ได้เก็บ: %s", sorted(unknown))
+
+    names = [name for name in COLUMNS if name in report]
+    values = [report[name] for name in names]
+
+    columns = ", ".join(names)
+    holders = ", ".join(f"${i}" for i in range(1, len(names) + 1))
+
+    latitude = report.get("latitude")
+    longitude = report.get("longitude")
+    if latitude is not None and longitude is not None:
+        columns += ", geom"
+        holders += f", ST_MakePoint(${len(names) + 1}, ${len(names) + 2})::geography"
+        values += [longitude, latitude]
+
+    async with pool.acquire() as conn, conn.transaction():
+        report_id = await conn.fetchval(
+            f"INSERT INTO reports ({columns}) VALUES ({holders}) RETURNING id",
+            *values,
+        )
+        for image in report.get("images") or []:
+            await conn.execute(
+                "INSERT INTO report_images (report_id, image_key, descr)"
+                " VALUES ($1, $2, $3)",
+                report_id,
+                image["key"],
+                image.get("descr"),
+            )
+
+    return report_id
+
+
+async def list_reports(pool: asyncpg.Pool) -> list[dict]:
+    """อ่านทั้งหมด — ไว้ส่องตอน dev ของจริงคงมี filter ทีหลัง"""
+    rows = await pool.fetch(f"""
+        SELECT {_SELECT},
+               ST_Y(r.geom::geometry) AS latitude,
+               ST_X(r.geom::geometry) AS longitude,
+               {_IMAGES}
+          FROM reports r
+          LEFT JOIN report_images i ON i.report_id = r.id
+      GROUP BY r.id
+      ORDER BY r.id
+    """)
+    # json_agg คืนมาเป็นข้อความ asyncpg ไม่แกะให้เอง
+    return [dict(row) | {"images": json.loads(row["images"])} for row in rows]
+
+
+async def add_image(pool: asyncpg.Pool, report_id: int, image_key: str) -> bool:
+    """แนบรูปเข้าใบที่ปิดไปแล้ว คืน False ถ้าไม่มีใบนั้น
+
+    descr เอาจาก title ของใบนั้นเลย เพราะรูปที่ตามมาทีหลังคือรูปของเรื่องนั้น
+    """
+    done = await pool.execute(
+        """
+        INSERT INTO report_images (report_id, image_key, descr)
+        SELECT id, $2, title FROM reports WHERE id = $1
+        """,
+        report_id,
+        image_key,
+    )
+    return done != "INSERT 0 0"
+
+
+async def image_key(pool: asyncpg.Pool, image_id: int) -> str | None:
+    """key ของรูปใบนั้น คืน None ถ้าไม่มีรูปนี้อยู่"""
+    return await pool.fetchval(
+        "SELECT image_key FROM report_images WHERE id = $1", image_id
+    )
+
+
+async def last_location(pool: asyncpg.Pool, session_id: str) -> dict | None:
+    """ตำแหน่งล่าสุดที่คนนี้เคยแจ้งไว้ คืน None ถ้าไม่เคยมี
+
+    ถามจากที่เก็บหลัก ไม่เอาไปกองไว้ใน Redis เพราะ Redis อยู่บน RAM
+    คนใช้เยอะ ๆ แล้วจะบวม ส่วนตรงนี้ index reports_session_idx ตอบให้อยู่แล้ว
+    """
+    row = await pool.fetchrow(
+        """
+        SELECT ST_Y(geom::geometry) AS latitude,
+               ST_X(geom::geometry) AS longitude,
+               location_text
+          FROM reports
+         WHERE session_id = $1 AND geom IS NOT NULL
+      ORDER BY created_at DESC
+         LIMIT 1
+        """,
+        session_id,
+    )
+    return dict(row) if row else None

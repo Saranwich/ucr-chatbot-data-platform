@@ -58,6 +58,18 @@ async def chat(messages: list[dict]) -> str:
     return completion.choices[0].message.content
 
 
+def _no_nulls(value):
+    """ทิ้งช่องที่เป็น null ออกให้หมด ก่อนส่งกลับเข้าโมเดล
+
+    ฝั่ง Google ไม่รับ null **แม้แต่ช่องที่ตัวมันเองเพิ่งส่งมา** ตอบกลับมาว่า
+    `Value is not a struct: null` ซึ่งไม่ได้บอกเลยว่าช่องไหน
+    (ของที่มันแถมมาเป็น null: content, refusal, audio, annotations, function_call)
+    """
+    if isinstance(value, dict):
+        return {k: _no_nulls(v) for k, v in value.items() if v is not None}
+    return value
+
+
 async def chat_tools(messages: list[dict], tools: list[dict]) -> dict:
     """Chat, letting the model call our tools.
 
@@ -65,6 +77,8 @@ async def chat_tools(messages: list[dict], tools: list[dict]) -> dict:
     OpenAI object looks like:
 
         {"content": "...", "tool_calls": [{"id", "name", "arguments": {...}}]}
+
+    `_raw` ที่ติดมาในแต่ละ call เป็นของภายในไฟล์นี้ **คนนอกห้ามอ่าน** — ดู tool_exchange
     """
 
     completion = await client.chat.completions.create(
@@ -82,6 +96,8 @@ async def chat_tools(messages: list[dict], tools: list[dict]) -> dict:
                 "id": call.id,
                 "name": call.function.name,
                 "arguments": json.loads(call.function.arguments or "{}"),
+                # เก็บก้อนดิบไว้ทั้งอัน เพราะข้างในมี thought_signature ที่ต้องส่งคืน
+                "_raw": _no_nulls(call.model_dump()),
             }
             for call in (message.tool_calls or [])
         ],
@@ -90,13 +106,26 @@ async def chat_tools(messages: list[dict], tools: list[dict]) -> dict:
 
 def tool_exchange(tool_calls: list[dict], result: str) -> list[dict]:
     """The two messages the model expects back after it called a tool:
-    what it asked for, and what it got. Same `result` for every call."""
+    what it asked for, and what it got. Same `result` for every call.
+
+    **ต้องส่งก้อนเดิมที่มันให้มาคืนไปทั้งก้อน ห้ามประกอบขึ้นใหม่จาก name/arguments**
+    โมเดลที่คิดก่อนตอบจะแนบ `thought_signature` (ก้อน base64 ที่เราอ่านไม่ออก)
+    มากับ tool call ทุกอัน แล้ว**บังคับ**ให้ส่งคืนตอนคุยรอบถัดไป ไม่งั้นตอบ 400:
+    `Function call is missing a thought_signature in functionCall parts`
+
+    เดิมตรงนี้ประกอบข้อความขึ้นใหม่จาก name กับ arguments ซึ่งอ่านแล้วดูครบดี
+    แต่ลายเซ็นหล่นหายไปเงียบ ๆ ผลคือ**ทุกบทสนทนาที่ AI เก็บข้อมูลจะตายรอบที่สอง**
+    คือรอบที่เราบอกมันว่าเก็บแล้วและยังขาดอะไร — ชาวบ้านเห็นแค่ข้อความขอโทษ
+    ทั้งที่เขาเพิ่งเล่าเรื่องจบไปหมาด ๆ
+
+    `_raw` ว่างเมื่อไหร่ค่อยประกอบเอง เผื่อวันเปลี่ยนไปเจ้าที่ไม่มีลายเซ็น
+    """
 
     asked = {
         "role": "assistant",
-        "content": None,
         "tool_calls": [
-            {
+            call.get("_raw")
+            or {
                 "id": call["id"],
                 "type": "function",
                 "function": {

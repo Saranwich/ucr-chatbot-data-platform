@@ -4,7 +4,7 @@
 แล้วบอก AI ว่า "มีรูปมาแล้วนะ" เป็นข้อความ marker เท่านั้น
 คนที่ดูรูปจริงคือทีมออกแบบตอนเปิดแดชบอร์ด
 
-ตอนนี้ลงไฟล์ใน local/ ของจริงจะขึ้น S3 — วันย้ายแก้แค่ในไฟล์นี้
+ตอนนี้ลงไฟล์ใน storage/ ของจริงจะขึ้น S3 — วันย้ายแก้แค่ในไฟล์นี้
 
     s3://<bucket>/images/YYYY/MM/<message_id>.jpg
 """
@@ -14,7 +14,9 @@ from pathlib import Path
 
 from app.core.config import BASE_DIR
 
-STORE_DIR = BASE_DIR / "local"
+# storage/ ไม่ใช่ local/ — local/ ที่นี่เป็นสมุดจดของเจ้าของ repo
+# รูปของชาวบ้านไม่ควรไปนอนปนกับโน้ตส่วนตัว ทั้งคู่ไม่ขึ้น git เหมือนกัน
+STORE_DIR = BASE_DIR / "storage"
 
 
 async def save(message_id: str, content: bytes) -> str:

@@ -4,7 +4,7 @@
 หรืออยากได้ช่องใหม่ย้อนหลัง ต้องมีต้นฉบับให้สกัดใหม่ ไม่งั้นข้อมูลที่เก็บไปแล้ว
 กู้คืนไม่ได้ถาวร
 
-ตอนนี้เขียนลงไฟล์ใน local/ ของจริงจะขึ้น S3 — วันย้ายแก้แค่ในไฟล์นี้
+ตอนนี้เขียนลงไฟล์ใน storage/ ของจริงจะขึ้น S3 — วันย้ายแก้แค่ในไฟล์นี้
 
     s3://<bucket>/transcripts/YYYY/MM/<report_id>.json
 
@@ -16,7 +16,8 @@ from datetime import datetime, timezone
 
 from app.core.config import BASE_DIR
 
-TRANSCRIPT_DIR = BASE_DIR / "local" / "transcripts"
+# storage/ ไม่ใช่ local/ — เหตุผลเดียวกับ clients/media.py
+TRANSCRIPT_DIR = BASE_DIR / "storage" / "transcripts"
 
 
 async def save(session_id: str, report_id: int, messages: list[dict]) -> str:

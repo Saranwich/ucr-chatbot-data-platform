@@ -7,6 +7,10 @@
 local/
 .agent-workspace/
 
+# Runtime blobs — รูปที่ชาวบ้านส่งมา + บทสนทนาต้นฉบับ
+# ของจริงของชาวบ้าน ห้ามขึ้น git (วันย้ายขึ้น S3 โฟลเดอร์นี้จะหายไปเอง)
+storage/
+
 # private keys never belong in the repo
 *.pem
 

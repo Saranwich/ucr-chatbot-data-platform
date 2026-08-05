@@ -1,3 +1,26 @@
+# UCR Smartcity Chatbot — น้องเมือง
+
+## โปรเจกต์นี้คืออะไร
+
+บอทบน LINE OA (UCR / TONKIT Lab) ที่ชวนคนในชุมชนเล่าเรื่องสภาพแวดล้อมและ
+โครงสร้างพื้นฐานแถวบ้าน แล้วสกัดออกมาเป็น **รายงาน** พร้อมพิกัด ปลายทางคือ
+**หมุดบนแผนที่ให้ทีมออกแบบเมือง**ใช้ตัดสินใจว่าควรปรับปรุงตรงไหนก่อน
+
+sensor บอกได้ว่าตรงนี้ 38°C แต่บอกไม่ได้ว่ายายที่เดินไปตลาดทุกเช้าเดินไม่ไหว
+เพราะไม่มีร่มเงา — **เราเก็บส่วนหลัง** เราไม่ใช่ศูนย์ช่วยเหลือ ไม่ได้เป็นคนไปแก้
+
+หนึ่งบทสนทนา → หนึ่งใบรายงาน เก็บลงตาราง `reports` ตารางเดียว
+ทีมเปิดดูที่ `/dashboard` (แผนที่ Leaflet อ่านอย่างเดียว)
+
+**หัวใจที่ห้ามพัง:** AI พิมพ์ว่า "จดให้แล้วค่ะ" ไม่มีผลอะไรทั้งนั้น
+ต้องเรียก `record_report` เท่านั้นข้อมูลถึงลง และ **`services/survey.py` เป็นคนตัดสิน**
+ว่าครบหรือยัง ไม่ใช่ AI
+
+> โครงสร้างนี้ยกมาจาก `Saranwich/Here-what-I-think-cstusparkcampphase3`
+> คอมเมนต์ยาว ๆ ในโค้ดคือบันทึกเหตุการณ์ที่เคยพังจริง **อย่าลบทิ้งเวลาแก้โค้ด**
+
+---
+
 # กฎของโปรเจกต์นี้
 
 อ่านก่อนเขียนโค้ด ใช้ทั้งกับคนและกับ AI
@@ -63,11 +86,35 @@ grep -rn "from app.api" app/services app/clients    # ต้องไม่เ�
 grep -rn "from app.services" app/clients            # ต้องไม่เจอ
 ```
 
+## เรื่อง schema
+
+Postgres + PostGIS ใช้อยู่แล้ว ผ่าน `asyncpg` ดิบ ๆ ไม่มี ORM
+ตารางอยู่ที่ `schema.sql` รากโปรเจกต์ **รันมือ** — แอปไม่สร้างตารางให้ตอนเปิด
+โค้ดที่แก้ schema ได้ระหว่างรัน คือโค้ดที่ทำ schema พังได้ระหว่างรันเหมือนกัน
+
+สองตารางเท่านั้น: `reports` (แบน `categories` เป็น `text[]`) กับ `report_images`
+**ไม่มี FK ไม่มี CHECK โดยตั้งใจ** — `_sanitize()` ใน `services/survey.py` กรองให้แล้ว
+ใส่ CHECK เมื่อไหร่ ค่าเพี้ยนช่องเดียวจะทำ INSERT ล้มทั้งแถว = เสียเรื่องที่เขาอุตส่าห์เล่าทั้งใบ
+
+pydantic schemas, SQLAlchemy, alembic — เอาไว้ทีหลัง ตอนใส่ค่อยเพิ่ม
+`schemas/`, `models/`, `repositories/` เข้ามา โดยไม่ต้องรื้อของเดิม
+
 ## ยังไม่ทำตอนนี้
 
-pydantic schemas, SQLAlchemy, alembic, Postgres — เอาไว้ทีหลัง ตอนใส่จะเพิ่ม
-`schemas/`, `models/`, `repositories/` เข้ามา โดยไม่ต้องรื้อของเดิม
+- **broadcast อากาศ** (พยากรณ์ → ร้อน/น้ำท่วม → ยิงการ์ด → เก็บผลกระทบ)
+  ถอดออกตอนรื้อ ยกกลับมาทีหลังเป็นสาขาของตัวเอง — `source='broadcast'`
+  กับ `survey.reply(..., source=)` เดินสายรอไว้แล้ว
+  ของเดิมยังอ่านได้: `git show dev:app/services/weather.py`
+- **auth ของแดชบอร์ด** ตอนนี้เปิดโล่ง ยังไม่ได้ต่อออกเน็ต
+- **S3** — แก้แค่ `clients/media.py` กับ `clients/transcript.py` สองไฟล์
+- **tests** ยังไม่มี ตัวที่ควรมีก่อนเพื่อน: `missing()` / `next_goal()` /
+  `_sanitize()` / `_buttons()` / `public()` — ฟังก์ชันล้วน ไม่ต้องมี Redis หรือ Postgres
 
 ## git
 
 commit ใช้ชื่อเจ้าของ repo เท่านั้น **ห้ามใส่ Co-Authored-By หรือ link ของ AI**
+
+## Agent skills
+
+- **Issue tracker** — GitHub Issues ของ `tonkitcstu/ucr-smartcity_chatbot` ดู `docs/agents/issue-tracker.md`
+- **Triage labels** — ห้าป้ายหลัก ดู `docs/agents/triage-labels.md`

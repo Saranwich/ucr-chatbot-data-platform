@@ -1,7 +1,50 @@
 # Secrets / environment
+# .env.* กัน .env.local / .env.production / .env.bak-* ไว้ด้วย
+# **บรรทัด !.env.example ต้องอยู่ล่างสุดของกลุ่มนี้เสมอ** ไม่งั้นเทมเพลตจะหายไปจาก repo
 .env
 .env.*
+*.env
 !.env.example
+
+# กุญแจและใบรับรอง — ไม่มีอันไหนควรอยู่ใน repo สักอัน
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+*.ppk
+id_rsa*
+id_ed25519*
+
+# credential ของบริการคลาวด์ (Google service account, AWS, ฯลฯ)
+credentials*.json
+service-account*.json
+*serviceaccount*.json
+gha-creds-*.json
+.aws/
+.gcloud/
+.netrc
+.npmrc
+.pypirc
+.dockercfg
+.docker/config.json
+
+# terraform state เก็บค่า secret ไว้แบบ plaintext
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# ไฟล์ dump ของฐานข้อมูล — ข้างในมีเรื่องจริงกับพิกัดบ้านของชาวบ้าน
+# **ห้ามใส่ *.sql เฉย ๆ** schema.sql ต้องขึ้น git
+*.dump
+*.sql.gz
+*.sql.bz2
+*-dump.sql
+backup*.sql
+
+# ค่าตั้งเครื่องมือเฉพาะเครื่อง ไม่ใช่ของโปรเจกต์
+.claude/settings.local.json
 
 # Local scratch (notes, plans, experiments)
 local/

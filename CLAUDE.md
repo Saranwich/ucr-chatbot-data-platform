@@ -1,215 +1,155 @@
-# UCR Smartcity Chatbot — Project Context
+# UCR Smartcity Chatbot — น้องเมือง
 
-## Purpose
+## โปรเจกต์นี้คืออะไร
 
-A LINE Messaging API chatbot that crowdsources hyper-local environmental and infrastructure problems from community residents. Instead of a fixed survey, an **AI assistant ("น้องเมือง")** chats naturally in Thai, gathers the details of a problem, and extracts a structured report. The bot also **broadcasts weather alerts** (heat/flood) per community and lets the AI collect the on-the-ground impact. Reports are surfaced through a JWT-protected admin dashboard with a map view, to assist in redesigning community maps and facility placement.
+บอทบน LINE OA (UCR / TONKIT Lab) ที่ชวนคนในชุมชนเล่าเรื่องสภาพแวดล้อมและ
+โครงสร้างพื้นฐานแถวบ้าน แล้วสกัดออกมาเป็น **รายงาน** พร้อมพิกัด ปลายทางคือ
+**หมุดบนแผนที่ให้ทีมออกแบบเมือง**ใช้ตัดสินใจว่าควรปรับปรุงตรงไหนก่อน
 
-> **V2 (AI).** The old rule-based survey engine is gone; the bot is LLM-driven (Gemini) with Redis conversation memory. All report channels write one central **`reports`** table (legacy V1 tables were dropped after backfilling — see *Data model*).
+sensor บอกได้ว่าตรงนี้ 38°C แต่บอกไม่ได้ว่ายายที่เดินไปตลาดทุกเช้าเดินไม่ไหว
+เพราะไม่มีร่มเงา — **เราเก็บส่วนหลัง** เราไม่ใช่ศูนย์ช่วยเหลือ ไม่ได้เป็นคนไปแก้
+
+หนึ่งบทสนทนา → หนึ่งใบรายงาน เก็บลงตาราง `reports` ตารางเดียว
+ทีมเปิดดูที่ `/dashboard` (แผนที่ Leaflet อ่านอย่างเดียว)
+
+**หัวใจที่ห้ามพัง:** AI พิมพ์ว่า "จดให้แล้วค่ะ" ไม่มีผลอะไรทั้งนั้น
+ต้องเรียก `record_report` เท่านั้นข้อมูลถึงลง และ **`services/survey.py` เป็นคนตัดสิน**
+ว่าครบหรือยัง ไม่ใช่ AI
+
+**หัวใจอีกข้อ: คำถามเป็นของ AI ไม่ใช่ของเรา** ทั้งโปรเจกต์นี้เดินมาจากการทิ้ง
+คำถามตายตัวกับ state machine ถ้าเจอตัวเองกำลังจะเขียนข้อความสำเร็จรูปหรือ
+การ์ดปุ่มใช่/ไม่ใช่ลงในโค้ด แปลว่ากำลังเดินถอยหลัง — คำตอบแบบเช็คบ็อกซ์
+sensor ก็ให้ได้อยู่แล้ว **ของที่เราต้องการคือเรื่องที่เขาเล่า**
+(รวมถึงข้อความ broadcast ที่เราทักไปก่อนด้วย — AI แต่งสดทุกครั้ง)
+
+> โครงสร้างนี้ยกมาจาก `Saranwich/Here-what-I-think-cstusparkcampphase3`
+> คอมเมนต์ยาว ๆ ในโค้ดคือบันทึกเหตุการณ์ที่เคยพังจริง **อย่าลบทิ้งเวลาแก้โค้ด**
 
 ---
 
-## Tech Stack
+# กฎของโปรเจกต์นี้
 
-| Layer | Technology |
-|---|---|
-| Web framework | FastAPI (async) |
-| LLM | Google **Gemini** (`gemini-3.1-flash-lite`) via `google-genai`, function calling |
-| Conversation memory | **Redis** (per-user transcript + broadcast-mode flag + pending attachments, TTL 30 min) |
-| Database | PostgreSQL + PostGIS (geospatial) |
-| DB driver/ORM | asyncpg + SQLAlchemy async |
-| Schema | **Alembic** owns the schema (`alembic upgrade head` as a deploy step — no create_all at boot) |
-| Validation | Pydantic v2 |
-| LINE SDK | linebot v3 (AsyncMessagingApi) |
-| Forecast source | data-team S3 bucket (`FORECAST_BASE_URL/<date>.json`, uploaded nightly) |
-| Auth (dashboard) | JWT via `python-jose` |
-| Deploy adapter | Mangum (AWS Lambda ASGI) |
-| Tunnel (dev) | ngrok → `/callback` |
+อ่านก่อนเขียนโค้ด ใช้ทั้งกับคนและกับ AI
 
----
-
-## Architecture — `main → routes → handlers → services → models`
-
-`main.py` only **binds** (lifespan = hourly broadcast-scheduler task, CORS, routers, exception handler, Mangum). All logic lives below it. Services do **one thing each**; orchestrators only connect them.
+## โครงสร้าง
 
 ```
-เส้น 1 — Reactive: LINE Webhook POST /callback
-        │
-   routes/line.py         ← parse + signature check + per-event rescue
-        │
-   ├── handlers/follow_handler.py     (add เพื่อน → upsert User + welcome)
-   └── handlers/message_handler.py    ← dispatcher (text / image / location)
-         ├── rich-menu buttons → static text / คู่มือ Flex (services/line.py)
-         ├── broadcast "ใช่" → set broadcast_mode (Redis) + AI คุยต่อ / "ไม่" → decline
-         ├── image → services/line.persist_message_image (LINE CDN → uploads/reports/)
-         │            + Redis pending_images + "[ระบบ: ...]" marker เข้า AI
-         ├── location → Redis pending_location + marker เข้า AI
-         └── free text → AI CORE ↓
-                 │
-           services/ai_tool  (build_question / build_broadcast_reply)
-             ├── services/session.py   ← Redis: transcript (last ~10, TTL 30 min),
-             │       broadcast_mode:<user>, pending_images/<location>:<user>
-             ├── services/llm.py       ← Gemini seam (chat + record_complaint tool).
-             │                            ONLY file importing the SDK
-             ├── services/conversation.py ← conversation anchor (ensure_active, archive_key)
-             └── services/report.py    ← INSERT reports (+ report_images, PostGIS point)
-
-เส้น 2 — Proactive: weather broadcast
-   ⏰ hourly scheduler in main.py lifespan (only_due=True)  |  POST /api/broadcast/run (JWT)
-        │
-   services/weather.run_broadcast   ← orchestrator, connects only:
-     forecast.get_daily (S3 JSON) → weather_broadcast (classify >35°C=heat /
-     rain label=flood, strongest per community, filter_due, build flex) →
-     user.get_users_by_community → guards (7-day cap in outreach, mid-conversation
-     skip) → broadcast.push_to_users (per-user failure isolation) → log_outreach
-        │
-   user กด "ใช่" บนการ์ด → กลับเข้าเส้น 1 → AI คุยเก็บผลกระทบ → reports source='broadcast'
-
-LIFF pages (same FastAPI origin, LIFF access-token auth)
-   ├── routes/report.py    GET /report + POST /api/form-reports (+ image)  → services/form_report.py
-   └── routes/userdata.py  GET /userdata + GET/PUT /api/userdata/profile   → services/user.py
-
-Admin REST API
-   routes/dashboard.py  GET /api/dashboard/*  (JWT)  → services/dashboard.py
-   routes/broadcast.py  POST /api/broadcast/run (JWT) — manual trigger, {date?, force?}
-   routes/system.py     GET /api/health (DB reachability)
-   routes/viewer.py     GET /viewer (dev-only data viewer)
-
-Image/blob store: utils/storage.py — every module saves/reads through this helper
-(local uploads/ by key: reports/<id>.jpg, broadcast/<id>.jpg, conversations/<user>.json;
-S3 seam later).
+app/
+  main.py              สร้าง app + lifespan + ต่อ router เท่านั้น
+  core/config.py       อ่านค่าจาก .env
+  api/                 route — ชั้นเดียวที่รู้จัก FastAPI
+  services/            ตรรกะของเรา (สมอง)
+  clients/             คุยกับของนอกบ้าน (Redis, AI, LINE)
 ```
 
----
+## กฎ
 
-## The AI conversation (end-to-end)
+**1. ลูกศรวิ่งทางเดียว — ห้ามย้อน**
 
-1. Free text on LINE → `message_handler` → `ai_tool.build_question(user_id, text)` — or, if the Redis `broadcast_mode` flag is set (user pressed "ใช่" on a weather alert), `ai_tool.build_broadcast_reply(...)` with an alert-specific prompt.
-2. `ai_tool._run_turn` appends the user turn to the **Redis** session, loads the last ~10 messages, and calls `llm.chat(history, system, tools=[RECORD_COMPLAINT])`.
-3. Gemini either asks a follow-up **or** calls `record_complaint` when it has enough. On a tool call the record hook: opens a `conversations` anchor (first record of the chat), **pops pending attachments** (images/location the user sent mid-chat), and `report.save()` inserts into `reports` (+ `report_images` rows, lat/lon → PostGIS `location_data`). The session stays alive — one chat can hold several reports.
-4. After a record, the full transcript is dumped via the storage seam (`conversations/<user>.json`) and linked on the anchor (`archive_key`). Sessions auto-expire after 30 min.
-
-**Images & location:** the model stays text-only. Files/coordinates never enter Gemini — the handler stashes them in Redis (`pending_images:` / `pending_location:`) and injects a `[ระบบ: ...]` text marker so the AI acknowledges and moves on. Attachments stick to the first report recorded after they arrive.
-
-**Extraction target:** `category` + `notes` required; `severity`/`title`/`location` optional (see `RECORD_COMPLAINT` in `ai_tool.py`). Known drift: tool emits severity `med`, DBML says `medium` (no DB CHECK — reconcile at the tool spec).
-
----
-
-## The broadcast pipeline (เส้น 2)
-
-- **Decide:** `weather_broadcast.classify_alert` — temp > 35.0 °C = heat, `condition_label` in rain labels = flood; strongest event per community per day; community names matched **exactly** against `communities` (typos in forecast data land in `unmatched`).
-- **Recipients:** `user.get_users_by_community` (FK first, legacy varchar fallback; users without a community are skipped by policy).
-- **Guards:** 7-day anti-spam cap per user (`outreach` log; `force=true` skips it — demo lever) and the *never-skipped* mid-conversation guard: a user whose Redis `broadcast_mode` flag is set is never pushed again, even with force.
-- **Send:** `broadcast.push_to_users` — per-user isolation, one blocked user never kills the round. Every push logged to `outreach`.
-- **Triggers:** hourly lifespan task fires events whose forecast `time` falls in the current hour (dev/uvicorn only — dies on Lambda; EventBridge = next sprint, #82), or `POST /api/broadcast/run` with `{"date": "...", "force": true}`.
-- **Dev mock:** `scripts/make_mock_forecast.py` writes real-shaped forecast JSON; serve with `python -m http.server 9000 -d mock_forecast` + `FORECAST_BASE_URL=http://localhost:9000/forecast`.
-
----
-
-## Data model (`app/models/`, timestamps Bangkok UTC+7)
-
-| Model | Table | Note |
-|---|---|---|
-| `Report` | `reports` | **central table, all channels**: `source` 'ai' \| 'broadcast' \| 'form_report' \| 'survey', `source_ref`, `category_id` FK, `notes`, `severity`, `title`, `status`, `location_text`, `location_data` (PostGIS point), `payload` JSONB |
-| `ReportImage` | `report_images` | image storage keys per report (all sources) |
-| `Conversation` | `conversations` | chat anchor: `trigger`, `archive_key` → transcript blob |
-| `Outreach` | `outreach` | broadcast push log (1 push = 1 row) — anti-spam cap + response tracking |
-| `Community` | `communities` | 14 seeded communities (+ lat/lon) — seed data in `services/lookups.py` |
-| `Category` | `categories` | report categories, seeded; AI tool enum locked to these values |
-| `User` | `users` | `lineuser_id` PK, profile fields, `community_id` FK (+ legacy `community` varchar) |
-
-Legacy V1 survey tables were **dropped** (migration `0002_drop_legacy`) after a one-shot backfill folded them into `reports` (source='survey', `_backfill` marker in payload; the script itself was removed after it ran — see git history).
-
----
-
-## Module Reference
-
-### `app/main.py`
-Binds only: lifespan (starts/cancels the hourly broadcast scheduler — schema is Alembic's job), CORS, routers, global exception handler, `handler = Mangum(app)`. Swagger/ReDoc off when `ENV=production`.
-
-### `app/config.py`
-Env vars (`CHANNEL_SECRET`, `CHANNEL_ACCESS_TOKEN`, `DATABASE_URL`, `LIFF_REPORT_ID/URL`, `EDIT_PROFILE_ID/URL`, `FORECAST_BASE_URL`) + static reply texts. `config_loader.py` loads `.env` and (in Lambda) AWS Secrets Manager.
-
-### `app/routes/` (thin endpoints, no logic)
-| File | Endpoints |
-|---|---|
-| `line.py` | `POST /callback` — webhook parse + signature + `handle_event_safely` per-event rescue |
-| `broadcast.py` | `POST /api/broadcast/run` (JWT) — manual broadcast trigger |
-| `dashboard.py` | `GET /api/dashboard/*` (JWT) — stats, available-dates, reports(+id), incomplete-reports, form-reports, broadcast-reports, image/{image_id} |
-| `report.py` | `GET /report`, `POST /api/form-reports`, `GET /api/form-reports/{id}/image` |
-| `userdata.py` | `GET /userdata`, `GET/PUT /api/userdata/profile` |
-| `system.py` | `GET /api/health` — DB reachability (503 when down) |
-| `viewer.py` | `GET /viewer` (dev-only page) |
-
-### `app/handlers/` (per-surface dispatch)
-- **`message_handler.py`** — routes text/image/location: rich-menu replies, broadcast confirm (`YES_MAP` → broadcast_mode + AI) / decline (`NO_MAP`), attachments → pending stash + marker, free text → AI core.
-- **`follow_handler.py`** — `FollowEvent`: upsert `User`, welcome text.
-- **`broadcast_flow_handler.py`** — the broadcast **button contract** (`YES_MAP`/`NO_MAP`, must match `weather_broadcast._MESSAGE_CONFIG`) + `decline()` (the "ไม่" path → cancelled row). The old `awaiting_*` state machine was deleted once the DB held zero unfinished rows; replies go through the AI.
-
-### `app/services/` (one file per domain; orchestrators connect, never own domain logic)
-- **`ai_tool.py`** — AI core: `NONG_MUEANG_SYSTEM_PROMPT` + `NONG_MUEANG_BROADCAST_PROMPT`, `RECORD_COMPLAINT` tool spec, `_run_turn` (memory + llm.chat + record hook), `build_question`, `build_broadcast_reply`.
-- **`llm.py`** — the **only** Gemini import. `chat()` with tool-call rounds (cap 5). Swap providers here alone.
-- **`session.py`** — Redis: transcript (`chat:`), `broadcast_mode:`, `pending_images:`, `pending_location:`, `dump_transcript` → storage. `SESSION_TTL = 1800`.
-- **`conversation.py`** — conversations anchor (`ensure_active`, `attach_archive`).
-- **`report.py`** — `save()` → `reports` (+ `report_images`, PostGIS point); `category_id_for`, `community_id_*`.
-- **`weather.py`** — broadcast **orchestrator** `run_broadcast(date, force, only_due)` + outreach log/cap (`log_outreach`, `recently_contacted`, CAP_DAYS=7).
-- **`weather_broadcast.py`** — decision + message: `classify_alert`, `parse_forecast`, `pick_strongest_per_location`, `filter_due`, `build_message`, `to_sdk_messages`.
-- **`forecast.py`** — fetch daily forecast JSON from S3 (`get_daily`; 404/403 → None; else `ForecastUnavailable`).
-- **`broadcast.py`** — `push_to_users(user_ids, messages)` with per-user failure isolation.
-- **`user.py`** — `get_or_create_user`, `get_profile`, `save_profile`, `get_users_by_community`.
-- **`dashboard.py`** — all dashboard queries + serialization (reads the central `reports` + `report_images`).
-- **`form_report.py`** — LIFF form insert + image lookup.
-- **`line.py`** — LINE builders (`reply_text`, `reply_messages`, คู่มือ Flex) + `persist_message_image` (CDN → storage).
-- **`lookups.py`** — seed data: `COMMUNITIES`, `CATEGORIES` (source of truth for the seeded tables).
-
-### `app/database/`
-`__init__.py` — URL normalisation (`postgresql+asyncpg://`, SSL for hosted), `engine`, `SessionLocal`, `get_db`, `Base`. `database_manager.py` — `get_session()` for service code outside a request.
-
-### `app/utils/`
-`auth.py` (JWT decode; `get_current_user`/`get_current_admin`), `liff_auth.py` (LIFF access-token verify), `storage.py` (blob/image save-read seam — the S3 swap point).
-
-### `alembic/`
-`0001_v2_reports_schema` (central tables + GiST index), `0002_drop_legacy` (V1 tables dropped). Run `alembic upgrade head` before starting the app on a fresh DB.
-
----
-
-## Changing the AI behaviour
-
-- **Persona / report goal:** `NONG_MUEANG_SYSTEM_PROMPT` (normal chat) / `NONG_MUEANG_BROADCAST_PROMPT` (post-alert) in `app/services/ai_tool.py`.
-- **Extraction fields:** `RECORD_COMPLAINT` tool spec in `ai_tool.py` (keep `category`/`notes` required; category enum comes from `lookups.CATEGORIES`).
-- **Model / provider:** `MODEL` (or client) in `app/services/llm.py` — nothing else imports the SDK.
-- **Session TTL / windowing:** `SESSION_TTL` in `session.py`, `HISTORY_WINDOW` in `ai_tool.py`.
-- **Broadcast thresholds / messages:** `HEAT_THRESHOLD`, `RAIN_LABELS`, `_MESSAGE_CONFIG` in `weather_broadcast.py` (button texts must stay in sync with `YES_MAP`/`NO_MAP`).
-
----
-
-## Environment Variables
-
-```env
-CHANNEL_SECRET=            # LINE channel secret
-CHANNEL_ACCESS_TOKEN=      # LINE channel access token
-DATABASE_URL=postgresql://user:pass@host/db
-GEMINI_API_KEY=            # Gemini (google-genai) — required for AI replies
-REDIS_URL=                 # conversation memory (default redis://localhost:6379/0)
-FORECAST_BASE_URL=         # forecast JSON base (default: data-team S3; point at a local
-                           # http.server dir to demo with scripts/make_mock_forecast.py)
-LIFF_REPORT_ID=            # LIFF app id ของหน้าแจ้งปัญหา (/report)
-LIFF_REPORT_URL=           # https://liff.line.me/<LIFF_REPORT_ID>
-EDIT_PROFILE_ID=           # LIFF app id ของหน้าข้อมูลส่วนตัว (/userdata)
-EDIT_PROFILE_URL=          # https://liff.line.me/<EDIT_PROFILE_ID>
-SECRET_KEY=                # JWT signing key for dashboard/broadcast auth (required)
-ALGORITHM=HS256            # optional — JWT algorithm (default HS256)
-FRONTEND_URL= / FRONTEND_URLS=   # optional — dashboard CORS origin(s)
-ENV=production             # optional — hide /docs and /redoc
-# AWS (Lambda deploy only): AWS_SECRET_NAME, AWS_REGION
+```
+api/ → services/ → clients/
 ```
 
-Run (needs Redis + Postgres): `alembic upgrade head` once, then `uvicorn app.main:app --reload`
-Tests: `pytest` (deps in `requirements.txt`). Note: the hourly broadcast scheduler only lives in a long-running process (uvicorn) — not on Lambda.
+`services/` และ `clients/` ห้าม import อะไรจาก `api/`
+`clients/` ห้าม import อะไรจาก `services/`
 
----
+**2. มีแต่ `api/` ที่รู้จัก FastAPI**
+
+ถ้าเปิดไฟล์ใน `services/` หรือ `clients/` แล้วเจอคำว่า `fastapi`, `Request`, `Depends` แปลว่าวางผิดที่
+
+`Depends` ทุกตัวอยู่ใน `api/deps.py`
+
+**3. `services/` ห้ามรู้จัก LINE**
+
+`services/` รับ-ส่งแค่ `str` และ `dict` ธรรมดา ห้ามมีคำว่า `linebot`, `reply_token`, `event`
+งานแกะกล่องของ LINE อยู่ใน `api/line.py` งานยิงกลับอยู่ใน `clients/line.py`
+
+เหตุผล: วันหลังเพิ่ม Discord หรือเว็บ จะได้เพิ่มแค่ไฟล์ใน `api/` โดยไม่ต้องแตะสมอง
+
+**4. `main.py` ห้ามมี route**
+
+มีได้แค่ lifespan กับ `include_router`
+
+**5. ตั้งชื่อไฟล์ตามหน้าที่ ไม่ใช่ตามยี่ห้อ**
+
+`llm.py` ไม่ใช่ `openai.py` — วันหลังเปลี่ยนเจ้าจะได้ไม่ต้องแก้ชื่อทั้งโปรเจกต์
+
+**6. lifespan มี `yield` ได้อันเดียว**
+
+บนสุด = ตอนเปิดแอป / ล่าง `yield` = ตอนปิด / `yield` ต้องอยู่ใน `try` ส่วน setup อยู่นอก
+ห้ามใช้ `@app.on_event` มันตกรุ่นแล้ว
+
+**7. ห้ามสร้าง connection เองในไฟล์อื่น**
+
+Redis ต่อครั้งเดียวใน lifespan แล้วส่งต่อผ่าน `Depends(get_redis)`
+
+## วิธีเช็คเร็ว ๆ ว่ายังไม่พัง
+
+```bash
+grep -rniE "fastapi|linebot|request" app/services   # ต้องไม่เจอ
+grep -rniE "fastapi" app/clients                    # ต้องไม่เจอ
+grep -rn "from app.api" app/services app/clients    # ต้องไม่เจอ
+grep -rn "from app.services" app/clients            # ต้องไม่เจอ
+```
+
+## เรื่อง schema
+
+Postgres + PostGIS ใช้อยู่แล้ว ผ่าน `asyncpg` ดิบ ๆ ไม่มี ORM
+ตารางอยู่ที่ `schema.sql` รากโปรเจกต์ **รันมือ** — แอปไม่สร้างตารางให้ตอนเปิด
+โค้ดที่แก้ schema ได้ระหว่างรัน คือโค้ดที่ทำ schema พังได้ระหว่างรันเหมือนกัน
+
+ห้าตาราง แบ่งเป็นสองฝั่ง:
+
+- **เรื่องที่เขาเล่า** — `reports` (แบน `categories` เป็น `text[]`) กับ `report_images`
+- **ตัวคน (มีไว้เพื่อ broadcast)** — `communities`, `users`, `outreach`
+
+**ไม่มี FK ไม่มี CHECK โดยตั้งใจ** — `_sanitize()` ใน `services/survey.py` กรองให้แล้ว
+ใส่ CHECK เมื่อไหร่ ค่าเพี้ยนช่องเดียวจะทำ INSERT ล้มทั้งแถว = เสียเรื่องที่เขาอุตส่าห์เล่าทั้งใบ
+(`report_images` มี FK ตัวเดียวเพราะรูปที่ไม่มีใบเป็นขยะล้วน ๆ)
+
+`users.community_id` มาจากบทสนทนา ไม่ได้มาจากฟอร์ม — เป็น**เป้าหมายลำดับสุดท้าย**
+ใน `next_goal()` ถามครั้งเดียวหลังเก็บเรื่องครบแล้ว **ไม่ได้อยู่ใน `missing()`
+ไม่ตอบใบก็ปิดได้ตามปกติ** และ `_home_said()` จับชื่อจากคำตอบด้วยโค้ด ไม่ฝากโมเดล
+เพราะตาที่เขาตอบคือตาที่ระบบสั่งโมเดลว่า "ครบแล้ว ปิดท้ายได้" มันจะไม่เรียกเครื่องมือ
+
+pydantic schemas, SQLAlchemy, alembic — เอาไว้ทีหลัง ตอนใส่ค่อยเพิ่ม
+`schemas/`, `models/`, `repositories/` เข้ามา โดยไม่ต้องรื้อของเดิม
+
+## ยังไม่ทำตอนนี้
+
+เรียงตามลำดับที่ควรหยิบ ข้อ 1–2 คือด่านก่อนเปิดให้คนนอกใช้จริง
+
+**1. ปิดประตู `/api/broadcast/*` และ `/dashboard`** ตอนนี้ไม่มีใครล็อกเลย
+ใครยิง URL ถูกก็สั่งส่งข้อความหาชาวบ้านได้ ด่านเดียวที่มีคือ `BROADCAST_ENABLED`
+ใน `.env` ซึ่งปิดอยู่โดยปริยาย **ยังไม่ได้ต่อออกเน็ตเลยยังไม่เป็นเรื่อง —
+แต่ต้องปิดก่อนขึ้นของจริง** แดชบอร์ดก็เปิดโล่งเหมือนกัน คิดทีเดียวพร้อมกันได้
+
+**2. tests** ยังไม่มีสักตัว ตัวที่ควรมีก่อนเพื่อนเป็นฟังก์ชันล้วน
+ไม่ต้องมี Redis หรือ Postgres — `survey.missing()` / `next_goal()` /
+`_sanitize()` / `_home_said()` / `dashboard.public()` และ `broadcast._within()`
+(`_home_said()` สำคัญเป็นพิเศษ มันคือตัวที่กันไม่ให้คำตอบเรื่องชุมชนหล่นหาย)
+
+**3. เติม `communities.lat/lon`** ว่างอยู่ทั้ง 14 แถว ไม่มีค่าพวกนี้
+ข้อ 4 เริ่มไม่ได้ เพราะไม่รู้ว่าจะไปถามพยากรณ์ของพิกัดไหน
+
+**4. พยากรณ์อากาศเป็นคนเลือกว่ายิงเมื่อไหร่** ตอนนี้ broadcast ทำงานได้แล้ว
+แต่**คนกดเอง** เฟสถัดไปคือ `clients/forecast.py` + ตัวตั้งเวลาใน lifespan
+(ลอกโครง `services/sweeper.py` ได้เลย) แล้วให้มันเรียก `broadcast.run()` ตัวเดิม
+**ต้องมีหน้าต่างเวลา 08:00–20:00 ก่อนเปิดสวิตช์** ของเดิมเลือกชั่วโมงที่อากาศ
+แรงสุดของวัน ฝนแรงสุดตีสามก็ยิงตีสาม แผนเต็มอยู่ที่ `local/broadcast-v2/PORT.md`
+
+**5. S3** — แก้แค่ `clients/media.py` กับ `clients/transcript.py` สองไฟล์
+เพราะตารางเก็บแต่ key ไม่เคยเก็บ path
+
+**6. เก็บกวาดทีหลัง** ใบที่ปิดแล้วยังอ่านทั้งตาราง (`list_reports()` ไม่มี filter)
+และบางทีตาแรกของบทสนทนาโมเดลตอบว่างมา คนเลยเจอ "ขอโทษค่ะ ช่วยเล่าอีกครั้ง"
+ทั้งที่เพิ่งทักคำแรก **ยังไม่รู้สาเหตุ** เจอซ้ำเมื่อไหร่ให้เก็บ log ตาแรกไว้
+
+## git
+
+commit ใช้ชื่อเจ้าของ repo เท่านั้น **ห้ามใส่ Co-Authored-By หรือ link ของ AI**
 
 ## Agent skills
 
-- **Issue tracker** — GitHub Issues for `tonkitcstu/ucr-smartcity_chatbot`. See `docs/agents/issue-tracker.md`.
-- **Triage labels** — five canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-- **Domain docs** — one `CONTEXT.md` + `docs/adr/` at the root. See `docs/agents/domain.md`.
+- **Issue tracker** — GitHub Issues ของ `tonkitcstu/ucr-smartcity_chatbot` ดู `docs/agents/issue-tracker.md`
+- **Triage labels** — ห้าป้ายหลัก ดู `docs/agents/triage-labels.md`

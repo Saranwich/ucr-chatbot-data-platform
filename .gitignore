@@ -1,176 +1,105 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-#  Usually these files are written by a Python script from a template
-#  before PyInstaller builds the exe, so may be deleted later.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypotheses/
-.pytest_cache/
-pytestdebuglog.txt
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-.pybuilder/
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or even
-#   fail all together. If that is the case, one may skip Pipfile.lock.
-#Pipfile.lock
-
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   poetry.lock
-
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm build plugins may create files in .pdm-build/
-.pdm-build/
-
-# PEP 582; used by e.g. github.com/fannheyward/coc-pyright
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
+# Secrets / environment
+# .env.* กัน .env.local / .env.production / .env.bak-* ไว้ด้วย
+# **บรรทัด !.env.example ต้องอยู่ล่างสุดของกลุ่มนี้เสมอ** ไม่งั้นเทมเพลตจะหายไปจาก repo
 .env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+.env.*
+*.env
+!.env.example
 
-# Spyder project settings
-.spyderproject
-.spyproject
+# กุญแจและใบรับรอง — ไม่มีอันไหนควรอยู่ใน repo สักอัน
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+*.ppk
+id_rsa*
+id_ed25519*
 
-# Rope project settings
-.ropeproject
+# credential ของบริการคลาวด์ (Google service account, AWS, ฯลฯ)
+credentials*.json
+service-account*.json
+*serviceaccount*.json
+gha-creds-*.json
+.aws/
+.gcloud/
+.netrc
+.npmrc
+.pypirc
+.dockercfg
+.docker/config.json
 
-# mkdocs documentation
-/site
+# terraform state เก็บค่า secret ไว้แบบ plaintext
+*.tfstate
+*.tfstate.*
+.terraform/
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# ไฟล์ dump ของฐานข้อมูล — ข้างในมีเรื่องจริงกับพิกัดบ้านของชาวบ้าน
+# **ห้ามใส่ *.sql เฉย ๆ** schema.sql ต้องขึ้น git
+*.dump
+*.sql.gz
+*.sql.bz2
+*-dump.sql
+backup*.sql
 
-# Pyre type checker
-.pyre/
+# ค่าตั้งเครื่องมือเฉพาะเครื่อง ไม่ใช่ของโปรเจกต์
+.claude/settings.local.json
 
-# pytype static type analyzer
-.pytype/
+# Local scratch (notes, plans, experiments)
+local/
+.agent-workspace/
 
-# Cython debug symbols
-cython_debug/
+# เอกสารนำเสนอ/บรีฟของค่าย ไม่ใช่ของโปรเจกต์นี้ — เก็บไว้บนเครื่อง ไม่ต้องขึ้น git
+docs/
 
-# PyCharm
-#  JetBrains specific template is maintained in a separate repository:
-#  https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global git config or merged into this file.
-#  For now, just ignore the .idea folder.
-.idea/
+# Runtime blobs — รูปที่ชาวบ้านส่งมา + บทสนทนาต้นฉบับ
+# ของจริงของชาวบ้าน ห้ามขึ้น git (วันย้ายขึ้น S3 โฟลเดอร์นี้จะหายไปเอง)
+storage/
 
-# VS Code
-.vscode/
-
-#macos
-.DS_Store
-
-GEMINI.md
-
-# Report-form uploaded images (POC local store; ADR 0005 moves these to S3)
-uploads/
 # private keys never belong in the repo
 *.pem
 
-# AI-agent local workspace (planning notes, not product code)
-.agent-workspace/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
 
-# V2 fake report store (CSV stand-in until Postgres)
-reports.csv
-mock_forecast/
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / local databases
+*.log
+*.db
+*.sqlite3
 dump.rdb

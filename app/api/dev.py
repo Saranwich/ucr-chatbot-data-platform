@@ -90,8 +90,14 @@ async def survey_draft(session_id: str = "devtest", r: Redis = Depends(get_redis
 
 @router.delete("/survey/draft")
 async def survey_reset(session_id: str = "devtest", r: Redis = Depends(get_redis)):
-    """Start the conversation over."""
+    """Start the conversation over — as if this session had never said anything.
+
+    ล้างป้าย "เพิ่งคุยจบ" ด้วย ไม่งั้นมันไม่ใช่การเริ่มใหม่จริง: บอทจะยังคิดว่า
+    เพิ่งคุยกับคนนี้จบไปหมาด ๆ อยู่อีก 30 นาที และ broadcast จะข้ามคนนี้ทั้งที่
+    ไม่มีอะไรค้างแล้ว — **นี่คือวิธีเว้นด่านนั้นตอนทดสอบ** ดู services/broadcast.py
+    """
     await draft.clear(r, session_id)
+    await draft.clear_done(r, session_id)
     await memory.clear(r, session_id)
     return {"cleared": session_id}
 

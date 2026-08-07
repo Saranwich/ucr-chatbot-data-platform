@@ -51,6 +51,20 @@ uvicorn app.main:app --reload
 | `GET /api/dashboard/reports` | ข้อมูลที่หน้าแผนที่ไปดึงเอง |
 | `GET /api/dashboard/image/{id}` | รูปของใบนั้น |
 | `GET /api/health` | Redis ยังอยู่ไหม |
+| `GET /dashboard/broadcast` | หน้าทักชาวบ้านก่อน — เลือกคน เลือกเรื่อง อ่านข้อความ แล้วกดส่ง |
+| `GET /api/broadcast/state` | สวิตช์เปิดยัง + เรื่องที่ทักได้ + ชุมชน |
+| `GET /api/broadcast/audience` | คนที่ทักได้ พร้อมชุมชนและวันที่ทักล่าสุด |
+| `GET /api/broadcast/draft?topic=` | ให้ AI ร่างข้อความเปิด **ยังไม่ส่ง** |
+| `GET /api/broadcast/log` | ทักใครไปบ้าง ตอบไหม ได้เรื่องกลับมาไหม |
+| `POST /api/broadcast/send?to=&topic=` | ทักคนเดียว `to` = LINE user id |
+| `POST /api/broadcast/run?community=&topic=` | ทักทั้งชุมชน |
+
+`topic` = `flood` / `heat` / `both` — **เป็นแค่หัวเรื่อง ไม่ใช่คำถาม**
+ตัวข้อความ AI แต่งใหม่ทุกครั้ง และไม่มีปุ่มให้กด เขาตอบเป็นภาษาคน
+ไม่ใส่ `text` มาก็แต่งสดตอนส่ง ใส่มาก็ใช้ตามนั้น (หน้าเว็บให้อ่านและแก้ก่อนกด)
+
+สองทางที่ส่งจริง **ต้องตั้ง `BROADCAST_ENABLED=true`** ก่อนถึงจะส่งได้
+ใส่ `dry=true` ลองเปล่า ๆ ได้เสมอ — บอกว่ารอบนี้จะไปถึงใคร โดยไม่ส่งและไม่จดอะไรลง
 
 ของสำหรับ dev (ไม่ต้องผ่าน LINE):
 

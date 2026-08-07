@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>น้องเมือง — ทักไปคุยก่อน</title>
+<style>
+  :root {
+    --bg: #f5f4f1;  --panel: #fff;  --line: #e0ddd6;
+    --ink: #26241f;  --dim: #6f6a60;
+    --warn: #a8622a;  --go: #4f8a5b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+    font-family: "IBM Plex Sans Thai", "Noto Sans Thai", -apple-system, sans-serif;
+    padding: 28px 20px 60px;
+  }
+  main { max-width: 660px; margin: 0 auto; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: var(--dim); line-height: 1.7; margin-bottom: 18px; }
+  .sub a { color: var(--dim); }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 5px; padding: 18px; margin-bottom: 16px;
+  }
+  h2 { font-size: 13px; margin: 0 0 14px; color: var(--dim); font-weight: 600; }
+
+  label { display: block; font-size: 12px; color: var(--dim); margin-bottom: 5px; }
+  input, select, textarea, button {
+    font-family: inherit; font-size: 13px; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  }
+  input, select, textarea { padding: 7px 9px; width: 100%; }
+  input:focus, select:focus, textarea:focus {
+    outline: 2px solid #c9c4b8; outline-offset: -1px;
+  }
+  textarea { line-height: 1.7; resize: vertical; min-height: 78px; }
+  .field { margin-bottom: 14px; }
+  .row2 { display: flex; gap: 12px; }
+  .row2 > * { flex: 1; }
+
+  button { padding: 7px 14px; cursor: pointer; }
+  button:hover { background: #f5f4f1; }
+  button.go { background: var(--ink); color: #fff; border-color: var(--ink); }
+  button.go:hover { background: #3d3a33; }
+  button:disabled { opacity: .45; cursor: default; }
+  .actions { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+
+  /* ปุ่มเลือกว่าทักคนเดียวหรือทั้งชุมชน — ปุ่มธรรมดา ไม่ใช่ radio กลม ๆ ที่กดยาก */
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tab { padding: 5px 12px; font-size: 12px; color: var(--dim); }
+  .tab.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  .check { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--dim); }
+  .check input { width: auto; }
+
+  .note { font-size: 12px; color: var(--dim); line-height: 1.7; margin-top: 8px; }
+  .strip {
+    font-size: 12px; line-height: 1.7; padding: 9px 12px; border-radius: 4px;
+    margin-bottom: 16px; border: 1px solid var(--line); background: #fbf7ef;
+    color: var(--warn);
+  }
+
+  /* ---- ผลลัพธ์ ---- */
+  .result { font-size: 13px; line-height: 1.8; }
+  .result .head { font-size: 14px; margin-bottom: 8px; }
+  .ok { color: var(--go); }
+  .bad { color: var(--warn); }
+  .who { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+  .said {
+    border-left: 2px solid var(--line); padding-left: 10px;
+    margin: 10px 0; font-style: italic; line-height: 1.8;
+  }
+
+  /* ---- ประวัติ ---- */
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th {
+    text-align: left; font-weight: 500; color: var(--dim);
+    border-bottom: 1px solid var(--line); padding: 0 8px 7px 0;
+  }
+  td { border-bottom: 1px solid var(--line); padding: 9px 8px 9px 0; vertical-align: top; }
+  td.msg { color: var(--dim); line-height: 1.6; }
+  .empty { color: var(--dim); font-size: 13px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<main>
+  <h1>น้องเมือง — ทักไปคุยก่อน</h1>
+  <div class="sub">
+    ปกติชาวบ้านทักมาหาเรา หน้านี้กลับด้าน: เราพิมพ์ทักไปก่อน แล้วเขาตอบกลับมาเป็นภาษาคน
+    บทสนทนาที่ได้ไหลเข้าน้องเมืองตัวเดิมทุกอย่าง ต่างกันแค่ถูกจดว่ามาจากการที่เราทักไป
+    · <a href="/dashboard">กลับไปหน้าแผนที่</a>
+  </div>
+
+  <div id="strip"></div>
+
+  <div class="panel">
+    <h2>ทักใคร</h2>
+    <div class="tabs">
+      <button class="tab on" data-mode="one">คนเดียว</button>
+      <button class="tab" data-mode="all">ทั้งชุมชน</button>
+    </div>
+
+    <div class="field" id="onebox">
+      <label for="to">LINE user id ของคนที่จะทัก</label>
+      <input id="to" list="people" placeholder="U1234… (ตัวเดียวกับ session_id ในตารางรายงาน)"
+             autocomplete="off">
+      <datalist id="people"></datalist>
+      <div class="note" id="whoNote"></div>
+      <div class="actions" style="margin-top:8px">
+        <button id="unblock" hidden>ปลดป้าย “เพิ่งคุยจบ”</button>
+      </div>
+    </div>
+
+    <div class="field" id="allbox" hidden>
+      <label for="community">ชุมชน</label>
+      <select id="community"></select>
+    </div>
+
+    <div class="field">
+      <label for="topic">เรื่องที่จะทักไปถาม</label>
+      <select id="topic"></select>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>ข้อความ</h2>
+    <div class="field">
+      <label for="text">ปล่อยว่างไว้ = ให้ AI แต่งสดตอนกดส่ง</label>
+      <textarea id="text" placeholder="กด “ให้ AI ร่างให้” เพื่ออ่านก่อน แล้วแก้ได้ตามใจ"></textarea>
+      <div class="note">
+        ข้อความนี้ไปโผล่ในแชทของเขาจริง ๆ — AI แต่งใหม่ทุกครั้ง ไม่มีสองครั้งที่เหมือนกัน
+        และ<b>ไม่มีปุ่มให้กด</b> เขาตอบเป็นภาษาคน
+      </div>
+    </div>
+    <div class="actions">
+      <button id="draft">ให้ AI ร่างให้</button>
+      <label class="check"><input type="checkbox" id="dry" checked> ลองเปล่า ๆ ไม่ส่งจริง</label>
+      <label class="check"><input type="checkbox" id="force"> ทักซ้ำ ข้าม cap 7 วัน</label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="actions">
+      <button class="go" id="send">ส่ง</button>
+      <span class="note" id="sendNote" style="margin:0"></span>
+    </div>
+    <div id="result" class="result" style="margin-top:14px"></div>
+  </div>
+
+  <div class="panel">
+    <h2>ทักไปแล้วล่าสุด</h2>
+    <div id="log" class="empty">กำลังโหลด…</div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"]/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[m]));
+}
+function short(id) { return String(id || "").slice(0, 10) + "…"; }
+function when(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso), p = n => String(n).padStart(2, "0");
+  return `${d.getDate()}/${d.getMonth() + 1} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function days(iso) {
+  if (!iso) return null;
+  return Math.floor((Date.now() - new Date(iso)) / 86400000);
+}
+
+let MODE = "one";
+let TOPICS = [];
+let PEOPLE = [];
+
+// ---- โหลดของตั้งต้น ----
+fetch("/api/broadcast/state").then(r => r.json()).then(s => {
+  TOPICS = s.topics;
+  $("topic").innerHTML = s.topics
+    .map(t => `<option value="${esc(t.id)}">${esc(t.label)}</option>`).join("");
+
+  $("community").innerHTML = s.communities.length
+    ? s.communities.map(c =>
+        `<option value="${esc(c.name)}">${esc(c.name)} — ${c.members} คน</option>`).join("")
+    : `<option value="">(ยังไม่มีชุมชนไหนมีคนอยู่เลย)</option>`;
+
+  if (!s.enabled) {
+    $("strip").innerHTML = `<div class="strip">
+      <b>สวิตช์ปิดอยู่</b> — ตอนนี้ส่งจริงไม่ได้ กดได้แต่ “ลองเปล่า ๆ”
+      เปิดโดยตั้ง <code>BROADCAST_ENABLED=true</code> ใน <code>.env</code> แล้วรีสตาร์ท
+    </div>`;
+    $("dry").checked = true;
+    $("dry").disabled = true;
+  }
+}).catch(fail);
+
+fetch("/api/broadcast/audience").then(r => r.json()).then(people => {
+  PEOPLE = people;
+  $("people").innerHTML = people.map(p => {
+    const tag = [p.community, p.reports ? `${p.reports} เรื่อง` : null]
+      .filter(Boolean).join(" · ");
+    return `<option value="${esc(p.session_id)}">${esc(tag || "ยังไม่เคยเล่าอะไร")}</option>`;
+  }).join("");
+}).catch(fail);
+
+loadLog();
+
+function loadLog() {
+  fetch("/api/broadcast/log").then(r => r.json()).then(rows => {
+    if (!rows.length) {
+      $("log").className = "empty";
+      $("log").textContent = "ยังไม่เคยทักใครเลย";
+      return;
+    }
+    $("log").className = "";
+    $("log").innerHTML = `<table>
+      <tr><th>เมื่อไหร่</th><th>ใคร</th><th>เรื่อง</th><th>ข้อความที่ส่ง</th><th>ผล</th></tr>
+      ${rows.map(row => `<tr>
+        <td>${when(row.sent_at)}</td>
+        <td><span class="who">${esc(short(row.session_id))}</span><br>
+            <span style="color:var(--dim)">${esc(row.community || "")}</span></td>
+        <td>${esc(label(row.topic))}</td>
+        <td class="msg">${esc(row.message || "—")}</td>
+        <td>${outcome(row)}</td>
+      </tr>`).join("")}
+    </table>`;
+  }).catch(fail);
+}
+
+// ได้เรื่องกลับมา > ตอบแต่ยังไม่ได้เรื่อง > เงียบ — สามชั้นนี้คือสิ่งที่ต้องดู
+// เพื่อเคาะว่าควรทักบ่อยแค่ไหน ของเดิมตอบไม่ได้เลยเพราะไม่เคยจด
+function outcome(row) {
+  if (row.report_id) return `<span class="ok">ได้เรื่อง #${row.report_id}</span>`;
+  if (row.response) return `ตอบแล้ว ${when(row.responded_at)}`;
+  return `<span style="color:var(--dim)">เงียบ</span>`;
+}
+function label(id) {
+  const t = TOPICS.find(t => t.id === id);
+  return t ? t.label : id;
+}
+
+// ---- สลับคนเดียว / ทั้งชุมชน ----
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.onclick = () => {
+    MODE = tab.dataset.mode;
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t === tab));
+    $("onebox").hidden = MODE !== "one";
+    $("allbox").hidden = MODE === "one";
+  };
+});
+
+// บอกไปเลยว่าคนนี้เพิ่งโดนทักไปเมื่อไหร่ ก่อนที่จะกดแล้วเจอ skipped_cap
+$("to").oninput = () => {
+  const p = PEOPLE.find(p => p.session_id === $("to").value.trim());
+  if (!p) { $("whoNote").textContent = ""; return; }
+  const ago = days(p.last_push);
+  $("whoNote").textContent = [
+    p.community ? `อยู่${p.community}` : "ยังไม่รู้ว่าอยู่ชุมชนไหน",
+    p.reports ? `เล่ามาแล้ว ${p.reports} เรื่อง` : "ยังไม่เคยเล่าอะไร",
+    ago === null ? "ยังไม่เคยถูกทัก"
+      : ago < 7 ? `ทักไปเมื่อ ${ago} วันก่อน — ติด cap ต้องกดทักซ้ำถึงจะผ่าน`
+      : `ทักไปเมื่อ ${ago} วันก่อน`,
+  ].join(" · ");
+};
+
+// ปุ่มโผล่เฉพาะตอนใส่ id ที่รู้จัก — ของสำหรับทดสอบ ไม่ใช่ของที่ควรกดเล่น
+$("to").addEventListener("input", () => {
+  $("unblock").hidden = !$("to").value.trim();
+});
+
+$("unblock").onclick = async () => {
+  const to = $("to").value.trim();
+  if (!to) return;
+  try {
+    const res = await fetch(`/api/broadcast/unblock?to=${encodeURIComponent(to)}`,
+      { method: "POST" });
+    const body = await res.json();
+    say(body.cleared
+      ? `<span class="ok">ปลดป้ายแล้ว ทักคนนี้ได้เลย</span>`
+      : `<span class="bad">ปลดไม่ได้ — คนนี้<b>กำลังเล่าเรื่องค้างอยู่จริง ๆ</b>
+         ใบยังไม่ถูกเก็บที่ไหน ต้องรอให้เขาเล่าจบก่อน</span>`);
+  } catch (e) { fail(e); }
+};
+
+// ---- ให้ AI ร่าง ----
+$("draft").onclick = async () => {
+  const p = PEOPLE.find(p => p.session_id === $("to").value.trim());
+  const where = MODE === "one" ? (p && p.community) : $("community").value;
+
+  $("draft").disabled = true;
+  $("draft").textContent = "กำลังคิด…";
+  try {
+    const url = `/api/broadcast/draft?topic=${encodeURIComponent($("topic").value)}`
+      + (where ? `&where=${encodeURIComponent(where)}` : "");
+    const res = await fetch(url);
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || res.status);
+    $("text").value = body.text;
+  } catch (e) {
+    say(`<span class="bad">ร่างไม่สำเร็จ: ${esc(e.message)}</span>`);
+  } finally {
+    $("draft").disabled = false;
+    $("draft").textContent = "ให้ AI ร่างให้";
+  }
+};
+
+// ---- ส่ง ----
+$("send").onclick = async () => {
+  const dry = $("dry").checked;
+  const params = new URLSearchParams({
+    topic: $("topic").value,
+    dry: dry,
+    force: $("force").checked,
+  });
+
+  if (MODE === "one") {
+    const to = $("to").value.trim();
+    if (!to) return say(`<span class="bad">ยังไม่ได้ใส่ว่าจะทักใคร</span>`);
+    params.set("to", to);
+  } else {
+    if (!$("community").value) return say(`<span class="bad">ยังไม่มีชุมชนให้เลือก</span>`);
+    params.set("community", $("community").value);
+  }
+  if ($("text").value.trim()) params.set("text", $("text").value.trim());
+
+  // ส่งจริงถอยกลับไม่ได้ — ข้อความเข้าแชทเขาแล้วลบไม่ได้ ถามก่อนหนึ่งครั้ง
+  if (!dry && !confirm("ส่งเข้าแชทของเขาจริง ๆ นะ ถอยกลับไม่ได้ — แน่ใจไหม")) return;
+
+  const path = MODE === "one" ? "send" : "run";
+  $("send").disabled = true;
+  $("sendNote").textContent = "กำลังส่ง…";
+  try {
+    const res = await fetch(`/api/broadcast/${path}?` + params, { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || res.status);
+    show(body);
+    loadLog();
+  } catch (e) {
+    say(`<span class="bad">ส่งไม่สำเร็จ: ${esc(e.message)}</span>`);
+  } finally {
+    $("send").disabled = false;
+    $("sendNote").textContent = "";
+  }
+};
+
+const REASON = {
+  "unknown-community": "ไม่มีชุมชนชื่อนี้ในตาราง",
+  "community-capped": "ชุมชนนี้เพิ่งถูกทักไปภายใน 7 วัน — กดทักซ้ำถึงจะผ่าน",
+  "busy": "มีอีกรอบกำลังทักชุมชนนี้อยู่พอดี",
+};
+
+// **"ส่งถึงแล้ว 0 คน" เป็นคำพูดของความสำเร็จ ห้ามใช้กับรอบที่ไม่ได้ส่ง**
+// ไม่มีผู้รับกับส่งแล้วไม่ถึงเป็นคนละเรื่องกันสิ้นเชิง และคนกดต้องแยกออกทันที
+// ว่าต้องไปแก้อะไรต่อ ไม่ใช่กดซ้ำแล้วสงสัยว่าทำไมยังเป็นศูนย์อยู่
+function show(res) {
+  const lines = [];
+  const reach = (res.recipients || []).length;
+  const skipped = ["skipped_cap", "skipped_talking", "skipped_error"]
+    .reduce((n, k) => n + (res[k] || []).length, 0);
+
+  if (REASON[res.status]) {
+    lines.push(`<div class="head bad">ไม่ได้ส่ง — ${REASON[res.status]}</div>`);
+  } else if (res.members === 0) {
+    lines.push(`<div class="head bad">ไม่ได้ส่ง — ชุมชนนี้ยังไม่มีใครอยู่เลย</div>
+      <div class="note">ชุมชนของแต่ละคนมาจากตอนที่บอทถามเขาในแชท ยังไม่มีใครตอบ
+      ตารางนี้เลยยังว่าง — ระหว่างนี้ใช้โหมด <b>คนเดียว</b> ได้เลย ไม่ต้องรู้ชุมชนก็ทักได้</div>`);
+  } else if (!reach) {
+    lines.push(`<div class="head bad">ไม่ได้ส่ง — ${
+      skipped ? "คนที่เลือกไว้ถูกข้ามทั้งหมด" : "ไม่มีผู้รับ"}</div>`);
+  } else if (res.dry) {
+    lines.push(`<div class="head">ลองเปล่า ๆ — <b>ยังไม่มีอะไรถูกส่งออกไป</b>
+      รอบจริงจะไปถึง ${reach} คน</div>`);
+  } else {
+    lines.push(`<div class="head ok">ส่งถึงแล้ว ${res.sent.length} คน</div>`);
+  }
+
+  if (res.text) lines.push(`<div class="said">${esc(res.text)}</div>`);
+
+  const bits = [];
+  if (res.members != null) bits.push(`ในชุมชนมี ${res.members} คน`);
+  if (res.recipients && res.recipients.length)
+    bits.push(`ผ่านด่านแล้ว ${res.recipients.length} คน`);
+  if (res.failed && res.failed.length)
+    bits.push(`<span class="bad">ส่งไม่ถึง ${res.failed.length} คน</span>`);
+  if (res.skipped_cap && res.skipped_cap.length)
+    bits.push(`ข้าม ${res.skipped_cap.length} คน เพราะเพิ่งทักไปไม่ถึง 7 วัน`);
+  if (res.skipped_talking && res.skipped_talking.length)
+    bits.push(`ข้าม ${res.skipped_talking.length} คน เพราะ<b>กำลังเล่าเรื่องค้างอยู่</b> — อันนี้ข้ามไม่ได้`);
+  // คนละเรื่องกับข้างบน: เขาเล่าจบแล้ว เรื่องเก็บเรียบร้อย แค่ยังไม่พ้นช่วงมารยาท
+  if (res.skipped_recent && res.skipped_recent.length) {
+    const mins = Math.ceil((res.wait_seconds || 0) / 60);
+    bits.push(`ข้าม ${res.skipped_recent.length} คน เพราะ<b>เพิ่งคุยจบไปหมาด ๆ</b>`
+      + (mins ? ` อีก ${mins} นาทีถึงจะทักได้` : "")
+      + ` — ตอนทดสอบกดปุ่ม “ปลดป้าย” ข้างบนได้`);
+  }
+  if (res.skipped_error && res.skipped_error.length)
+    bits.push(`<span class="bad">เช็คไม่ได้ ${res.skipped_error.length} คน</span>`);
+
+  if (bits.length) lines.push(bits.join(" · "));
+  say(lines.join(""));
+}
+
+function say(html) { $("result").innerHTML = html; }
+function fail(e) { console.error(e); say(`<span class="bad">ต่อกับเซิร์ฟเวอร์ไม่ได้</span>`); }
+</script>
+</body>
+</html>

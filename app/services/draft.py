@@ -124,3 +124,12 @@ async def finished_id(r: Redis, session_id: str) -> int | None:
 
 async def clear_done(r: Redis, session_id: str) -> None:
     await r.delete(_done_key(session_id))
+
+
+async def done_seconds_left(r: Redis, session_id: str) -> int:
+    """ป้าย "เพิ่งคุยจบ" เหลืออายุอีกกี่วินาที — 0 ถ้าไม่มีป้ายแล้ว
+
+    มีไว้ให้คนที่โดนป้ายนี้กันอยู่รู้ว่าต้องรอถึงเมื่อไหร่ ไม่ใช่โดนปฏิเสธลอย ๆ
+    """
+    ttl = await r.ttl(_done_key(session_id))
+    return ttl if ttl > 0 else 0

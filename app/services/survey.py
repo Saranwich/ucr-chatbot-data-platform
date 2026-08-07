@@ -12,13 +12,14 @@
 (แม้แต่ในคอมเมนต์ก็เลี่ยงคำต้องห้าม เพราะ grep ในกฎข้อ 2 จับคำ ไม่ได้จับความหมาย)
 """
 
+import copy
 import logging
 import re
 
 import asyncpg
 from redis.asyncio import Redis
 
-from app.clients import llm, storage, transcript
+from app.clients import audience, llm, storage, transcript
 from app.services import draft, lock, memory
 
 log = logging.getLogger(__name__)
@@ -236,6 +237,41 @@ RECORD_TOOL = {
     },
 }
 
+
+def _tool(homes: list[str]) -> dict:
+    """เครื่องมือบันทึกของตานี้ — ช่องชุมชนโผล่เฉพาะตอนที่ยังไม่รู้ว่าเขาอยู่ไหน
+
+    รู้แล้วก็เอาช่องออกไปเลย ไม่ใช่แค่บอกว่าอย่าถาม — **ช่องที่ไม่มีอยู่
+    ถูกถามซ้ำไม่ได้** และไม่กินที่ในพรอมป์ททุกตาไปตลอดบทสนทนา
+
+    รายชื่อมาจากตาราง communities ไม่ได้เขียนไว้ในไฟล์นี้ เพราะเคยสะกดกัน
+    คนละแบบสามที่มาแล้ว ที่เดียวเท่านั้นที่ถือชื่อจริง
+    """
+    if not homes:
+        return RECORD_TOOL
+
+    tool = copy.deepcopy(RECORD_TOOL)
+    tool["function"]["parameters"]["properties"]["community"] = {
+        "type": "string",
+        "enum": homes,
+        "description": (
+            "ชุมชนที่เขาอยู่ ใส่เมื่อเขาบอกเองหรือตอบคำถามนี้เท่านั้น "
+            "**ห้ามเดาจากที่อยู่หรือพิกัด** ชื่อคล้ายกันหลายชุมชน เดาผิดแล้ว"
+            "เขาจะได้รับข่าวของชุมชนอื่นไปตลอด"
+        ),
+    }
+    return tool
+
+
+# ถามครั้งเดียวในชีวิตของคนคนนี้ ไม่ใช่ครั้งเดียวต่อบทสนทนา — ตอบแล้วจำลง
+# ตาราง users ช่องนี้จะหายไปจากเครื่องมือเลย ไม่มีทางถูกถามอีก
+COMMUNITY_NOTE = """
+
+**เรายังไม่รู้ว่าเขาอยู่ชุมชนไหน** ({homes})
+ถ้าเขาเอ่ยชื่อที่ตรงหรือใกล้เคียงกับรายการนี้ออกมาเอง ให้ส่งมาทาง community ได้เลย
+**แต่ห้ามตั้งคำถามเรื่องนี้เองก่อน** ระบบจะบอกเองว่าถึงตาถามแล้ว
+เพราะมันเป็นของที่เราอยากรู้ ไม่ใช่ของที่เขาตั้งใจมาเล่า จึงต้องรอให้เรื่องของเขาครบก่อน"""
+
 # --------------------------------------------------------------- ลักษณะการตอบ
 
 SYSTEM_PROMPT = """คุณคือ "น้องเมือง" **ผู้หญิง** เก็บเสียงคนในชุมชนเรื่องสภาพแวดล้อมเมือง
@@ -436,6 +472,17 @@ JUST_FINISHED_NOTE = """
 เขาเพิ่งเล่าจบไปหมาด ๆ การชวนให้เล่าอีกรอบทำให้รู้สึกว่าที่เล่าไปไม่ได้ไปไหนเลย
 เริ่มเก็บเรื่องใหม่เฉพาะตอนที่เขาเล่าเรื่องใหม่จริง ๆ เท่านั้น"""
 
+# ต่อท้าย prompt เมื่อบทสนทนานี้เริ่มเพราะเราทักไปก่อน ไม่ใช่เขาเดินมาหา
+BROADCAST_NOTE = """
+
+**บทสนทนานี้เราเป็นฝ่ายทักไปก่อน เขาไม่ได้เดินมาหาเรา**
+เราส่งการ์ดถามเรื่องอากาศแถวบ้านไป แล้วเขากดปุ่มตอบว่ามีปัญหาจริง
+ข้อความล่าสุดที่เห็นคือคำบนปุ่มที่เขากด ไม่ใช่ประโยคที่เขาพิมพ์เอง
+**ห้ามทักทายใหม่ ห้ามแนะนำตัว ห้ามถามซ้ำว่ามีปัญหาไหม** เขาตอบไปแล้ว
+ให้ถามต่อจากตรงนั้นเลยว่าเป็นตรงไหน เป็นยังไง
+**เราเป็นฝ่ายไปรบกวนเวลาเขา** ถามให้สั้นและตรง ทีละคำถาม
+เขาตอบสั้น ๆ หรือไม่อยากคุยต่อ ให้ขอบคุณแล้วปล่อยไป ห้ามรบเร้า"""
+
 # ต่อท้าย prompt เมื่อคนนี้เคยแชร์ตำแหน่งไว้แล้วในใบก่อน ๆ
 LAST_LOCATION_NOTE = """
 
@@ -545,6 +592,9 @@ def next_goal(report: dict) -> str | None:
     if not has_image(report) and not report.get("no_photo"):
         return "photo"
 
+    if home_open(report):
+        return "community"
+
     return None
 
 
@@ -561,13 +611,30 @@ def impact_open(report: dict) -> bool:
     return not report.get("affect_desc") and not report.get("_impact_done")
 
 
+def home_open(report: dict) -> bool:
+    """ยังต้องถามว่าเขาอยู่ชุมชนไหนอยู่ไหม
+
+    **ถามได้ครั้งเดียว และเป็นคำถามสุดท้ายเสมอ** — มันไม่ใช่เรื่องที่เขาเดินมาเล่า
+    ถามก่อนได้เรื่องของเขาครบคือเอาแบบฟอร์มไปขวางคนที่กำลังจะเล่าอะไรให้ฟัง
+
+    `_home_needed` ปักโดย _turn ตามความจริงใน users ตอนนั้น และถูกถอดทันที
+    ที่เขาบอกมา — ไม่ใช่ของที่เดาจากในใบได้ เพราะชุมชนเป็นของตัวคน ไม่ใช่ของใบ
+
+    เคยปล่อยให้เป็นแค่บรรทัดแนะนำในพรอมป์ทโดยไม่มีด่านตรงนี้ ผลคือ**ไม่เคยถูกถาม
+    เลยสักครั้ง** เพราะ _status() สั่งเป้าหมายรายตาแรงกว่า คำถามที่ไม่มีน้ำหนัก
+    แพ้ทุกครั้ง แล้วตาราง users ก็ว่างเปล่า = broadcast ไม่มีใครให้ทัก
+    """
+    return bool(report.get("_home_needed")) and not report.get("_home_asked")
+
+
 def is_complete(report: dict) -> bool:
     return next_goal(report) is None
 
 
 # ใบที่ขาดของบังคับ (notes/categories) เร่งกว่าใบที่ขาดแค่ตำแหน่งหรือรูป
 # เพราะใบที่ไม่มีเนื้อเรื่องเลยคือใบที่เสียของมากที่สุดถ้าเขาหายไปกลางทาง
-_GOAL_URGENCY = {"location": 1, "impact": 2, "photo": 3}
+# ชุมชนอยู่ท้ายสุด — เป็นของที่เราอยากรู้ ไม่ใช่ของที่เขาอยากเล่า
+_GOAL_URGENCY = {"location": 1, "impact": 2, "photo": 3, "community": 4}
 
 
 # ---- ปุ่มใต้ข้อความ ------------------------------------------------------
@@ -683,6 +750,14 @@ def _goal_line(name: str, goal: str) -> str:
         return (
             f"{name} ยังไม่มีรูป — ชวนถ่ายรูปตรงนั้นมาให้ดูสักรูป "
             "ขอครั้งเดียว บอกเหตุผลสั้น ๆ และทำให้ปฏิเสธง่าย"
+        )
+
+    if goal == "community":
+        return (
+            "เรื่องเก็บครบแล้ว เหลืออย่างเดียวคือยังไม่รู้ว่าเขาอยู่ชุมชนไหน — "
+            "ถามคำถามเดียวสั้น ๆ ว่าบ้านเขาอยู่ชุมชนไหน แล้วส่งชื่อที่ตรงกับรายการ "
+            "มาทาง community **ถามครั้งเดียวเท่านั้น ตอบไม่ได้หรือไม่อยากบอกก็ไม่เป็นไร** "
+            "ห้ามทวง ห้ามยกรายชื่อทั้งหมดมาให้เขาเลือก มันยาวเกินกว่าจะอ่านในแชท"
         )
 
     return f"{name} ยังขาด: {FIELD_NAMES[goal]} — ถามต่อเรื่องเดียว"
@@ -911,11 +986,25 @@ async def _turn(
                 await draft.merge(r, session_id, topic, {"_impact_done": True})
                 report["_impact_done"] = True
 
+    # ตานี้เป็นคำตอบของคำถาม "อยู่ชุมชนไหน" ที่เราถามไปตาที่แล้ว — จับชื่อเอง
+    # ห้ามรอโมเดลส่งมาให้ เพราะตานี้ใบครบแล้วและระบบสั่งมันว่าให้ปิดท้ายได้เลย
+    if message.strip() and any(rep.get("_home_asked") for rep in reports.values()):
+        if not await audience.community_of(pool, session_id):
+            said_home = _home_said(message, await audience.community_names(pool))
+            if said_home and await audience.set_community(pool, session_id, said_home):
+                for topic in reports:
+                    await draft.drop(r, session_id, topic, ["_home_needed"])
+                    reports[topic].pop("_home_needed", None)
+
     # เพิ่งปิดใบไปหมาด ๆ — อย่าเพิ่งรีบเปิดใบใหม่ใส่เขา
     just_closed = not reports and await draft.just_finished(r, session_id)
     prompt = SYSTEM_PROMPT
     if just_closed:
         prompt += JUST_FINISHED_NOTE
+
+    # เราทักไปก่อน มารยาทคนละแบบกับตอนเขาเดินมาหาเอง
+    if source == "broadcast":
+        prompt += BROADCAST_NOTE
 
     # บอกไปด้วยว่าตอนนี้ในใบมีอะไรอยู่แล้ว ไม่ใช่บอกแต่ว่าขาดอะไร
     # เคยเจอ: เขาถามว่า "พึ่งแนบไปนะ?" แล้วบอทตอบว่ายังไม่เห็นรูป
@@ -931,6 +1020,21 @@ async def _turn(
             where=remembered.get("location_text") or "ตำแหน่งที่เคยแชร์ไว้"
         )
 
+    # ชุมชนของเขาเป็นของ **ตัวคน** ไม่ใช่ของใบ ถามครั้งเดียวแล้วจำยาว
+    # ถามต่อเมื่อมีเรื่องคุยอยู่แล้ว — ทักมาคำแรกแล้วโดนถามว่าอยู่ชุมชนไหน
+    # เหมือนโดนขอบัตรประชาชนก่อนจะได้พูด
+    homes = []
+    if reports and not await audience.community_of(pool, session_id):
+        homes = await audience.community_names(pool)
+        if homes:
+            prompt += COMMUNITY_NOTE.format(homes=" / ".join(homes))
+            # ปักธงลงใบ เพื่อให้ next_goal() เห็น — **โค้ดเป็นคนตัดสินว่าถึงตาถามหรือยัง
+            # ไม่ใช่โมเดล** ตอนที่เป็นแค่บรรทัดในพรอมป์ท มันไม่เคยถูกถามเลยสักครั้ง
+            # เขียนลงในตัวแปรด้วย เพราะตาที่โมเดลไม่เรียก tool จะไม่มีการโหลดใบใหม่
+            for topic, report in reports.items():
+                report["_home_needed"] = True
+                await draft.merge(r, session_id, topic, {"_home_needed": True})
+
     said = _with_markers(message, latitude, longitude, photos)
     messages = (
         [{"role": "system", "content": prompt}]
@@ -938,8 +1042,10 @@ async def _turn(
         + [{"role": "user", "content": said}]
     )
 
+    tool = _tool(homes)
+
     for _ in range(MAX_TOOL_ROUNDS):
-        answer = await llm.chat_tools(messages, [RECORD_TOOL])
+        answer = await llm.chat_tools(messages, [tool])
 
         if not answer["tool_calls"]:
             break
@@ -964,10 +1070,22 @@ async def _turn(
                 )
                 await draft.merge(r, session_id, topic, {"_pin_wrong": True})
 
+            fields = _sanitize(arguments)
+
+            # ชุมชนไม่ลงใบ มันเป็นของตัวคน ไปอยู่ตาราง users — **เขียนทันทีตรงนี้
+            # ไม่ใช่ตอนปิดใบ** เขาอาจเล่าค้างแล้วหายไป แต่สิ่งที่เขาบอกมาแล้ว
+            # เราต้องไม่ทำหาย และครั้งหน้าจะได้ไม่ถามซ้ำ
+            if home := fields.pop("community", None):
+                if await audience.set_community(pool, session_id, str(home)):
+                    # รู้แล้ว ถอนธงออกจากทุกใบ ไม่งั้นด่าน community จะค้างอยู่
+                    # แล้วบอทจะถามซ้ำเรื่องที่เขาเพิ่งตอบไปหมาด ๆ
+                    for open_topic in await draft.load_all(r, session_id):
+                        await draft.drop(r, session_id, open_topic, ["_home_needed"])
+                else:
+                    log.warning("ชุมชนที่โมเดลส่งมาไม่มีในตาราง ไม่ได้เก็บ: %r", home)
+
             report = await draft.load(r, session_id, topic)
-            await draft.merge(
-                r, session_id, topic, _allowed(_sanitize(arguments), report)
-            )
+            await draft.merge(r, session_id, topic, _allowed(fields, report))
 
             if reuse and remembered:
                 # ตำแหน่งเก่าเป็นของจากปุ่มแชร์ เชื่อถือได้เท่าเดิม ล็อกไว้เหมือนกัน
@@ -1019,18 +1137,31 @@ async def _turn(
     if spot and spot[1] == "impact" and spot[0] in reports:
         await draft.merge(r, session_id, spot[0], {"_impact_asked": True})
 
+    # ถามชุมชนไปแล้วตานี้ — ปักว่าถามแล้ว ไม่ว่าเขาจะตอบหรือไม่ตอบ
+    # **ใบต้องไม่ค้างรอคำตอบที่อาจไม่มีวันมา** ตาถัดไปใบนี้ปิดได้เลย
+    if spot and spot[1] == "community" and spot[0] in reports:
+        await draft.merge(r, session_id, spot[0], {"_home_asked": True})
+
     if closed:
         # เก็บต้นฉบับก่อนล้างความจำ — ที่ผ่านมาตรงนี้คือจุดที่ของดิบหายไปตลอดกาล
         # ปิดหลายใบในตาเดียว = บทสนทนาเดียวกัน เก็บไว้ใต้ใบแรกใบเดียวพอ
-        await transcript.save(
-            session_id,
-            closed[0][1],
-            history
-            + [
-                {"role": "user", "content": message or said},
-                {"role": "assistant", "content": text},
-            ],
-        )
+        #
+        # **ใบลงที่เก็บถาวรไปแล้วตอนนี้ ตรงนี้ล้มต้องไม่ลากทั้งตาลงไปด้วย**
+        # ไม่งั้นเขาจะเห็นข้อความว่าระบบขัดข้องทั้งที่เรื่องที่เล่ามาเก็บเรียบร้อยแล้ว
+        # เสียต้นฉบับหนึ่งชุดเจ็บน้อยกว่าทำให้เขาเชื่อว่าที่เล่าไปไม่ถึงไหน
+        try:
+            key = await transcript.save(
+                session_id,
+                closed[0][1],
+                history
+                + [
+                    {"role": "user", "content": message or said},
+                    {"role": "assistant", "content": text},
+                ],
+            )
+            await storage.set_transcript_key(pool, closed[0][1], key)
+        except Exception:
+            log.exception("เก็บต้นฉบับบทสนทนาไม่สำเร็จ ใบ=%s", closed[0][1])
 
     # ล้างความจำได้ต่อเมื่อ**ไม่เหลือใบค้างเลย** ปิดใบหนึ่งแล้วล้างทิ้งทั้งที่ยังมี
     # อีกเรื่องคุยค้างอยู่ = ลบเรื่องที่เขากำลังเล่าให้ฟังอยู่ตรงหน้า
@@ -1120,6 +1251,29 @@ def _sanitize(arguments: dict) -> dict:
             clean[field] = value
 
     return clean
+
+
+def _home_said(message: str, homes: list[str]) -> str | None:
+    """หาชื่อชุมชนในสิ่งที่เขาพิมพ์มา คืน None ถ้าไม่เจอ
+
+    **ใช้ได้เฉพาะตาที่เราเพิ่งถามเรื่องชุมชนไปเท่านั้น** ห้ามเอาไปไล่จับทุกข้อความ
+    เพราะชื่อชุมชนหลายอันเป็นชื่อสถานที่ที่คนพูดถึงตามปกติ — "เดินไปตลาดหลักสี่
+    ไม่ได้เลย" จะกลายเป็นว่าเขาอยู่ชุมชนตลาดหลักสี่ ทั้งที่เขาแค่เดินไปตลาด
+    จับเฉพาะตาที่เป็นคำตอบของคำถามเรา มันไม่ใช่การเดา มันคือการอ่านคำตอบ
+
+    ที่ต้องจับเองแทนที่จะรอโมเดลส่ง community มาให้: ตาที่เขาตอบคือตาที่ใบครบแล้ว
+    ระบบสั่งโมเดลว่า "ปิดท้ายได้ ห้ามถามอะไรอีก" มันจึงพิมพ์ว่ารับทราบแล้วจบ
+    **โดยไม่เรียกเครื่องมือ** เจอมาแล้วจริง ชื่อชุมชนที่เขาอุตส่าห์พิมพ์มาหายไปเฉย ๆ
+    """
+    text = " ".join(message.split())
+
+    # เทียบชื่อยาวก่อน กันชื่อที่เป็นส่วนหนึ่งของอีกชื่อแย่งกันจับ
+    # ("ชุมชนเทวสุนทร" อยู่ใน "ชุมชนสามัคคีเทวสุนทร")
+    for name in sorted(homes, key=len, reverse=True):
+        if name in text or name.removeprefix("ชุมชน").strip() in text:
+            return name
+
+    return None
 
 
 def _slot_of(sent, reports: dict) -> str:

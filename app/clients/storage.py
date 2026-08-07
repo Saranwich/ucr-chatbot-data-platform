@@ -40,7 +40,11 @@ COLUMNS = (
 # ช่องที่ไม่ได้ลงคอลัมน์ตรง ๆ แต่รู้จัก — พิกัดกลายเป็น geom รูปแยกไปอีกตาราง
 _HANDLED = {"latitude", "longitude", "images"}
 
-_SELECT = ", ".join(("r.id", *(f"r.{name}" for name in COLUMNS), "r.created_at"))
+# transcript_key อ่านได้แต่ไม่อยู่ใน COLUMNS โดยตั้งใจ — มันถูกเขียนด้วย UPDATE
+# หลังใบลงตารางแล้วเท่านั้น (ชื่อไฟล์ต้องใช้ id) **ห้ามให้ค่าจากโมเดลเขียนช่องนี้ได้**
+_SELECT = ", ".join(
+    ("r.id", *(f"r.{name}" for name in COLUMNS), "r.transcript_key", "r.created_at")
+)
 
 # id ติดมาด้วยเพราะเป็นตัวที่ใช้ขอไฟล์รูป — คนอ่านไม่ต้องรู้จัก key เลยก็ได้
 _IMAGES = """
@@ -93,6 +97,17 @@ async def save_report(pool: asyncpg.Pool, report: dict) -> int:
             )
 
     return report_id
+
+
+async def set_transcript_key(pool: asyncpg.Pool, report_id: int, key: str) -> None:
+    """ผูกใบเข้ากับบทสนทนาต้นฉบับของมัน
+
+    ต้องเป็นคำสั่งแยกหลัง INSERT เพราะชื่อไฟล์ต้นฉบับใช้ report_id ซึ่งยังไม่มี
+    จนกว่าใบจะลงตารางเสร็จ **ใบสำคัญกว่าต้นฉบับ** จึงยอมให้ใบลงก่อนแล้วค่อยผูก
+    """
+    await pool.execute(
+        "UPDATE reports SET transcript_key = $2 WHERE id = $1", report_id, key
+    )
 
 
 async def list_reports(pool: asyncpg.Pool) -> list[dict]:

@@ -21,3 +21,9 @@ LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 API_ENDPOINT = os.getenv(
     "API_ENDPOINT", "https://generativelanguage.googleapis.com/v1beta/openai/"
 )
+
+# **ยิงข้อความหาชาวบ้านจริงหรือยัง** — ปิดไว้โดยปริยาย ตั้งใจ
+#
+# การขึ้นโค้ดกับการเริ่มทักคนจริงเป็นคนละการตัดสินใจกัน ตัวนี้ทำให้หยุดยิงได้
+# ด้วยการแก้ .env แล้วรีสตาร์ท ไม่ต้องถอยโค้ด
+BROADCAST_ENABLED = os.getenv("BROADCAST_ENABLED", "").lower() in ("1", "true", "yes")

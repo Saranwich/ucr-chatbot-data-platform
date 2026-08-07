@@ -79,6 +79,39 @@ async def push(
         )
 
 
+# ------------------------------------------------ ตอนเราเป็นฝ่ายเปิดเรื่องก่อน
+
+
+async def push_many(recipients: list[str], text: str) -> dict:
+    """ส่งข้อความเดียวกันให้ทุกคนในรายชื่อ คืนว่าถึงใคร พลาดใคร
+
+    ข้อความล้วน ไม่มีการ์ด ไม่มีปุ่ม — **เขาตอบเป็นภาษาคน ไม่ใช่กดตัวเลือก**
+
+    **ทีละคน และคนที่พลาดต้องไม่ลากคนที่เหลือลงไปด้วย** คนหนึ่งบล็อกบอทไปแล้ว
+    อีกร้อยคนที่เหลือไม่เกี่ยว ของเดิมไม่มี try ตรงนี้ คนเดียว throw = ทั้งรอบตาย
+
+    ส่งเรียงทีละคนไม่ส่งพร้อมกัน เพราะ push กินโควตารายเดือนของ OA และ LINE
+    มีเพดานต่อวินาทีอยู่ — เรียงช้ากว่าแต่ไม่มีใครหล่น
+    """
+    result = {"sent": [], "failed": []}
+    if not recipients:
+        return result
+
+    async with AsyncApiClient(configuration) as api_client:
+        api = AsyncMessagingApi(api_client)
+        for to in recipients:
+            try:
+                await api.push_message(
+                    PushMessageRequest(to=to, messages=[TextMessage(text=text)])
+                )
+                result["sent"].append(to)
+            except Exception:
+                log.warning("ส่งไม่ถึง to=%s ข้ามไปคนถัดไป", to, exc_info=True)
+                result["failed"].append(to)
+
+    return result
+
+
 async def send(
     reply_token: str,
     to: str,

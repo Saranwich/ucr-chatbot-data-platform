@@ -26,7 +26,7 @@ from app.api.deps import get_db, get_redis
 from app.clients import line as line_client
 from app.clients import media
 from app.core.config import LINE_CHANNEL_SECRET
-from app.services import burst, survey
+from app.services import broadcast, burst, survey
 
 log = logging.getLogger(__name__)
 
@@ -172,8 +172,14 @@ async def answer(
             latitude=incoming.get("latitude"),
             longitude=incoming.get("longitude"),
             location_text=incoming.get("location_text"),
+            # ตานี้เป็นการตอบกลับที่เราทักไปหรือเปล่า — จดว่าเขาตอบแล้วด้วย
+            source=await broadcast.source_of(pool, r, session),
             photos=photos,
         )
+
+        # ใบที่เกิดจากการที่เราทักไป ผูกกลับไปที่แถวการทักครั้งนั้น
+        for report_id in result["report_ids"]:
+            await broadcast.link_report(pool, r, session, report_id)
     except Exception:
         # Redis ล่ม AI ไม่ตอบ ดิสก์เต็ม — อะไรก็ตามที่เราไม่ได้เตรียมไว้
         # ตรงนี้ทำงานหลังตอบ 200 ไปแล้ว ถ้าปล่อยให้ตายเงียบ **ชาวบ้านจะเห็นแค่ความเงียบ**

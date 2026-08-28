@@ -1,199 +1,64 @@
-from dotenv import load_dotenv
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 
-
-# app/core/config.py -> app/core -> app -> project root
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-API_KEY = os.getenv("API_KEY")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-DATABASE_URL = os.getenv("DATABASE_URL")
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 
-# **ต้องเป็น base ของช่องทางที่พูดภาษา OpenAI ไม่ใช่ URL ของ endpoint ตัวเดียว**
-# ของ Gemini คือ .../v1beta/openai/ ไม่ใช่ .../v1beta/models/<model>:generateContent
-# (อันหลังเป็น REST ดั้งเดิมของ Google คนละภาษากับที่ไลบรารีนี้พูด)
-# ตั้ง default ไว้ให้ เพราะเป็นค่าที่ถูกอยู่แล้ว ไม่ต้องให้ทุกคนไปจำเอง
-API_ENDPOINT = os.getenv(
-    "API_ENDPOINT", "https://generativelanguage.googleapis.com/v1beta/openai/"
-)
-
-# โมเดลคิดหนักแค่ไหนก่อนตอบ: low | medium | high
-#
-# **ค่าตั้งต้นยังเป็น high ตั้งใจ** — วัดแล้วว่า low ประหยัดกว่า 18% และเร็วกว่า 2.9 เท่า
-# โดยยังไม่เห็นว่าโง่ลง แต่วัดมาแค่บทสนทนาละหนึ่งรอบ ซึ่งบางเกินกว่าจะเปลี่ยนค่า
-# ตั้งต้นของตัวที่ทำหน้าที่กันการปั้นเรื่อง ตัวเลขเต็มอยู่ใน clients/llm.py
-#
-# มาเป็น env เพื่อให้ลองของจริงได้โดยไม่ต้องแก้โค้ด — ลอง low สักพัก อ่านใบที่ได้
-# แล้วค่อยตัดสินว่าจะย้ายค่าตั้งต้นไหม
-REASONING_EFFORT = os.getenv("REASONING_EFFORT", "high").strip().lower()
-
-# **ยิงข้อความหาชาวบ้านจริงหรือยัง** — ปิดไว้โดยปริยาย ตั้งใจ
-#
-# การขึ้นโค้ดกับการเริ่มทักคนจริงเป็นคนละการตัดสินใจกัน ตัวนี้ทำให้หยุดยิงได้
-# ด้วยการแก้ .env แล้วรีสตาร์ท ไม่ต้องถอยโค้ด
 def _flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in ("1", "true", "yes")
 
 
-BROADCAST_ENABLED = _flag("BROADCAST_ENABLED")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ล็อกประตู — ก่อนหน้านี้ไม่มี route ไหนถูกล็อกเลยสักตัว (issue #139)
-#
-# **JWT ตรงนี้เราเป็นฝ่ายตรวจอย่างเดียว ไม่เคยเป็นคนออก** — คนออก token คือ
-# backend ของทีมแดชบอร์ด เราถือกุญแจดอกเดียวกันแล้วแกะเอง นี่คือของเดิมจาก
-# `app/utils/auth.py` บน branch main **ชื่อ env ตรงกับของเดิมทุกตัว ตั้งใจ**
-# เพื่อให้ทีมหน้าบ้านเรียกแบบเดิมได้โดยไม่ต้องแก้อะไรเลย
-#
-# ของเดิมบน main สั่ง raise ตอน import ถ้าไม่มี SECRET_KEY = แอปไม่ขึ้น
-# **ที่นี่ทำแบบนั้นไม่ได้** เพราะแอปตัวเดียวกันนี้แบก LINE webhook อยู่ด้วย
-# ลืมตั้งรหัสแดชบอร์ดแล้วบอททั้งชุมชนเงียบ = แลกผิดของ ด่านจึงตอบ 503 แทน
-# บอทเดินต่อ แดชบอร์ดปิดสนิท (ดู services/auth.py)
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-
-# หน้าเว็บสองหน้าของเราเองเข้าด้วยรหัสผ่าน ไม่ใช่ JWT — คนกดคือคนในทีมที่เปิด
-# จากเบราว์เซอร์ ไม่มี backend ไหนออก token ให้ ใช้ HTTP Basic เพราะเบราว์เซอร์
-# เด้งช่องกรอกให้เอง แล้วแนบรหัสไปกับ **ทุก** request ของ origin เดียวกันรวม
-# `<img src>` ด้วย — หน้าเว็บจึงไม่ต้องแก้ JS สักบรรทัด
-#
-# (ของเดิมบน main รูปต้องแนบ JWT เลยใช้ `<img>` ตรง ๆ ไม่ได้ ต้อง fetch แล้ว
-#  แปลงเป็น Object URL เอง ดู app/static/viewer.html บน main — ทางนี้ไม่มีปัญหานั้น)
-DASHBOARD_USER = os.getenv("DASHBOARD_USER", "ucr")
-DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
-
-# เบราว์เซอร์ของทีมแดชบอร์ดอยู่คนละ origin กับเรา ไม่ประกาศไว้ตรงนี้เขายิงไม่ถึง
-#
-# **ไม่ตั้ง = ไม่อนุญาต origin ไหนเลย ไม่ใช่ค่าตั้งต้นสำเร็จรูป** เดิมตกมาเป็น
-# `localhost:4200` ตามของบน main ซึ่งบน prod แปลว่า **หน้าเว็บอะไรก็ได้ที่
-# ใครสักคนในทีมเปิดที่ localhost:4200 ของเครื่องตัวเอง ยิงมาอ่านใบทั้งตาราง
-# พร้อมพิกัดบ้านชาวบ้านได้** โดยยืมรหัส Basic ที่เบราว์เซอร์เขาจำไว้ให้
-# (เราเปิด allow_credentials อยู่ ไม่งั้นทีมแดชบอร์ดแนบ Authorization ไม่ได้)
-#
-# หน้าเว็บสองหน้าของเราเองไม่ได้ใช้ CORS อยู่แล้ว เพราะ origin เดียวกับ API
-# ว่างไว้จึงไม่กระทบเรา กระทบแค่คนที่ยิงข้าม origin ซึ่งควรต้องประกาศตัวก่อน
-CORS_ORIGINS = [
-    origin.strip().rstrip("/")
-    for origin in (os.getenv("CORS_ORIGINS") or "").split(",")
-    if origin.strip()
-]
-
-# **ประตูที่กว้างที่สุดในโปรเจกต์** — api/dev.py เคยต่อเข้า /api ทุกครั้งที่แอปเปิด
-# ไม่มี flag กั้นเลย ข้างในมี GET /api/reports (ใบทั้งตารางพร้อมพิกัดบ้าน),
-# DELETE /api/survey/draft (ล้างใบที่คนกำลังเล่าค้าง) และสามทางที่เผา quota โมเดลได้ฟรี
-#
-# ตัวนี้คุม /docs กับ /openapi.json ด้วย — สองอันนั้นแจกแผนที่ทุก route ให้คนอ่าน
-DEV_ROUTES_ENABLED = _flag("DEV_ROUTES_ENABLED")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# โควตา — กันไม่ให้คนเดียวหรือ retry loop เดียวดูดจนบอทเงียบทั้งชุมชน
-#
-# ตัวที่พังไม่ใช่ค่าใช้จ่าย แต่คือ **ความเงียบ** ถ้างบหมดตอน 9 โมงแล้วรีเซ็ตเที่ยงคืน
-# ชุมชนเสียบอทไป 15 ชั่วโมง เลยมีหน้าต่างสั้น (ดู QUOTA_WINDOW_HOURS) คุมความเงียบ
-# ให้มีเพดาน แล้วหายเองโดยไม่ต้องมีใครไปทำอะไร
-#
-# **วัดของจริงแล้ว 8 ส.ค. 69** (บทสนทนาปลอม 9 ตา ยิงเข้าโมเดลจริง):
-#
-#     ตาแรก ไม่มีประวัติ    6,404 token · 1 call
-#     ตาที่มีประวัติ        16,000–19,000 token · 2 call
-#     หนึ่ง call            ~8,700 token — **แทบไม่ขยับตามความยาวประวัติ**
-#     หนึ่งใบเต็ม (6 ตา)    ~95,000 token · 11 call
-#     เวลาต่อตา            8–12 วินาที (reasoning_effort=high ทุก call)
-#
-# ตัวเลขข้างล่างคำนวณจากชุดนี้ ตั้งเป้าไว้ที่ **~200 ใบต่อวัน**
-#
-# ที่ CLAUDE.md เดาไว้ว่าหนึ่งใบ 150k–400k token สูงไป 2–4 เท่า และที่เดาว่า
-# หนึ่งตากิน 10k–50k ก็กว้างเกินจริง — **ของจริงคือ token ต่อ call นิ่งมาก**
-# แปลว่าตัวที่กำหนดค่าใช้จ่ายคือ **จำนวน call ไม่ใช่ความยาวประวัติ**
-#
-# ผลที่ตามมา: วันนี้ตัวนับ token กับตัวนับ call บอกเรื่องเดียวกันเกือบเป๊ะ
-# (token ≈ call × 8,700) การนับสองตัวจะเริ่มมีค่าจริง ๆ ตอนทำ prompt caching
-# เพราะตอนนั้น token จะลดแต่จำนวน call เท่าเดิม
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 def _int(name: str, default: int) -> int:
-    """อ่านตัวเลขจาก .env — ค่าพังหรือว่าง ใช้ default ไม่ล้มตอนเปิดแอป
-
-    ตัวเลขนโยบายไม่ควรทำให้แอปไม่ขึ้น พิมพ์ผิดหนึ่งตัวแล้วบอทเงียบทั้งวัน
-    แย่กว่าใช้ค่าตั้งต้นไปก่อน
-    """
     try:
         return int(os.getenv(name, "") or default)
     except ValueError:
         return default
 
 
-# **จะจำกัดด้วยอะไร** — ตรงนี้คือสวิตช์เลือกวิธี ไม่ใช่ตัวเลข
-#
-#   both     นับทั้ง token และจำนวน request แล้วเอาตัวที่ชนก่อน  ← ค่าตั้งต้น
-#   tokens   นับแต่ token       (ใช้ตอนเปิด billing แล้ว — ตัวที่มีความหมายคือค่าใช้จ่าย)
-#   requests นับแต่จำนวน request (ใช้ตอนยังเป็น key ฟรี — ตัวที่ชนคือ RPD)
-#   off      ไม่จำกัดเลย        (เครื่อง dev เท่านั้น ห้ามใช้บน prod)
-#
-# ที่นับได้ทั้งสองแบบเพราะ **ยังไม่รู้ว่าลิมิตตัวไหนของเจ้าที่ใช้อยู่จะชนก่อน** และ
-# การนับเพิ่มอีกตัวเป็นแค่ INCR อีกครั้ง ถูกกว่าการเดาผิดแล้วต้องมาแก้ทีหลังเยอะ
+DATABASE_URL = os.getenv("DATABASE_URL")
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+
+API_KEY = os.getenv("API_KEY")
+API_ENDPOINT = os.getenv(
+    "API_ENDPOINT", "https://generativelanguage.googleapis.com/v1beta/openai/"
+)
+REASONING_EFFORT = os.getenv("REASONING_EFFORT", "high").strip().lower()
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+DASHBOARD_USER = os.getenv("DASHBOARD_USER", "ucr")
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
+CORS_ORIGINS = [
+    origin.strip().rstrip("/")
+    for origin in (os.getenv("CORS_ORIGINS") or "").split(",")
+    if origin.strip()
+]
+
+BROADCAST_ENABLED = _flag("BROADCAST_ENABLED")
+DEV_ROUTES_ENABLED = _flag("DEV_ROUTES_ENABLED")
+
 QUOTA_LIMIT_BY = os.getenv("QUOTA_LIMIT_BY", "both").strip().lower()
-
-# ปิดโควตาทั้งระบบ — แยกจาก QUOTA_LIMIT_BY เพื่อให้ปิดฉุกเฉินได้โดยไม่ต้องจำว่าตั้งค่าอะไรไว้
 QUOTA_ENABLED = QUOTA_LIMIT_BY != "off"
-
-# หน้าต่างสั้นของระบบ **6 ไม่ใช่ 5 เพราะ 24 หารลงตัว** ได้ 4 หน้าต่างต่อวัน
-# รีเซ็ต 00/06/12/18 ตรงเวลาเดิมทุกวัน เดาได้ว่าบอทจะกลับมาพูดตอนไหน
-# (5 ชั่วโมงจะเลื่อนข้ามวันไปเรื่อย ๆ อธิบายให้คนอื่นฟังไม่ได้ว่ารีเซ็ตกี่โมง)
 QUOTA_WINDOW_HOURS = _int("QUOTA_WINDOW_HOURS", 6)
 
-# ── ระบบ: จำนวน request ────────────────────────────────────────────────────
-# วัดจริง: หนึ่งตา = 2 request เกือบทุกตา (เพดานคือ MAX_TOOL_ROUNDS + 1 = 4)
-# หนึ่งใบ ~11 request → 2,500 ≈ 220 ใบต่อวัน
 QUOTA_DAY_CALLS = _int("QUOTA_DAY_CALLS", 2500)
 QUOTA_WINDOW_CALLS = _int("QUOTA_WINDOW_CALLS", 900)
-
-# ── ระบบ: token ────────────────────────────────────────────────────────────
-# เลขจริงจาก usage ที่โมเดลส่งกลับมา ไม่ใช่ค่าประมาณ
-#
-# **ตั้งให้ชนพร้อมกับตัวนับ call** (call × ~8,700) ตั้งใจ — ถ้าตั้งไม่สอดคล้องกัน
-# `QUOTA_LIMIT_BY=both` จะเอาตัวที่แย่ที่สุด แปลว่าตัวที่ตั้งแน่นกว่าจะเป็นคนตัดสิน
-# ตลอดเวลา อีกตัวไม่เคยได้ทำงาน = นับไปก็ไม่มีความหมาย
 QUOTA_DAY_TOKENS = _int("QUOTA_DAY_TOKENS", 22_000_000)
 QUOTA_WINDOW_TOKENS = _int("QUOTA_WINDOW_TOKENS", 8_000_000)
 
-# ── เหลืองของระบบ: **งบที่กันไว้ให้คนที่เล่าค้างอยู่เล่าจบ** ──────────────────
-#
-# ตั้งเป็นจำนวนที่เหลือ ไม่ใช่ % ของเพดาน เพราะจำนวนที่ต้องกันไว้ขึ้นกับ
-# **จำนวนคนที่กำลังเล่าค้าง** ไม่ได้ขึ้นกับว่าเพดานใหญ่แค่ไหน
-#
-# ที่มาของตัวเลข (คิดจากของที่วัดจริง): ~8 คนเล่าค้างพร้อมกัน × เหลืออีก ~8 ตา
-# × 2 request/ตา ≈ 128 request → ปัดเป็น 150
-# และ 150 × ~8,700 token ≈ 1.3M token
-#
-# **ตั้งน้อยกว่านี้แล้วโซนเหลืองจะกลายเป็นคำโกหก** เพราะเราบอกเขาว่าเล่าต่อได้จนจบ
-# แล้วเขาวิ่งไปชนแดงกลางทางอยู่ดี = เสียใบเหมือนไม่มีโซนเหลือง แถมหลอกไปหนึ่งรอบ
 QUOTA_YELLOW_CALLS = _int("QUOTA_YELLOW_CALLS", 150)
 QUOTA_YELLOW_TOKENS = _int("QUOTA_YELLOW_TOKENS", 1_300_000)
 
-# ── ต่อคน: **นับเป็นตา ไม่ใช่ token** ───────────────────────────────────────
-#
-# ชาวบ้านคุมไม่ได้ว่าข้อความเขากิน token เท่าไหร่ นั่นเป็นของเรา (system prompt ~9k
-# กับความยาวประวัติ) เอา token มา cap รายคน = ลงโทษเขาเพราะ prompt เราอ้วน
-# และเขามองไม่เห็นด้วยว่าทำไมคนอื่นคุยได้นานกว่า — "ตา" เป็นหน่วยที่เขารู้สึกได้
 QUOTA_USER_TURNS = _int("QUOTA_USER_TURNS", 60)
 QUOTA_USER_YELLOW_TURNS = _int("QUOTA_USER_YELLOW_TURNS", 45)
 
-# ── รัว (คนเดียวยิงถี่ ๆ) ───────────────────────────────────────────────────
-# **ไม่ได้ชื่อ burst เพราะ services/burst.py เป็นคนละเรื่อง** (อันนั้นรวมรูปหลายใบ
-# ที่กดส่งทีเดียว) ตัวนี้คือคนพิมพ์รัวหรือเน็ตไม่ดีจนส่งซ้ำ
 QUOTA_RUSH_TURNS = _int("QUOTA_RUSH_TURNS", 15)
 QUOTA_RUSH_SECONDS = _int("QUOTA_RUSH_SECONDS", 300)
 
-# ── ต่อใบ ──────────────────────────────────────────────────────────────────
-# **ตัวนี้อยู่นอกระบบโซน ตั้งใจ** — บทสนทนาที่ค้างวนไม่จบคือ "คนที่กำลังเล่าค้างอยู่"
-# พอดี ถ้าเอาเข้าโซน โซนเหลืองจะไปปกป้องตัวที่ควรฆ่า
 QUOTA_DRAFT_TURNS = _int("QUOTA_DRAFT_TURNS", 40)

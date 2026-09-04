@@ -25,3 +25,17 @@ async def close_client() -> None:
     if _client is not None:
         await _client.aclose()
         _client = None
+
+
+## session part ##
+async def get_session(key: str) -> str | None:
+    """ขอ session ทั้งก้อนตาม key — ไม่เคยมีหรือหมดอายุไปแล้วก็คืน None"""
+    return await get_client().get(key)
+
+
+async def save_session(key: str, session: str, ttl: int | None = None) -> None:
+    """เขียนทับ session ทั้งก้อน — ใส่ ttl เป็นวินาทีถ้าอยากให้ลืมเองเมื่อเงียบไปนาน
+
+    ไม่ใส่ ttl = อยู่ถาวร และถ้า key เดิมเคยตั้งอายุไว้ การเขียนรอบนี้จะล้างอายุทิ้ง
+    """
+    await get_client().set(key, session, ex=ttl)

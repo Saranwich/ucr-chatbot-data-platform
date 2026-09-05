@@ -1,3 +1,5 @@
+import json
+
 from app.clients import psql, redis
 from app.schemas.turn import Turn
 
@@ -42,13 +44,27 @@ async def handle (req):
     print("chatbot ปั้นของให้ LLM:", line_user_id, reply_token, turns)
 
 
+async def load_session_from_redis(redis_key: str) -> list[Turn]:
+    """ขอบทสนทนาทั้งก้อนคืนมาเป็น Turn — ยังไม่เคยคุยกันก็ได้ลิสต์ว่าง"""
+    raw = await redis.get_session(redis_key)
+    if raw is None:
+        return []
+    return [Turn(**turn) for turn in json.loads(raw)]
+
+
+async def save_session_to_redis(redis_key: str, session: list[Turn]) -> None:
+    """เขียนทับบทสนทนาทั้งก้อน — ของเดิมใต้ key นั้นหายหมด"""
+    raw = json.dumps([turn.model_dump() for turn in session], ensure_ascii=False)
+    await redis.save_session(redis_key, raw, SESSION_TTL)
+
+
 async def append_to_session(line_user_id: str, turn: Turn) -> None:
-    key = f"session:{line_user_id}"
-    client = redis.get_client()
-    await client.rpush(key, turn.model_dump_json())
-    await client.expire(key, SESSION_TTL)
+    redis_key = f"session:{line_user_id}"
+    session = await load_session_from_redis(redis_key)
+    session.append(turn)
+    await save_session_to_redis(redis_key, session)
     await psql.create_and_save_log(
-        PROCESS, f"ต่อตา {turn.content_type} ของ {line_user_id} เข้า session"
+        PROCESS, f"\nต่อตา {turn.content_type} ของ {line_user_id} เข้า session"
     )
 
 

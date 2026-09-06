@@ -4,7 +4,7 @@ from app.clients import psql, redis
 from app.schemas.turn import Turn
 
 PROCESS = "services.chatbot"
-SESSION_TTL = 60 * 60
+SESSION_TTL = 60 * 60 #one hour
 
 
 async def handle (req):
@@ -22,6 +22,8 @@ async def handle (req):
     for event in payload.get("events", []):
         event_type = event.get("type")
         handler = handler_map.get(event_type)
+
+        #เจอ ประเภท event ที่ไม่มี handler รองรับ
         if handler is None:
             await psql.create_and_save_log(PROCESS, f"ยังไม่รับ event ชนิด {event_type}")
             continue
@@ -38,10 +40,18 @@ async def handle (req):
         print("chatbot: ไม่มีตาไหนเข้า session รอบนี้")
         return
 
+    # handler ต่อตาของรอบนี้เข้า redis ไปแล้ว อ่านกลับมาจะได้ของเก่าพ่วงของใหม่ครบก้อน
+    session = await load_session_from_redis(f"session:{line_user_id}")
+
     await psql.create_and_save_log(
-        PROCESS, f"{line_user_id} ต่อ session ครบ {len(turns)} ตา พร้อมส่งให้ LLM"
+        PROCESS,
+        f"{line_user_id} ต่อ session {len(turns)} ตา รวมเป็น {len(session)} ตา พร้อมส่งให้ LLM",
     )
-    print("chatbot ปั้นของให้ LLM:", line_user_id, reply_token, turns)
+    print("chatbot ปั้นของให้ LLM:", line_user_id, reply_token, session)
+
+    # resp = ส่งให้ ai
+    # await append_to_session(line_user_id, Turn(role="assistant", ...))
+    # line.replie(replytoken, messages[])
 
 
 async def load_session_from_redis(redis_key: str) -> list[Turn]:

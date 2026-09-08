@@ -1,7 +1,8 @@
 import json
 
-from app.clients import psql, redis
+from app.clients import psql, redis, line as line_cli, typhoon
 from app.schemas.turn import Turn
+from app.services import ai
 
 PROCESS = "services.chatbot"
 SESSION_TTL = 60 * 60 #one hour
@@ -49,9 +50,10 @@ async def handle (req):
     )
     print("chatbot ปั้นของให้ LLM:", line_user_id, reply_token, session)
 
-    # resp = ส่งให้ ai
-    # await append_to_session(line_user_id, Turn(role="assistant", ...))
-    # line.replie(replytoken, messages[])
+    resp = await ai.communicator_reply()
+    await append_to_session(line_user_id, Turn(role="assistant", content_type="message", content=resp))
+    await line_cli.replie(reply_token, [resp])
+    print("ส่งข้อความกลับไปแล้ว")
 
 
 async def load_session_from_redis(redis_key: str) -> list[Turn]:

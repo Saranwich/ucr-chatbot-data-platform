@@ -30,6 +30,10 @@ API_ENDPOINT = os.getenv(
 )
 REASONING_EFFORT = os.getenv("REASONING_EFFORT", "high").strip().lower()
 
+TYPHOON_API_KEY = os.getenv("TYPHOON_API_KEY")
+TYPHOON_API_ENDPOINT = os.getenv("TYPHOON_API_ENDPOINT", "https://api.opentyphoon.ai/v1")
+TYPHOON_MODEL = os.getenv("TYPHOON_MODEL", "typhoon-v2.5-30b-a3b-instruct")
+
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 DASHBOARD_USER = os.getenv("DASHBOARD_USER", "ucr")

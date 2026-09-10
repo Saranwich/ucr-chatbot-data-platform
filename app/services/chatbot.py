@@ -50,7 +50,11 @@ async def handle (req):
     )
     print("chatbot ปั้นของให้ LLM:", line_user_id, reply_token, session)
 
-    resp = await ai.communicator_reply()
+    resp = await ai.communicator_reply(session)
+    if resp is None:
+        print("chatbot: ไม่มีคำตอบจากโมเดล รอบนี้ไม่ตอบกลับ")
+        return
+
     await append_to_session(line_user_id, Turn(role="assistant", content_type="text", content=resp))
     await line_cli.replie(reply_token, [resp])
     print("ส่งข้อความกลับไปแล้ว")

@@ -36,7 +36,6 @@ gha-creds-*.json
 .terraform/
 
 # ไฟล์ dump ของฐานข้อมูล — ข้างในมีเรื่องจริงกับพิกัดบ้านของชาวบ้าน
-# **ห้ามใส่ *.sql เฉย ๆ** schema.sql ต้องขึ้น git
 *.dump
 *.sql.gz
 *.sql.bz2

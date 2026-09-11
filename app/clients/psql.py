@@ -32,6 +32,28 @@ async def init_db() -> None:
             age_group    text              -- children | teenage | mature | elder
         )
     """)
+    # หนึ่งแถว = ค่าหนึ่งเวอร์ชันของ agent หนึ่งตัว ห้ามแก้แถวเก่า
+    # เปลี่ยนค่า = เพิ่มแถวใหม่แล้วย้าย is_active มา / ย้อนกลับ = ย้าย is_active กลับไปแถวเก่า
+    # CHECK ตรงกับ Field ใน schemas/ai_config.py กันแอดมินพิมพ์ค่าเพี้ยนใน DBeaver
+    await get_pool().execute("""
+        CREATE TABLE IF NOT EXISTS ai_configuration (
+            id                bigserial        PRIMARY KEY,
+            created_at        timestamptz      NOT NULL DEFAULT now(),
+            note              text,
+            is_active         boolean          NOT NULL DEFAULT false,
+            agent             text             NOT NULL,   -- communicator | analyzer | resource_analyzer
+            provider          text             NOT NULL,
+            model_name        text             NOT NULL CHECK (model_name <> ''),
+            prompt_id         bigint,                      -- ชี้ไป prompts.id วันที่มีตาราง prompts
+            temperature       double precision NOT NULL CHECK (temperature BETWEEN 0 AND 2),
+            max_output_tokens integer          NOT NULL CHECK (max_output_tokens > 0)
+        )
+    """)
+    # agent หนึ่งตัว active ได้แถวเดียว — db ปฏิเสธแถวที่สองเอง ไม่ต้องรอใครมาเจอ
+    await get_pool().execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ai_configuration_one_active_per_agent
+            ON ai_configuration (agent) WHERE is_active
+    """)
 
 
 def get_pool() -> asyncpg.Pool:
@@ -83,3 +105,20 @@ async def save_user(user: User) -> None:
             name         = EXCLUDED.name,
             age_group    = EXCLUDED.age_group
     """, user.id, user.line_user_id, user.name, user.age_group)
+
+
+## ai config part ##
+async def get_active_ai_configs() -> list[dict]:
+    """แถวที่ is_active ของทุก agent — คืนเป็น dict ดิบ
+
+    ไม่แปลงเป็น AgentConfig ตรงนี้ เพราะแถวเพี้ยนแถวเดียวจะทำให้ agent ตัวอื่นโหลดไม่ขึ้นไปด้วย
+    ให้ services.ai_config แปลงทีละแถวเอง
+    """
+    rows = await get_pool().fetch("""
+        SELECT id, created_at, note, agent, provider, model_name,
+               prompt_id, temperature, max_output_tokens
+        FROM ai_configuration
+        WHERE is_active
+    """)
+    return [dict(row) for row in rows]
+

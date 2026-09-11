@@ -1,11 +1,10 @@
 import httpx
 
 from app.clients import psql
-from app.core.config import LINE_CHANNEL_ACCESS_TOKEN
+from app.core.config import LINE_CHANNEL_ACCESS_TOKEN, LINE_REPLY_URL
 
 PROCESS_NAME = "clinents.line" #use for logs
 
-REPLY_URL = "https://api.line.me/v2/bot/message/reply"
 TIMEOUT = 10
 
 
@@ -18,7 +17,7 @@ async def replie (replytoken: str, messages: list[str]) -> int:
     }
 
     async with httpx.AsyncClient(timeout=TIMEOUT) as cli:
-        resp = await cli.post(REPLY_URL, headers=headers, json=body)
+        resp = await cli.post(LINE_REPLY_URL, headers=headers, json=body)
 
     if resp.status_code != 200:
         await psql.create_and_save_log(

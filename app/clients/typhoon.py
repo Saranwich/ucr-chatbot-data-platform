@@ -1,18 +1,20 @@
 import httpx
 
 from app.clients import psql
-from app.core.config import TYPHOON_API_ENDPOINT, TYPHOON_API_KEY, TYPHOON_MODEL
+from app.core.config import TYPHOON_API_ENDPOINT, TYPHOON_API_KEY
 
 PROCESS_NAME = "clients.typhoon" #use for logs
 
 TIMEOUT = 30
 
 
-async def chat (messages: list[dict]) -> str | None:
+async def chat (messages: list[dict], model: str, temperature: float, max_tokens: int) -> str | None:
     headers = {"Authorization": f"Bearer {TYPHOON_API_KEY}"}
     body = {
-        "model": TYPHOON_MODEL,
+        "model": model,
         "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
     }
 
     async with httpx.AsyncClient(timeout=TIMEOUT) as cli:

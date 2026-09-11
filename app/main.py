@@ -4,12 +4,14 @@ from fastapi import FastAPI
 
 from app.api import line
 from app.clients import psql, redis
+from app.services import ai_config
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- startup ---
     app.state.pool = await psql.init_pool()
+    await ai_config.reload()
     app.state.redis = await redis.init_redis()
     print("app opened")
     try:

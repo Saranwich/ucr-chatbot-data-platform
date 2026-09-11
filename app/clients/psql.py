@@ -54,6 +54,21 @@ async def init_db() -> None:
         CREATE UNIQUE INDEX IF NOT EXISTS ai_configuration_one_active_per_agent
             ON ai_configuration (agent) WHERE is_active
     """)
+    # กติกาเดียวกับ ai_configuration แต่ทั้งระบบมีชุดเดียว เลย active ได้แถวเดียวทั้งตาราง
+    # CHECK ตรงกับ Field ใน schemas/system_setting.py
+    await get_pool().execute("""
+        CREATE TABLE IF NOT EXISTS system_setting (
+            id                  bigserial   PRIMARY KEY,
+            created_at          timestamptz NOT NULL DEFAULT now(),
+            note                text,
+            is_active           boolean     NOT NULL DEFAULT false,
+            session_ttl_seconds integer     NOT NULL CHECK (session_ttl_seconds > 0)
+        )
+    """)
+    await get_pool().execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS system_setting_one_active
+            ON system_setting (is_active) WHERE is_active
+    """)
 
 
 def get_pool() -> asyncpg.Pool:
@@ -122,3 +137,13 @@ async def get_active_ai_configs() -> list[dict]:
     """)
     return [dict(row) for row in rows]
 
+
+## system setting part ##
+async def get_active_system_setting() -> dict | None:
+    """แถวที่ is_active — คืน dict ดิบให้ services.system_setting ตรวจเอง ไม่มีก็คืน None"""
+    row = await get_pool().fetchrow("""
+        SELECT id, created_at, note, session_ttl_seconds
+        FROM system_setting
+        WHERE is_active
+    """)
+    return dict(row) if row else None

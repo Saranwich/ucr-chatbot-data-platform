@@ -1,7 +1,7 @@
 from pydantic import ValidationError
 
 from app.clients import psql
-from app.schemas.ai_config import AgentConfig, AiConfig
+from app.schemas.ai_config import AgentConfig, AiConfig, default_agent_config
 
 PROCESS = "services.config.ai_config"
 
@@ -39,7 +39,7 @@ async def reload() -> AiConfig:
         if agent in broken:
             loaded[agent] = getattr(_current, agent)
             continue
-        loaded[agent] = AgentConfig(agent=agent)
+        loaded[agent] = default_agent_config(agent)
         await psql.create_and_save_log(PROCESS, f"{agent} ไม่มีแถว active ใช้ค่า default")
 
     _current = AiConfig(**loaded)

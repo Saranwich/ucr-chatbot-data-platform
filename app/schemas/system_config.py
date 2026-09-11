@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.core.default_value import DEFAULT_SESSION_TTL_SECONDS
+
 
 class SystemConfig(BaseModel, frozen=True):
     """ค่าของระบบที่แอดมินปรับได้ระหว่างแอปรัน = หนึ่งแถวใน system_config
@@ -14,4 +16,4 @@ class SystemConfig(BaseModel, frozen=True):
     created_at: datetime | None = None
     note: str | None = None                       # เปลี่ยนแถวนี้เพราะอะไร
 
-    session_ttl_seconds: int = Field(3600, gt=0)  # เงียบไปนานเท่านี้ บอทลืมบทสนทนา
+    session_ttl_seconds: int = Field(DEFAULT_SESSION_TTL_SECONDS, gt=0)  # เงียบไปนานเท่านี้ บอทลืมบทสนทนา

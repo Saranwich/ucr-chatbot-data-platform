@@ -21,8 +21,13 @@ async def communicator_reply (session: list[Turn]) -> str | None:
         await psql.create_and_save_log(PROCESS, f"communicator ตั้ง provider {config.provider} ที่ยังไม่รองรับ รอบนี้เลยเงียบ")
         return None
 
+    # prompt ไม่เก็บลง session เอาไว้หน้าสุดตอนยิงทุกรอบ แก้ prompt แล้ว session ที่คุยค้างได้ของใหม่ทันที
+    messages = chatbot_session_to_messages(session)
+    if config.prompt:
+        messages = [{"role": "system", "content": config.prompt}, *messages]
+
     reply = await typhoon.chat(
-        chatbot_session_to_messages(session),
+        messages,
         config.model_name,
         config.temperature,
         config.max_output_tokens,

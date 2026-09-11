@@ -9,7 +9,7 @@ AgentName = Literal["communicator", "analyzer", "resource_analyzer"]
 
 
 class AgentConfig(BaseModel, frozen=True):
-    """ค่าของ agent หนึ่งตัว = หนึ่งแถวใน ai_configuration
+    """ค่าของ agent หนึ่งตัว = หนึ่งแถวใน ai_configuration พ่วงเนื้อ prompt ที่แถวนั้นชี้ไป
 
     frozen เพราะทั้งแอปถือก้อนเดียวกันอยู่ จะเปลี่ยนต้องผ่าน services.config.ai_config.reload() ทางเดียว
     ไม่มีค่า default ในนี้ ค่า default อยู่ core/default_value.py ที่เดียว
@@ -20,7 +20,8 @@ class AgentConfig(BaseModel, frozen=True):
     agent: AgentName
     provider: str = Field(min_length=1)
     model_name: str = Field(min_length=1)
-    prompt_id: int | None = None                  # ยังไม่มีตาราง prompts
+    prompt_id: int | None = None
+    prompt: str                                   # เนื้อจากตาราง prompts — ว่าง = ไม่ส่ง system prompt
     temperature: float = Field(ge=0, le=2) # 0-2
     max_output_tokens: int = Field(gt=0) # > 0
 

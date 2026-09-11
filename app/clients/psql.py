@@ -32,6 +32,17 @@ async def init_db() -> None:
             age_group    text              -- children | teenage | mature | elder
         )
     """)
+
+    # หนึ่งแถว = prompt หนึ่งเวอร์ชัน ไม่ควรแก้แถวเก่าเพราะจะดู history prompt จะเปลี่ยนแปลง
+    # ตัวที่ใช้อยู่คือตัวที่ ai_configuration แถว active ชี้มา — ประวัติ prompt ไปพร้อมประวัติ config
+    await get_pool().execute("""
+        CREATE TABLE IF NOT EXISTS prompts (
+            id         bigserial   PRIMARY KEY,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            note       text,
+            content    text        NOT NULL CHECK (content <> '')
+        )
+    """)
     # หนึ่งแถว = ค่าหนึ่งเวอร์ชันของ agent หนึ่งตัว ห้ามแก้แถวเก่า
     # เปลี่ยนค่า = เพิ่มแถวใหม่แล้วย้าย is_active มา / ย้อนกลับ = ย้าย is_active กลับไปแถวเก่า
     # CHECK ตรงกับ Field ใน schemas/ai_config.py กันแอดมินพิมพ์ค่าเพี้ยนใน DBeaver
@@ -54,6 +65,7 @@ async def init_db() -> None:
         CREATE UNIQUE INDEX IF NOT EXISTS ai_configuration_one_active_per_agent
             ON ai_configuration (agent) WHERE is_active
     """)
+
     # กติกาเดียวกับ ai_configuration แต่ทั้งระบบมีชุดเดียว เลย active ได้แถวเดียวทั้งตาราง
     # CHECK ตรงกับ Field ใน schemas/system_config.py
     await get_pool().execute("""
@@ -124,16 +136,19 @@ async def save_user(user: User) -> None:
 
 ## ai config part ##
 async def get_active_ai_configs() -> list[dict]:
-    """แถวที่ is_active ของทุก agent — คืนเป็น dict ดิบ
+    """แถวที่ is_active ของทุก agent พ่วงเนื้อ prompt ที่ชี้ไป — คืนเป็น dict ดิบ
+
+    prompt เป็น None เมื่อ prompt_id ว่าง หรือชี้ไป id ที่ไม่มีในตาราง prompts
 
     ไม่แปลงเป็น AgentConfig ตรงนี้ เพราะแถวเพี้ยนแถวเดียวจะทำให้ agent ตัวอื่นโหลดไม่ขึ้นไปด้วย
     ให้ services.config.ai_config แปลงทีละแถวเอง
     """
     rows = await get_pool().fetch("""
-        SELECT id, created_at, note, agent, provider, model_name,
-               prompt_id, temperature, max_output_tokens
-        FROM ai_configuration
-        WHERE is_active
+        SELECT a.id, a.created_at, a.note, a.agent, a.provider, a.model_name,
+               a.prompt_id, p.content AS prompt, a.temperature, a.max_output_tokens
+        FROM ai_configuration a
+        LEFT JOIN prompts p ON p.id = a.prompt_id
+        WHERE a.is_active
     """)
     return [dict(row) for row in rows]
 

@@ -14,18 +14,22 @@ DEFAULT_AGENT_CONFIG = {
         "model_name": "typhoon-v2.5-30b-a3b-instruct",
         "temperature": 0.7,
         "max_output_tokens": 1024,
+        "prompt": "",
     },
+    # ยังไม่มีใครเขียน prompt ให้สองตัวนี้ เลยยังว่าง
     "analyzer": {
         "provider": "typhoon",
         "model_name": "typhoon-v2.5-30b-a3b-instruct",
         "temperature": 0.7,
         "max_output_tokens": 1024,
+        "prompt": "",
     },
     "resource_analyzer": {
         "provider": "typhoon",
         "model_name": "typhoon-v2.5-30b-a3b-instruct",
         "temperature": 0.7,
         "max_output_tokens": 1024,
+        "prompt": "",
     },
 }
 

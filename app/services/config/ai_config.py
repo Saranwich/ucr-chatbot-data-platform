@@ -1,6 +1,7 @@
 from pydantic import ValidationError
 
 from app.clients import psql
+from app.core.default_value import DEFAULT_AGENT_CONFIG
 from app.schemas.ai_config import AgentConfig, AiConfig, default_agent_config
 
 PROCESS = "services.config.ai_config"
@@ -19,12 +20,17 @@ async def reload() -> AiConfig:
 
     agent ไหนไม่มีแถว active = ใช้ default ของตัวนั้น
     agent ไหนแถว active ค่าเพี้ยน = ถือค่าเดิมของตัวนั้นต่อ (ตอนเปิดแอปค่าเดิมก็คือ default)
+    แถวไหน prompt_id ว่าง หรือชี้ไป prompt ที่ไม่มี = ใช้ prompt default ของ agent นั้น
     """
     global _current
     loaded: dict[str, AgentConfig] = {}
     broken: set[str] = set()
 
     for row in await psql.get_active_ai_configs():
+        if row["prompt"] is None:
+            if row["prompt_id"] is not None:
+                await psql.create_and_save_log(PROCESS, f"ai_configuration id {row['id']} ชี้ไป prompt id {row['prompt_id']} ที่ไม่มี ใช้ prompt default")
+            row["prompt"] = DEFAULT_AGENT_CONFIG.get(row["agent"], {}).get("prompt", "")
         try:
             config = AgentConfig(**row)
         except ValidationError as e:
@@ -43,9 +49,17 @@ async def reload() -> AiConfig:
         await psql.create_and_save_log(PROCESS, f"{agent} ไม่มีแถว active ใช้ค่า default")
 
     _current = AiConfig(**loaded)
-    await psql.create_and_save_log(
-        PROCESS,
-        "โหลด ai config " + ", ".join(f"{name}=id {cfg.id}" for name, cfg in _current),
+    summary = ", ".join(
+        f"{name}=id {cfg.id if cfg.id is not None else 'default'} prompt {_prompt_label(name, cfg)}"
+        for name, cfg in _current
     )
-    print("ai_config:", _current)
+    await psql.create_and_save_log(PROCESS, f"โหลด ai config {summary}")
+    print("ai_config:", summary)
     return _current
+
+
+def _prompt_label(agent: str, config: AgentConfig) -> str:
+    """prompt_id ว่าง หรือเนื้อตรงกับ default (กรณีชี้ไป id ที่ไม่มี) = default"""
+    if config.prompt_id is None or config.prompt == DEFAULT_AGENT_CONFIG[agent]["prompt"]:
+        return "default"
+    return str(config.prompt_id)

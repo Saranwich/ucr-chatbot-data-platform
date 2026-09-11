@@ -9,7 +9,7 @@ load_dotenv(BASE_DIR / ".env")
 
 # ชื่อ -> เอาไว้ทำอะไร (โชว์ตอนขาด ให้คนตั้งเครื่องรู้ว่าต้องไปหาค่าจากไหน)
 REQUIRED = {
-    "DATABASE_URL": "postgres ที่เก็บ users / logs / ai_configuration / system_setting",
+    "DATABASE_URL": "postgres ที่เก็บ users / logs / ai_configuration / system_config",
     "REDIS_URL": "redis ที่เก็บบทสนทนาที่ยังคุยค้าง",
     "LINE_CHANNEL_SECRET": "ตรวจลายเซ็น webhook ของ LINE",
     "LINE_CHANNEL_ACCESS_TOKEN": "ยิงข้อความตอบกลับทาง LINE",

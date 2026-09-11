@@ -3,7 +3,7 @@ from pydantic import ValidationError
 from app.clients import psql
 from app.schemas.ai_config import AgentConfig, AiConfig
 
-PROCESS = "services.ai_config"
+PROCESS = "services.config.ai_config"
 
 # ทั้งแอปอ่านจากตัวนี้ผ่าน get() — ห้าม from ... import _current เพราะจะได้ก้อนเก่าค้างไว้
 _current = AiConfig()

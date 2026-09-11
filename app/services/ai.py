@@ -1,6 +1,6 @@
 from app.clients import psql, typhoon
 from app.schemas.turn import Turn
-from app.services import ai_config
+from app.services.config import ai_config
 
 PROCESS = "services.ai"
 

@@ -55,9 +55,9 @@ async def init_db() -> None:
             ON ai_configuration (agent) WHERE is_active
     """)
     # กติกาเดียวกับ ai_configuration แต่ทั้งระบบมีชุดเดียว เลย active ได้แถวเดียวทั้งตาราง
-    # CHECK ตรงกับ Field ใน schemas/system_setting.py
+    # CHECK ตรงกับ Field ใน schemas/system_config.py
     await get_pool().execute("""
-        CREATE TABLE IF NOT EXISTS system_setting (
+        CREATE TABLE IF NOT EXISTS system_config (
             id                  bigserial   PRIMARY KEY,
             created_at          timestamptz NOT NULL DEFAULT now(),
             note                text,
@@ -66,8 +66,8 @@ async def init_db() -> None:
         )
     """)
     await get_pool().execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS system_setting_one_active
-            ON system_setting (is_active) WHERE is_active
+        CREATE UNIQUE INDEX IF NOT EXISTS system_config_one_active
+            ON system_config (is_active) WHERE is_active
     """)
 
 
@@ -127,7 +127,7 @@ async def get_active_ai_configs() -> list[dict]:
     """แถวที่ is_active ของทุก agent — คืนเป็น dict ดิบ
 
     ไม่แปลงเป็น AgentConfig ตรงนี้ เพราะแถวเพี้ยนแถวเดียวจะทำให้ agent ตัวอื่นโหลดไม่ขึ้นไปด้วย
-    ให้ services.ai_config แปลงทีละแถวเอง
+    ให้ services.config.ai_config แปลงทีละแถวเอง
     """
     rows = await get_pool().fetch("""
         SELECT id, created_at, note, agent, provider, model_name,
@@ -139,11 +139,11 @@ async def get_active_ai_configs() -> list[dict]:
 
 
 ## system setting part ##
-async def get_active_system_setting() -> dict | None:
-    """แถวที่ is_active — คืน dict ดิบให้ services.system_setting ตรวจเอง ไม่มีก็คืน None"""
+async def get_active_system_config() -> dict | None:
+    """แถวที่ is_active — คืน dict ดิบให้ services.config.system_config ตรวจเอง ไม่มีก็คืน None"""
     row = await get_pool().fetchrow("""
         SELECT id, created_at, note, session_ttl_seconds
-        FROM system_setting
+        FROM system_config
         WHERE is_active
     """)
     return dict(row) if row else None

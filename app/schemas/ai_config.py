@@ -9,7 +9,7 @@ AgentName = Literal["communicator", "analyzer", "resource_analyzer"]
 class AgentConfig(BaseModel, frozen=True):
     """ค่าของ agent หนึ่งตัว = หนึ่งแถวใน ai_configuration
 
-    frozen เพราะทั้งแอปถือก้อนเดียวกันอยู่ จะเปลี่ยนต้องผ่าน services.ai_config.reload() ทางเดียว
+    frozen เพราะทั้งแอปถือก้อนเดียวกันอยู่ จะเปลี่ยนต้องผ่าน services.config.ai_config.reload() ทางเดียว
     """
     id: int | None = None
     created_at: datetime | None = None

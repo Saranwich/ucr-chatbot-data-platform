@@ -1,7 +1,9 @@
 import json
+from uuid import uuid4
 
 from app.clients import psql, redis, line as line_cli, typhoon
 from app.schemas.turn import Turn
+from app.schemas.user import User
 from app.services import ai
 
 PROCESS = "services.chatbot"
@@ -17,7 +19,7 @@ async def handle (req):
     payload = await req.json()
 
     turns = []
-    line_user_id = None
+    user = None
     reply_token = None
 
     for event in payload.get("events", []):
@@ -29,35 +31,59 @@ async def handle (req):
             await psql.create_and_save_log(PROCESS, f"ยังไม่รับ event ชนิด {event_type}")
             continue
 
-        turn = await handler(event)
+        line_user_id = event.get("source", {}).get("userId")
+        if not line_user_id:
+            await psql.create_and_save_log(PROCESS, f"event {event_type} ไม่บอกว่าใคร ทิ้งไป")
+            print("chatbot: ไม่รู้ว่า event นี้ของใคร ทิ้งไป")
+            continue
+
+        user = await get_or_create_user(line_user_id)
+        turn = await handler(user, event)
         if turn is None:
             continue
 
         turns.append(turn)
-        line_user_id = event.get("source", {}).get("userId")
-        reply_token = event.get("replyToken") or reply_token
+        reply_token = event.get("replyToken") or reply_token #use last reply token to replie
 
     if not turns:
         print("chatbot: ไม่มีตาไหนเข้า session รอบนี้")
         return
 
-    # handler ต่อตาของรอบนี้เข้า redis ไปแล้ว อ่านกลับมาจะได้ของเก่าพ่วงของใหม่ครบก้อน
-    session = await load_session_from_redis(f"session:{line_user_id}")
+    # get session in redis
+    redis_key = f"session:{user.id}"
+    session = await load_session_from_redis(redis_key)
 
-    await psql.create_and_save_log(
-        PROCESS,
-        f"{line_user_id} ต่อ session {len(turns)} ตา รวมเป็น {len(session)} ตา พร้อมส่งให้ LLM",
-    )
-    print("chatbot ปั้นของให้ LLM:", line_user_id, reply_token, session)
+    # add new turns to session
+    session.extend(turns)
+    await save_session_to_redis(redis_key, session)
+    await psql.create_and_save_log(PROCESS,f"{user.id} ต่อ session {len(turns)} ตา รวมเป็น {len(session)} ตา พร้อมส่งให้ LLM",)
+    print("chatbot ปั้นของให้ LLM:", user.id, reply_token, session)
 
+    # send to ai
     resp = await ai.communicator_reply(session)
+
+    # verify ai response
     if resp is None:
-        print("chatbot: ไม่มีคำตอบจากโมเดล รอบนี้ไม่ตอบกลับ")
+        print("chatbot: ไม่มีคำตอบจากโมเดล ไม่มีข้อความตอบกลับ")
         return
 
-    await append_to_session(line_user_id, Turn(role="assistant", content_type="text", content=resp))
+    # add ai response into session
+    session.append(Turn(role="assistant", content_type="text", content=resp))
+    await save_session_to_redis(redis_key, session)
+
+    # replie message to user via line pltform
     await line_cli.replie(reply_token, [resp])
     print("ส่งข้อความกลับไปแล้ว")
+
+
+async def get_or_create_user(line_user_id: str) -> User:
+    """หา user จาก LINE id — ยังไม่เคยมีในแอปก็สร้างใหม่แล้วบันทึกเลย"""
+    user = await psql.get_user_by_line_user_id(line_user_id)
+    if user is None:
+        user = User(id=uuid4(), line_user_id=line_user_id)
+        await psql.save_user(user)
+        await psql.create_and_save_log(PROCESS, f"user ใหม่ {user.id} จาก LINE {line_user_id}")
+    return user
 
 
 async def load_session_from_redis(redis_key: str) -> list[Turn]:
@@ -74,28 +100,12 @@ async def save_session_to_redis(redis_key: str, session: list[Turn]) -> None:
     await redis.save_session(redis_key, raw, SESSION_TTL)
 
 
-async def append_to_session(line_user_id: str, turn: Turn) -> None:
-    redis_key = f"session:{line_user_id}"
-    session = await load_session_from_redis(redis_key)
-    session.append(turn)
-    await save_session_to_redis(redis_key, session)
-    await psql.create_and_save_log(
-        PROCESS, f"\nต่อตา {turn.content_type} ของ {line_user_id} เข้า session"
-    )
-
-
-async def message_handler(event: dict) -> Turn | None:
+async def message_handler(user: User, event: dict) -> Turn | None:
     handler_map = {
         "text": message_text_handler,
         "image": message_image_handler,
         "location": message_location_handler,
     }
-
-    line_user_id = event.get("source", {}).get("userId")
-    if not line_user_id:
-        await psql.create_and_save_log(PROCESS, "ข้อความไม่บอกว่าใครพิมพ์ ทิ้งไป")
-        print("message_handler: ไม่รู้ว่าใครพิมพ์ ทิ้งไป")
-        return None
 
     message = event.get("message", {})
     content_type = message.get("type")
@@ -105,60 +115,48 @@ async def message_handler(event: dict) -> Turn | None:
         print("message_handler: ยังไม่รับข้อความชนิด", content_type)
         return None
 
-    return await handler(line_user_id, message)
+    return await handler(user, message)
 
 
-async def follow_handler(event: dict) -> Turn | None:
-    line_user_id = event.get("source", {}).get("userId")
-    if not line_user_id:
-        return None
-
-    turn = Turn(
-        role="system",
-        content_type="follow",
-        content="ผู้ใช้เพิ่งเพิ่มเป็นเพื่อน ยังไม่ได้พูดอะไร",
-    )
-    await append_to_session(line_user_id, turn)
-    print("follow_handler:", turn)
-    return turn
-
-
-async def unfollow_handler(event: dict) -> Turn | None:
-    line_user_id = event.get("source", {}).get("userId")
-    await psql.create_and_save_log(PROCESS, f"{line_user_id} เลิกติดตามแล้ว")
-    print("unfollow_handler:", line_user_id, "เลิกติดตามแล้ว")
+async def follow_handler(user: User, event: dict) -> Turn | None:
+    # ยังไม่ได้ออกแบบว่าคนมาครั้งแรกต้องทำอะไร เลยไม่เปิด session จากตรงนี้
+    await psql.create_and_save_log(PROCESS, f"{user.id} เพิ่มเป็นเพื่อนแล้ว")
+    print("follow_handler:", user.id, "เพิ่มเป็นเพื่อนแล้ว")
     return None
 
 
-async def message_text_handler(line_user_id: str, message: dict) -> Turn:
+async def unfollow_handler(user: User, event: dict) -> Turn | None:
+    await psql.create_and_save_log(PROCESS, f"{user.id} เลิกติดตามแล้ว")
+    print("unfollow_handler:", user.id, "เลิกติดตามแล้ว")
+    return None
+
+
+async def message_text_handler(user: User, message: dict) -> Turn:
     turn = Turn(
         role="user",
         content_type="text",
         content=message.get("text", ""),
     )
-    await append_to_session(line_user_id, turn)
     print("message_text_handler:", turn)
     return turn
 
 
-async def message_image_handler(line_user_id: str, message: dict) -> Turn:
+async def message_image_handler(user: User, message: dict) -> Turn:
     turn = Turn(
         role="user",
         content_type="image",
         content=message.get("id", ""),
     )
-    await append_to_session(line_user_id, turn)
     print("message_image_handler:", turn)
     return turn
 
 
-async def message_location_handler(line_user_id: str, message: dict) -> Turn:
+async def message_location_handler(user: User, message: dict) -> Turn:
     address = message.get("address") or "ไม่ได้บอกที่อยู่"
     turn = Turn(
         role="user",
         content_type="location",
         content=f"แชร์พิกัด {message.get('latitude')}, {message.get('longitude')} ({address})",
     )
-    await append_to_session(line_user_id, turn)
     print("message_location_handler:", turn)
     return turn

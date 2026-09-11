@@ -4,10 +4,9 @@ from uuid import uuid4
 from app.clients import psql, redis, line as line_cli, typhoon
 from app.schemas.turn import Turn
 from app.schemas.user import User
-from app.services import ai
+from app.services import ai, system_setting
 
 PROCESS = "services.chatbot"
-SESSION_TTL = 60 * 60 #one hour
 
 
 async def handle (req):
@@ -97,7 +96,7 @@ async def load_session_from_redis(redis_key: str) -> list[Turn]:
 async def save_session_to_redis(redis_key: str, session: list[Turn]) -> None:
     """เขียนทับบทสนทนาทั้งก้อน — ของเดิมใต้ key นั้นหายหมด"""
     raw = json.dumps([turn.model_dump() for turn in session], ensure_ascii=False)
-    await redis.save_session(redis_key, raw, SESSION_TTL)
+    await redis.save_session(redis_key, raw, system_setting.get().session_ttl_seconds)
 
 
 async def message_handler(user: User, event: dict) -> Turn | None:

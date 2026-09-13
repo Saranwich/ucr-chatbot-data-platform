@@ -39,3 +39,18 @@ async def save_session(key: str, session: str, ttl: int | None = None) -> None:
     ไม่ใส่ ttl = อยู่ถาวร และถ้า key เดิมเคยตั้งอายุไว้ การเขียนรอบนี้จะล้างอายุทิ้ง
     """
     await get_client().set(key, session, ex=ttl)
+
+
+async def scan_session_keys() -> list[str]:
+    """ไล่หา key ของ session ที่ยังไม่หมดอายุทั้งหมด — ใช้ scan ไม่ใช่ keys จะได้ไม่ล็อก redis ทั้งตัว"""
+    return [key async for key in get_client().scan_iter(match="session:*")]
+
+
+async def get_ttl(key: str) -> int:
+    """อายุที่เหลือเป็นวินาที — -2 คือไม่มี key นี้แล้ว -1 คือมีแต่ไม่ได้ตั้งอายุไว้"""
+    return await get_client().ttl(key)
+
+
+async def delete_session(key: str) -> None:
+    """ทิ้ง session ทั้งก้อน — ใช้ตอนปิดบทสนทนา ไม่ต้องรอให้หมดอายุเอง"""
+    await get_client().delete(key)

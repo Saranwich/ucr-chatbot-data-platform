@@ -1,7 +1,7 @@
 import asyncpg
 from app.core.config import DATABASE_URL
 from app.schemas.logs import LogsRecord
-from app.schemas.report import AiResponse, Image, Location, Message, Session
+from app.schemas.report import AiResponse, Image, Location, Message, Report, Session
 from app.schemas.turn import Turn
 from app.schemas.user import User
 
@@ -274,6 +274,17 @@ async def save_image(image: Image) -> None:
          image.line_image_url, image.image_key, image.desc, image.created_at)
 
 
+async def set_image_desc(image_id, desc: str) -> bool:
+    """เติมคำบรรยายให้รูปที่มีอยู่แล้วหนึ่งใบ คืน False ถ้าไม่มีรูป id นี้
+
+    ไม่ INSERT ให้ เพราะแถวรูปเกิดตอนรับมาจากไลน์ ที่นี่มีหน้าที่เติมของที่ ai อ่านได้เท่านั้น
+    """
+    result = await get_pool().execute(
+        'UPDATE images SET "desc" = $2 WHERE id = $1', image_id, desc
+    )
+    return result != "UPDATE 0"
+
+
 ## location part ##
 async def save_location(location: Location) -> None:
     """เขียนแถวพิกัดทั้งแถวตาม id — ยังไม่มีก็สร้างใหม่"""
@@ -368,3 +379,28 @@ async def set_session_finished(session_id, is_finished: bool) -> bool:
         "UPDATE sessions SET is_finished = $2 WHERE id = $1", session_id, is_finished
     )
     return result != "UPDATE 0"
+
+
+## report part ##
+async def save_report(report: Report) -> None:
+    """เขียนหนึ่งเรื่องที่ analyzer สรุปได้ — id ซ้ำก็เขียนทับ
+
+    หนึ่ง session มีได้หลายแถว เพราะบทสนทนาเดียวชาวบ้านเล่าได้หลายเรื่อง
+    ช่องเนื้อหาว่างได้หมด ว่าง = ยังไม่ได้ถาม ไม่ใช่ไม่มี
+    """
+    await get_pool().execute("""
+        INSERT INTO reports (id, created_at, status, session_id, title, type,
+                             threat, frequency, effect, is_has_image, is_has_location)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT (id) DO UPDATE SET
+            status          = EXCLUDED.status,
+            title           = EXCLUDED.title,
+            type            = EXCLUDED.type,
+            threat          = EXCLUDED.threat,
+            frequency       = EXCLUDED.frequency,
+            effect          = EXCLUDED.effect,
+            is_has_image    = EXCLUDED.is_has_image,
+            is_has_location = EXCLUDED.is_has_location
+    """, report.id, report.created_at, report.status, report.session_id,
+         report.title, report.type, report.threat, report.frequency,
+         report.effect, report.is_has_image, report.is_has_location)

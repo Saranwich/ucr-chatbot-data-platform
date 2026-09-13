@@ -8,6 +8,7 @@
 ขั้นนี้ทำแต่ตัวมือไว้ให้เรียกได้จริงก่อน ต่อสายให้โมเดลหยิบเองเป็นงานขั้นถัดไป
 """
 
+from typing import TypedDict
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -16,6 +17,24 @@ from app.clients import psql
 from app.schemas.report import Frequency, ProblemType, Report, Threat
 
 PROCESS = "services.ai_tools"
+
+
+class ReportDraft (TypedDict, total=False):
+    """หนึ่งเรื่องตามที่โมเดลกรอกมา — ยังไม่ผ่านการตรวจ
+
+    มีไว้บอกคนอ่าน (กับโมเดล) ว่าก้อนหนึ่งก้อนใส่อะไรได้บ้างและค่าไหนใช้ได้
+    total=False เพราะทุกช่องขาดได้ ขาด = ยังไม่ได้ถาม
+    ไม่ใช่ Report เพราะ Report มี session_id/status/id ที่โมเดลไม่ต้องรู้จัก
+    และ TypedDict ไม่ตรวจอะไรตอนรัน คนตรวจจริงคือ Report(...) ใน save_analyse
+    """
+
+    title: str
+    type: ProblemType
+    threat: Threat
+    frequency: Frequency
+    effect: str
+    is_has_image: bool
+    is_has_location: bool
 
 
 ## tool ของ communicator ##
@@ -37,44 +56,37 @@ async def set_finished_flag (session_id: UUID, is_finished: bool) -> bool:
 
 
 ## tool ของ analyzer ##
-async def save_analyse (
-    session_id: UUID,
-    title: str | None = None,
-    type: ProblemType | None = None,
-    threat: Threat | None = None,
-    frequency: Frequency | None = None,
-    effect: str | None = None,
-    is_has_image: bool | None = None,
-    is_has_location: bool | None = None,
-) -> UUID | None:
-    """เก็บ "หนึ่งเรื่อง" ที่ analyzer สรุปได้ลงตาราง reports คืน id ของเรื่องนั้น พังก็คืน None
+async def save_analyse (session_id: UUID, reports: list[ReportDraft]) -> list[UUID]:
+    """เก็บ "หลายเรื่อง" ที่ analyzer สรุปได้จากบทสนทนาเดียวลงตาราง reports คืน id ของเรื่องที่เก็บได้
 
-    เรียกได้หลายครั้งต่อหนึ่ง session เพราะบทสนทนาเดียวชาวบ้านเล่าได้หลายเรื่อง
-    ช่องไหนไม่รู้ให้ปล่อยว่าง ว่างแปลว่า "ยังไม่ได้ถาม" ไม่ใช่ "ไม่มี" — ห้ามเดาเติมแทนเขา
-    ชนิดของ type/threat/frequency บอกค่าที่ใส่ได้ไว้ให้คนอ่านเห็น แต่ไม่ได้กันอะไรตอนรัน
+    รับทีเดียวทั้งชุดเพราะ analyzer อ่านบทสนทนาจบแล้วค่อยสรุป ตอนนั้นมันรู้ครบแล้วว่ามีกี่เรื่อง
+    ให้เรียกทีละเรื่องหลายรอบแปลว่าโมเดลต้องจำเองว่าเล่าไปถึงเรื่องไหนแล้ว ซ้ำกับตกหล่นได้ทั้งคู่
+
+    หนึ่งก้อนใน reports คือหนึ่งเรื่อง ช่องที่ใส่ได้ดูที่ ReportDraft ข้างบน ช่องไหนไม่รู้ให้ปล่อยว่าง
+    ว่างแปลว่า "ยังไม่ได้ถาม" ไม่ใช่ "ไม่มี" — ห้ามเดาเติมแทนเขา
+    session_id กับ status ไม่ต้องส่งมา ที่นี่เติมให้เอง ส่งมาก็ถูกทับ
+    status เป็น analyzed ตั้งแต่แรกเพราะแถวนี้เป็นผลของการวิเคราะห์ ไม่ใช่ของที่รอวิเคราะห์
+
     annotation ของ python ไม่มีผลตอนรัน คนกันจริงคือ Report(...) ข้างล่าง
-    โมเดลส่ง "น้ำท่วม" มาก็เข้ามาถึงในนี้ได้ ต้องมี try ครอบไว้เสมอ
-    status เขียน analyzed ตั้งแต่แรกเพราะแถวนี้เป็นผลของการวิเคราะห์ ไม่ใช่ของที่รอวิเคราะห์
+    โมเดลส่ง type="น้ำท่วม" หรือส่งอะไรที่ไม่ใช่ก้อนข้อมูลมาก็เข้ามาถึงในนี้ได้ ต้องมี try ครอบไว้เสมอ
+    เรื่องไหนค่าไม่ผ่านก็ข้ามไปเรื่องเดียว ที่เหลือยังเก็บ — ล้มทั้งชุดเพราะเรื่องเดียวพังไม่คุ้มกัน
+    คืนมาไม่ครบจำนวนที่ส่งไปคือมีเรื่องตก ดูสาเหตุใน log ได้
     """
-    try:
-        report = Report(
-            session_id=session_id,
-            status="analyzed",
-            title=title,
-            type=type,
-            threat=threat,
-            frequency=frequency,
-            effect=effect,
-            is_has_image=is_has_image,
-            is_has_location=is_has_location,
-        )
-    except ValidationError as error:
-        await psql.create_and_save_log(PROCESS, f"save_analyse ของ session {session_id} ค่าไม่ผ่าน {error}")
-        return None
+    saved: list[UUID] = []
+    for record in reports:
+        try:
+            report = Report(**{**dict(record), "session_id": session_id, "status": "analyzed"})
+        except (ValidationError, TypeError, ValueError) as error:
+            await psql.create_and_save_log(PROCESS, f"save_analyse ของ session {session_id} ค่าไม่ผ่าน {error}")
+            continue
 
-    await psql.save_report(report)
-    await psql.create_and_save_log(PROCESS, f"บันทึกเรื่อง {report.id} ของ session {session_id} แล้ว")
-    return report.id
+        await psql.save_report(report)
+        saved.append(report.id)
+
+    await psql.create_and_save_log(
+        PROCESS, f"บันทึกเรื่องของ session {session_id} แล้ว {len(saved)} จาก {len(reports)} เรื่อง"
+    )
+    return saved
 
 
 ## tool ของ resource analyzer ##

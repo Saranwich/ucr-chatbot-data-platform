@@ -89,10 +89,11 @@ async def init_db() -> None:
     # หนึ่งแถว = บทสนทนาหนึ่งรอบ เปิดตอนเขาทักมาแล้วไม่มีรอบไหนค้าง จบเองตอนเงียบจนหมดอายุ
     await get_pool().execute("""
         CREATE TABLE IF NOT EXISTS sessions (
-            id         uuid        PRIMARY KEY,
-            user_id    uuid        NOT NULL,
-            status     text        NOT NULL,   -- not_analyzed | pending | analyzed
-            created_at timestamptz NOT NULL
+            id          uuid        PRIMARY KEY,
+            user_id     uuid        NOT NULL,
+            status      text        NOT NULL,   -- not_analyzed | pending | analyzed
+            is_finished boolean     NOT NULL,   -- ชาวบ้านบอกว่าเล่าจบแล้ว ตัวกวาดปิดได้เลยไม่ต้องรอเงียบ
+            created_at  timestamptz NOT NULL
         )
     """)
 
@@ -294,10 +295,10 @@ async def save_location(location: Location) -> None:
 async def save_session(session: Session) -> None:
     """เปิดบทสนทนารอบใหม่ลงฐาน — id ซ้ำก็เขียนทับ"""
     await get_pool().execute("""
-        INSERT INTO sessions (id, user_id, status, created_at)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO sessions (id, user_id, status, is_finished, created_at)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id
-    """, session.id, session.user_id, session.status, session.created_at)
+    """, session.id, session.user_id, session.status, session.is_finished, session.created_at)
 
 
 ## message part ##
@@ -345,7 +346,7 @@ async def get_conversation(session_id) -> list[Turn]:
 async def get_session(session_id) -> Session | None:
     """หยิบ session หนึ่งรอบตาม id — ไม่มีก็คืน None"""
     row = await get_pool().fetchrow("""
-        SELECT id, user_id, status, created_at FROM sessions WHERE id = $1
+        SELECT id, user_id, status, is_finished, created_at FROM sessions WHERE id = $1
     """, session_id)
     if row is None:
         return None
@@ -355,3 +356,15 @@ async def get_session(session_id) -> Session | None:
 async def set_session_status(session_id, status: str) -> None:
     """เปลี่ยนสถานะ session — analyzed ตอนวิเคราะห์เสร็จ not_analyzed ตอนพังเพื่อให้ลองใหม่ได้"""
     await get_pool().execute("UPDATE sessions SET status = $2 WHERE id = $1", session_id, status)
+
+
+async def set_session_finished(session_id, is_finished: bool) -> bool:
+    """ปักหรือถอนธงว่าบทสนทนารอบนี้เล่าจบแล้ว คืน False ถ้าไม่มี session นี้ในฐาน
+
+    ต้องถอนได้ ไม่ใช่ปักทางเดียว เพราะรอบก่อนอาจดูเหมือนจะจบแล้วเขาพูดต่อ
+    เขียนค่าเดิมซ้ำก็ไม่เป็นไร ไม่ได้นับว่าปักกี่ครั้ง
+    """
+    result = await get_pool().execute(
+        "UPDATE sessions SET is_finished = $2 WHERE id = $1", session_id, is_finished
+    )
+    return result != "UPDATE 0"

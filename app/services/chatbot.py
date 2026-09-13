@@ -77,6 +77,11 @@ async def handle_user_events(line_user_id: str, events: list[dict]) -> None:
         print("chatbot: ไม่มีตาไหนเข้า session รอบนี้ ของ", user.id)
         return
 
+    # มีคนพิมพ์เข้ามาแปลว่ายังไม่จบ ถอนธงก่อนถามโมเดลทุกครั้ง ไม่ต้องรอให้มันถอนเอง
+    # โมเดลถอนได้แค่ตอนถูกเรียก ถ้าตัวกวาดมาถึงก่อนข้อความถัดไปก็ปิดไปแล้ว สายเกิน
+    # มันจะปักกลับเองในรอบนี้ถ้าอ่านว่าจบจริง หน้าที่มันเหลือแค่ยืนยัน ไม่ต้องจำของรอบก่อน
+    await psql.set_session_finished(session_id, False)
+
     # add new turns to session
     session.extend(turns)
     await save_session_to_redis(redis_key, session_id, session)
@@ -115,6 +120,20 @@ async def open_session(user: User) -> UUID:
     await psql.save_session(session)
     await psql.create_and_save_log(PROCESS, f"เปิด session {session.id} ให้ {user.id}")
     return session.id
+
+
+async def is_session_finished(redis_key: str) -> bool:
+    """บทสนทนารอบนี้ถูกปักธงว่าเล่าจบแล้วหรือยัง — ตัวกวาดถามก่อนตัดสินใจว่าจะรอเงียบต่อไหม
+
+    ธงอยู่ในฐาน ไม่ได้อยู่ใน redis เพราะคนปักคือ ai_tools.set_finished_flag ที่คุยกับฐานทางเดียว
+    ต้องไปเอา session_id จาก redis ก่อน เพราะตัวกวาดถือแต่ชื่อ key
+    """
+    session_id, _ = await load_session_from_redis(redis_key)
+    if session_id is None:
+        return False
+
+    session = await psql.get_session(session_id)
+    return session is not None and session.is_finished
 
 
 async def close_session(redis_key: str) -> str | None:

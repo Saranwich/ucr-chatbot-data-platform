@@ -77,11 +77,16 @@ class Session(BaseModel):
     status กันตัวกวาดหยิบรอบเดียวกันไปวิเคราะห์ซ้อนกัน
     pending = มีคนกำลังวิเคราะห์อยู่ ใครมาเจอทีหลังให้ข้ามไป
     วิเคราะห์พังกลับไปเป็น not_analyzed เพื่อให้รอบกวาดถัดไปลองใหม่ได้
+
+    is_finished คนละเรื่องกับ status — status บอกว่าวิเคราะห์ไปถึงไหน
+    is_finished บอกว่าชาวบ้านเล่าจบแล้ว ตัวกวาดจะปิดให้เลยไม่ต้องรอเงียบครบเวลา
+    ยัดรวมกันเป็นค่าเดียวไม่ได้ เพราะรอบที่เล่าจบแล้วก็ยังต้องวิเคราะห์อยู่
     """
 
     id: UUID = Field(default_factory=uuid4)
     user_id: UUID
     status: Status = "not_analyzed"
+    is_finished: bool = False   # ai_tools.set_finished_flag ปัก/ถอนตามที่ communicator อ่านได้
     created_at: datetime = Field(default_factory=datetime.now)
 
 

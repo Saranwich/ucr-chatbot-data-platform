@@ -4,11 +4,12 @@
 เลยห่อ pydantic ไว้ทุกตัว ผิดก็ลง log แล้วคืนค่าว่าไม่สำเร็จ ห้ามโยน exception ออกไปข้างนอก
 ล้มทั้งรอบสนทนาเพราะโมเดลพิมพ์ "น้ำท่วม" แทน "flood" ไม่คุ้มกัน
 
-ยังไม่มีใครส่งรายการนี้ให้โมเดลเลือกใช้ clients/typhoon.chat ยังไม่ได้ส่งช่อง tools ไปด้วย
-ขั้นนี้ทำแต่ตัวมือไว้ให้เรียกได้จริงก่อน ต่อสายให้โมเดลหยิบเองเป็นงานขั้นถัดไป
+ตัวที่โมเดลหยิบเองได้ต้องมีสองอย่างคู่กัน — schema ไว้ยื่นให้มันเลือก กับชื่อใน allowlist ข้างล่าง
+ไม่ได้อยู่ใน allowlist คือเรียกไม่ได้ ต่อให้มันเดาชื่อฟังก์ชันในไฟล์นี้ถูกก็ตาม
 """
 
-from typing import TypedDict
+import json
+from typing import NamedTuple, TypedDict, get_args
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -56,7 +57,19 @@ async def set_finished_flag (session_id: UUID, is_finished: bool) -> bool:
 
 
 ## tool ของ analyzer ##
-async def save_analyse (session_id: UUID, reports: list[ReportDraft]) -> list[UUID]:
+class SaveOutcome (NamedTuple):
+    """ผลของ save_analyse หนึ่งครั้ง — บอกทั้งของที่ถูกสั่งและของที่ลงฐานได้จริง
+
+    คืนแต่ลิสต์ id ไม่พอ เพราะลิสต์ว่างมีสองความหมายที่ต้องทำคนละอย่าง
+    ถูกสั่งมา 0 เรื่อง = อ่านแล้วไม่มีเรื่อง จบได้
+    ถูกสั่งมา 3 เรื่องแล้วเก็บไม่ได้สักเรื่อง = โมเดลกรอกผิด ต้องให้มันลองใหม่
+    """
+
+    requested: int
+    saved: list[UUID]
+
+
+async def save_analyse (session_id: UUID, reports: list[ReportDraft]) -> SaveOutcome:
     """เก็บ "หลายเรื่อง" ที่ analyzer สรุปได้จากบทสนทนาเดียวลงตาราง reports คืน id ของเรื่องที่เก็บได้
 
     รับทีเดียวทั้งชุดเพราะ analyzer อ่านบทสนทนาจบแล้วค่อยสรุป ตอนนั้นมันรู้ครบแล้วว่ามีกี่เรื่อง
@@ -86,7 +99,102 @@ async def save_analyse (session_id: UUID, reports: list[ReportDraft]) -> list[UU
     await psql.create_and_save_log(
         PROCESS, f"บันทึกเรื่องของ session {session_id} แล้ว {len(saved)} จาก {len(reports)} เรื่อง"
     )
-    return saved
+    return SaveOutcome(requested=len(reports), saved=saved)
+
+
+def _nullable_enum (literal, description: str) -> dict:
+    """ปั้นช่องแบบ "เลือกหนึ่งค่าจากลิสต์ หรือไม่รู้ก็ null" ให้โมเดลอ่าน
+
+    ดึงค่าที่ใช้ได้จาก Literal ใน schemas/report.py ตรง ๆ ไม่พิมพ์ซ้ำไว้ที่นี่
+    พิมพ์ซ้ำเมื่อไหร่ วันที่มีคนเพิ่มชนิดปัญหาใหม่ใน schema แล้ว schema ฝั่งโมเดลจะไม่รู้เรื่องด้วย
+    ต้องใส่ null ทั้งใน type และใน enum เพราะ enum เป็นรายการค่าที่ผ่านทั้งหมด ไม่ใช่แค่ตอนที่มีค่า
+    """
+    return {
+        "type": ["string", "null"],
+        "enum": [*get_args(literal), None],
+        "description": description,
+    }
+
+
+SAVE_ANALYSE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "save_analyse",
+        "description": (
+            "บันทึกเรื่องที่สรุปได้จากบทสนทนาลงฐานข้อมูล ต้องเรียกทุกครั้งที่อ่านบทสนทนาจบ เรียกครั้งเดียว "
+            "ใส่ทุกเรื่องที่เจอลงในลิสต์ reports เรื่องละหนึ่งก้อน "
+            "บทสนทนาที่ไม่มีเรื่องสภาพพื้นที่เลย ก็ยังต้องเรียก โดยส่ง reports เป็นลิสต์ว่าง "
+            "การไม่เรียก tool นี้ถือว่าทำงานไม่สำเร็จ"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reports": {
+                    "type": "array",
+                    "description": "เรื่องทั้งหมดที่สรุปได้ เรื่องเดียวกันจุดเดียวกันรวมเป็นก้อนเดียว คนละจุดแยกก้อน ไม่มีเรื่องเลยให้ส่งลิสต์ว่าง",
+                    "items": {
+                        "type": "object",
+                        "description": "หนึ่งเรื่อง ช่องไหนเขาไม่ได้บอกให้ใส่ null ห้ามเดาแทน",
+                        "properties": {
+                            "title": {
+                                "type": ["string", "null"],
+                                "description": "หัวเรื่องสั้น ๆ ด้วยคำของเขาเอง เช่น น้ำท่วมขังหน้าปากซอย",
+                            },
+                            "type": _nullable_enum(
+                                ProblemType,
+                                "ชนิดของเรื่อง flood=น้ำท่วม heat=ความร้อน light=ไฟทาง other=อื่น ๆ",
+                            ),
+                            "threat": _nullable_enum(
+                                Threat,
+                                "ระดับความน่ากังวลเท่าที่ประเมินจากที่เขาเล่า not_relate=ไม่เกี่ยว low=น้อย mid=กลาง high=มาก",
+                            ),
+                            "frequency": _nullable_enum(
+                                Frequency,
+                                "เกิดบ่อยแค่ไหน always=ตลอด usually=ประจำ often=บ่อย subtle=นาน ๆ ที "
+                                "first_time=ครั้งแรก dont_know=เขาบอกว่าไม่รู้",
+                            ),
+                            "effect": {
+                                "type": ["string", "null"],
+                                "description": 'กระทบเขาหรือคนแถวนั้นยังไง เล่าด้วยคำของเขา ถามแล้วเขาบอกว่าไม่กระทบให้ใส่ "-"',
+                            },
+                            "is_has_image": {
+                                "type": ["boolean", "null"],
+                                "description": "เรื่องนี้มีรูปที่เขาส่งมาไหม true=มี false=ถามแล้วไม่มี null=ยังไม่ได้คุยเรื่องรูป",
+                            },
+                            "is_has_location": {
+                                "type": ["boolean", "null"],
+                                "description": "เรื่องนี้มีพิกัดที่เขาแชร์มาไหม true=มี false=ถามแล้วไม่มี null=ยังไม่ได้คุยเรื่องพิกัด",
+                            },
+                        },
+                    },
+                }
+            },
+            "required": ["reports"],
+        },
+    },
+}
+"""หน้าตาของ save_analyse ในสายตาโมเดล — ต้องเดินตาม Report/save_analyse เสมอ
+
+ไม่มี session_id ในนี้ตั้งใจ โมเดลไม่ได้ถือ id ของอะไรทั้งนั้น run_tool_calls เติมให้เองตอนเรียกจริง
+ให้มันกรอกมาเมื่อไหร่แปลว่าเราปล่อยให้มันเขียนทับ session ของคนอื่นได้ด้วยการเดา id
+"""
+
+SAVE_ANALYSE_PROTOCOL = """\
+# กติกาการตอบ (ระบบกำหนด ห้ามละเว้น)
+- ตอบด้วยการเรียก tool save_analyse หนึ่งครั้งเสมอ ทุกครั้งที่อ่านบทสนทนาจบ ไม่มีข้อยกเว้น
+- มีกี่เรื่องใส่ให้ครบใน reports ของการเรียกครั้งนั้น
+- ไม่มีเรื่องสภาพพื้นที่เลย ก็ยังต้องเรียก โดยส่ง {"reports": []} ห้ามสร้าง report เปล่ามากลบ
+- ห้ามตอบเป็นข้อความเปล่าแทนการเรียก tool ระบบไม่อ่านข้อความ รับเฉพาะ tool call
+- ช่องที่ชาวบ้านไม่ได้บอกให้ใส่ null ห้ามเดา และห้ามส่ง session_id หรือ status
+- ไม่เรียก tool ถือว่าทำงานไม่สำเร็จ ระบบจะสั่งให้อ่านใหม่ทั้งรอบ
+"""
+"""กติกาที่ต้องมีเสมอ ไม่ว่า prompt ที่ใช้จริงจะมาจากไหน
+
+prompt ของ analyzer มาจากแถว active ใน db ซึ่งอาจเป็นของเก่าที่เขียนไว้ก่อนมี tool calling
+ปล่อยให้ prompt เป็นคนบอกกติกานี้ทางเดียว วันที่ db ถือ prompt เก่าอยู่ ระบบจะวนลองสามครั้งแล้วล้มทุก session
+โค้ดเลยต้องเป็นคนเติมเอง ต่อท้าย prompt ที่โหลดมา ไม่ใช่แทนที่ — db ยังคุมน้ำเสียงกับวิธีแยกเรื่องได้ตามเดิม
+ซ้ำกับที่เขียนไว้ใน ANALYZER_PROMPT โดยตั้งใจ ของใน default_value ปรับได้ ของตัวนี้ปรับไม่ได้
+"""
 
 
 ## tool ของ resource analyzer ##
@@ -100,3 +208,103 @@ async def submit_resource_detail (image_id: UUID, desc: str) -> bool:
     if not ok:
         await psql.create_and_save_log(PROCESS, f"submit_resource_detail ไม่เจอรูป {image_id} ในฐาน")
     return ok
+
+ANALYZER_TOOLS = {
+    "save_analyse": save_analyse,
+}
+"""ชื่อ tool ที่ analyzer เรียกได้จริง — ชื่อที่ไม่อยู่ในนี้คือเรียกไม่ได้
+
+ตัวที่อยู่ในนี้ต้องรับ session_id เป็นตัวแรก และคืน SaveOutcome บอกว่าถูกสั่งมากี่เรื่องเก็บได้กี่เรื่อง
+พังระหว่างทางให้โยน exception ออกมา run_tool_calls นับเป็นรอบที่ล้มให้เอง
+"""
+
+
+class ToolRunOutcome (NamedTuple):
+    """ผลรวมของการทำตามคำสั่งทั้งชุดในหนึ่งตาของโมเดล
+
+    มีสี่ตัวเลขเพราะคนเรียกต้องตอบคำถามเดียวให้ได้ — "รอบนี้ถือว่าวิเคราะห์เสร็จหรือต้องให้มันลองใหม่"
+    นับแต่ saved ตอบไม่ได้ เพราะ 0 เกิดได้ทั้งจาก "ไม่มีเรื่องจะเก็บ" กับ "เก็บไม่ลง"
+    อันแรกคือจบงาน อันหลังคือยังไม่ได้เริ่ม
+    """
+
+    executed: int    # tool call ที่เดินจนจบโดยไม่มี exception
+    failed: int      # tool call ที่เรียกไม่ได้หรือพังกลางทาง
+    requested: int   # เรื่องที่โมเดลสั่งให้เก็บ รวมทุก tool call
+    saved: int       # เรื่องที่ลงฐานได้จริง
+
+    @property
+    def is_success (self) -> bool:
+        """รอบนี้ถือว่าวิเคราะห์เสร็จแล้วไหม — เสร็จแล้วปิด session ไม่เสร็จก็ให้โมเดลอ่านใหม่ทั้งรอบ
+
+        เสร็จคือ "เก็บได้ครบตามที่สั่งมา" ไม่ใช่ "เก็บได้บ้าง"
+        สั่งมา 2 เก็บได้ 1 แล้วปิดไปเลย เรื่องที่ตกจะไม่มีใครกลับมาเก็บอีกตลอดกาล
+        ลองใหม่แล้วได้เรื่องที่เก็บไปแล้วซ้ำ ยอมได้ ข้อมูลซ้ำมีคนมานั่งรวมทีหลังได้ ข้อมูลตกไม่มี
+
+        ไม่มี tool ไหนเดินจนจบ = ยังไม่ได้ทำอะไรเลย ต้องลองใหม่
+        มีตัวไหนพังปนมา = ทำได้ไม่ครบ ต้องลองใหม่ ถึงตัวอื่นจะผ่าน
+        เดินจนจบครบแต่เก็บได้ไม่ครบที่สั่ง = โมเดลกรอกค่าผิดบางเรื่อง ต้องให้เขียนใหม่ทั้งชุด
+        ถูกสั่งมา 0 เรื่องพอดี = อ่านแล้วไม่มีเรื่องจริง ๆ นับว่าครบ จบได้
+        """
+        if not self.executed or self.failed:
+            return False
+        return self.saved == self.requested
+
+
+async def run_tool_calls (session_id: UUID, tool_calls: list) -> ToolRunOutcome:
+    """ทำตามที่โมเดลสั่งมาทีละรายการ คืนผลรวมว่าทำได้แค่ไหน
+
+    คนเรียกคือตัวปิด session ที่รันอยู่หลังบ้าน ไม่มีใครนั่งดู เลยต้องไม่มีทางโยน exception ออกไป
+    รายการไหนอ่านไม่ออกก็ log แล้วนับเป็นรายการที่ล้ม ที่เหลือยังทำต่อ
+
+    ตัวเลขที่คืนคือของที่เกิดขึ้นจริง ไม่ใช่คำพูดของโมเดล
+    มันสั่งมาสามเรื่องแล้วผ่านสองก็คืน saved=2 requested=3
+    """
+    executed = failed = requested = saved = 0
+
+    for call in tool_calls or []:
+        function = call.get("function") if isinstance(call, dict) else None
+        if not isinstance(function, dict):
+            await psql.create_and_save_log(PROCESS, f"session {session_id} สั่ง tool มาในรูปที่อ่านไม่ออก {call}")
+            failed += 1
+            continue
+
+        name = function.get("name")
+        handler = ANALYZER_TOOLS.get(name)
+        if handler is None:
+            await psql.create_and_save_log(PROCESS, f"session {session_id} สั่ง tool ชื่อ {name} ที่ไม่มีสิทธิ์เรียก ข้ามไป")
+            failed += 1
+            continue
+
+        # ส่วนใหญ่ arguments มาเป็นสตริง json ตามมาตรฐาน openai แต่บาง provider คืนเป็นก้อนมาเลย รับทั้งสองแบบ
+        raw = function.get("arguments")
+        if isinstance(raw, str):
+            try:
+                arguments = json.loads(raw)
+            except (ValueError, TypeError) as error:
+                await psql.create_and_save_log(PROCESS, f"session {session_id} สั่ง {name} มาด้วย arguments ที่ไม่ใช่ json {error}")
+                failed += 1
+                continue
+        else:
+            arguments = raw
+
+        if not isinstance(arguments, dict):
+            await psql.create_and_save_log(PROCESS, f"session {session_id} สั่ง {name} มาด้วย arguments ที่ไม่ใช่ก้อนข้อมูล {type(arguments).__name__}")
+            failed += 1
+            continue
+
+        # id ของ session มาจากคนที่สั่งปิด ไม่ใช่จากโมเดล มันกรอกมาก็ทิ้ง ไม่ต้องบอกมันด้วยซ้ำ
+        arguments.pop("session_id", None)
+
+        # ฐานล่มมาลงตรงนี้เหมือนกัน นับเป็นรอบที่ล้มเพื่อให้คนเรียกพาไปลองใหม่ ไม่ใช่ปิดทิ้ง
+        try:
+            outcome = await handler(session_id, **arguments)
+        except Exception as error:
+            await psql.create_and_save_log(PROCESS, f"session {session_id} เรียก {name} แล้วพัง {type(error).__name__} {error}")
+            failed += 1
+            continue
+
+        executed += 1
+        requested += outcome.requested
+        saved += len(outcome.saved)
+
+    return ToolRunOutcome(executed=executed, failed=failed, requested=requested, saved=saved)

@@ -5,10 +5,14 @@ from app.clients import psql, redis, line as line_cli, storage, typhoon
 from app.schemas.report import AiResponse, Image, Location, Message, Session
 from app.schemas.turn import Turn
 from app.schemas.user import User
-from app.services import ai
+from app.services import ai, ai_tools
 from app.services.config import system_config
 
 PROCESS = "services.chatbot"
+
+# ลองวิเคราะห์ได้กี่ครั้งในการปิดหนึ่งรอบ ครบแล้วเลิกลอง ไม่ปล่อยให้ session เดียวกินเวลาตัวกวาดไม่จบ
+# ไม่อยู่ใน default_value เพราะไม่ใช่ของที่แอดมินปรับระหว่างแอปรัน
+ANALYSER_MAX_ATTEMPTS = 3
 
 
 async def handle (req):
@@ -136,8 +140,18 @@ async def is_session_finished(redis_key: str) -> bool:
     return session is not None and session.is_finished
 
 
-async def close_session(redis_key: str) -> str | None:
-    """ปิดบทสนทนาหนึ่งรอบแล้วส่งให้ analyzer อ่าน — เรียกจาก runtime ตอนใกล้หมดอายุ"""
+async def close_session(redis_key: str) -> int | None:
+    """ปิดบทสนทนาหนึ่งรอบ ให้ analyzer อ่าน แล้วลงมือบันทึกตามที่มันสั่ง — เรียกจาก runtime ตอนใกล้หมดอายุ
+
+    คืนจำนวนเรื่องที่บันทึกได้ หรือ None เมื่อวิเคราะห์ไม่สำเร็จ ตัวกวาดนับ "ปิดไปกี่ session" จาก None/ไม่ None
+    ศูนย์เรื่องก็ยังนับว่าปิดแล้ว เพราะบทสนทนาที่ไม่มีเรื่องจริงก็ต้องจบ ไม่ใช่วนวิเคราะห์ใหม่ทุกรอบกวาด
+
+    ลองได้ถึง ANALYSER_MAX_ATTEMPTS ครั้งในการเรียกครั้งเดียว ครบแล้วปักเป็น analysis_failed แล้วเลิกลองถาวร
+    ไม่ปล่อยให้ตัวกวาดมาลองใหม่ทุกสองนาที เพราะรอบที่ล้มเพราะโมเดลกรอกค่าผิด รอไปก็ผิดเหมือนเดิม
+
+    การลงมือทำตาม tool อยู่ที่นี่ ไม่ใช่ใน ai.py เพราะคนที่ถือ session อยู่คือคนนี้
+    และไม่ใช่ใน runtime.py เพราะนั่นมีหน้าที่แค่หาว่า session ไหนถึงคิวปิด
+    """
     session_id, _ = await load_session_from_redis(redis_key)
     if session_id is None:
         return None            # หมดอายุเองไปแล้วระหว่างทาง ไม่มีอะไรให้ปิด
@@ -149,21 +163,49 @@ async def close_session(redis_key: str) -> str | None:
 
     await psql.set_session_status(session_id, "pending")
 
-    result, _ = await ai.analyzer(session_id)
-    if result is None:
-        # คืนสถานะ ไม่งั้นมันค้างเป็น pending แล้วรอบกวาดถัดไปจะข้ามตลอดไป
-        await psql.set_session_status(session_id, "not_analyzed")
-        print("close_session: วิเคราะห์ไม่สำเร็จ คืนของ ยังไม่ปิด", session_id)
-        return None
+    # ลองใหม่ทั้งรอบ ไม่ใช่แค่ยิงซ้ำ เพราะรอบที่ล้มส่วนใหญ่ล้มที่โมเดลกรอกค่าผิด ไม่ใช่ที่สายขาด
+    # ยิงคำสั่งเดิมซ้ำก็ได้ค่าผิดชุดเดิม ต้องให้มันอ่านบทสนทนาแล้วเขียนคำสั่งใหม่ทั้งอัน
+    for attempt in range(1, ANALYSER_MAX_ATTEMPTS + 1):
+        # None คือยังไม่ได้วิเคราะห์จริง ต่างจากลิสต์ว่างที่แปลว่าโมเดลตอบแล้วแต่ไม่ยอมเรียก tool
+        # ลิสต์ว่างก็นับเป็นรอบที่ล้มเหมือนกัน เพราะกติกาคือต้องเรียก save_analyse เสมอ
+        # ไม่มีเรื่องให้เก็บมันต้องบอกด้วยการส่ง reports ว่างมา ไม่ใช่ด้วยการเงียบ
+        tool_calls, _ = await ai.analyzer(session_id)
 
-    await psql.set_session_status(session_id, "analyzed")
+        if tool_calls is not None:
+            outcome = await ai_tools.run_tool_calls(session_id, tool_calls)
+            if outcome.is_success:
+                await psql.set_session_status(session_id, "analyzed")
+                await redis.delete_session(redis_key)
+                await psql.create_and_save_log(
+                    PROCESS,
+                    f"ปิด session {session_id} แล้ว บันทึกได้ {outcome.saved} เรื่อง ในครั้งที่ {attempt}",
+                )
+                print("close_session: ปิดแล้ว", session_id, "บันทึกได้", outcome.saved, "เรื่อง")
+                return outcome.saved
+
+            detail = f"สั่งมา {outcome.requested} เรื่อง เก็บได้ {outcome.saved} tool ที่ทำได้ {outcome.executed} ที่ล้ม {outcome.failed}"
+        else:
+            detail = "โมเดลไม่ตอบหรือตอบมาในรูปที่ใช้ไม่ได้"
+
+        await psql.create_and_save_log(
+            PROCESS, f"session {session_id} วิเคราะห์ครั้งที่ {attempt}/{ANALYSER_MAX_ATTEMPTS} ไม่สำเร็จ — {detail}"
+        )
+        print("close_session: วิเคราะห์ไม่สำเร็จ", session_id, "ครั้งที่", attempt, detail)
+
+    # ครบโควตาแล้วยังไม่ได้เรื่อง — เลิกลองรอบนี้ และเลิกลองรอบหน้าด้วย
+    # analyzed ไม่ได้เพราะไม่มีใครอ่านสำเร็จ not_analyzed ก็ไม่ได้เพราะจะปนกับของที่ยังไม่ถึงคิว
+    # ต้องเป็นป้ายของตัวเอง คนมาตามเก็บทีหลังจะได้ query หาแถวที่ควรไปนั่งดูได้ตรง ๆ
+    # แล้วลบ redis ทิ้ง ไม่งั้นตัวกวาดเจอ key เดิมทุกสองนาทีแล้วลองใหม่อีกสามครั้งไปเรื่อย ๆ จนหมดอายุ
+    # บทสนทนายังอยู่ครบใน postgres ทั้ง messages และ ai_responses ตามเก็บทีหลังได้
+    await psql.set_session_status(session_id, "analysis_failed")
     await redis.delete_session(redis_key)
-    await psql.create_and_save_log(PROCESS, f"ปิด session {session_id} แล้ว")
-
-    # รอบนี้ยังไม่มีที่เก็บผลวิเคราะห์ ลง log ไว้ก่อนให้เห็นว่า analyzer อ่านออกมาได้อะไร
-    await psql.create_and_save_log(PROCESS, f"ผลวิเคราะห์ session {session_id}: {result}")
-    print("close_session: ผลวิเคราะห์", session_id, "\n" + result)
-    return result
+    await psql.create_and_save_log(
+        PROCESS,
+        f"ANALYSIS_FAILED session {session_id} ลองครบ {ANALYSER_MAX_ATTEMPTS} ครั้งแล้วยังวิเคราะห์ไม่ได้ "
+        f"เลิกลอง ปักสถานะ analysis_failed บทสนทนายังอยู่ในฐาน",
+    )
+    print("close_session: ANALYSIS_FAILED", session_id, "ลองครบ", ANALYSER_MAX_ATTEMPTS, "ครั้ง")
+    return None
 
 
 async def get_or_create_user(line_user_id: str) -> User:

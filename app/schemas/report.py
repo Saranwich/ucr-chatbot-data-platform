@@ -13,7 +13,13 @@ from pydantic import BaseModel, Field
 
 from app.schemas.ai_config import AgentName
 
-Status = Literal["not_analyzed", "pending", "analyzed"]
+ReportStatus = Literal["not_analyzed", "pending", "analyzed"]
+SessionStatus = Literal["not_analyzed", "pending", "analyzed", "analysis_failed"]
+"""สองตัวนี้เคยเป็นตัวเดียวกัน แยกตอนที่ session ต้องมีปลายทาง "อ่านไม่ได้" ที่ report ไม่มี
+
+report เกิดขึ้นได้ก็ต่อเมื่อวิเคราะห์สำเร็จแล้ว มันเลยไม่มีสถานะของความล้มเหลว
+ใช้ตัวเดียวกันต่อแปลว่าเปิดช่องให้เขียน analysis_failed ลงแถว report ซึ่งไม่มีความหมาย
+"""
 ProblemType = Literal["flood", "heat", "light", "other"]
 Threat = Literal["not_relate", "low", "mid", "high"]
 Frequency = Literal["always", "usually", "often", "subtle", "first_time", "dont_know"]
@@ -29,7 +35,7 @@ class Report(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     created_at: datetime = Field(default_factory=datetime.now)
-    status: Status = "not_analyzed"
+    status: ReportStatus = "not_analyzed"
     session_id: UUID                    # บทสนทนารอบที่เรื่องนี้โผล่ขึ้นมา
     title: str | None = None
     type: ProblemType | None = None
@@ -76,7 +82,10 @@ class Session(BaseModel):
 
     status กันตัวกวาดหยิบรอบเดียวกันไปวิเคราะห์ซ้อนกัน
     pending = มีคนกำลังวิเคราะห์อยู่ ใครมาเจอทีหลังให้ข้ามไป
-    วิเคราะห์พังกลับไปเป็น not_analyzed เพื่อให้รอบกวาดถัดไปลองใหม่ได้
+    วิเคราะห์พังระหว่างทางกลับไปเป็น not_analyzed เพื่อให้ลองใหม่ได้ในรอบเดียวกัน
+    analysis_failed = ลองครบโควตาแล้วยังอ่านไม่ได้ เลิกลองถาวร ไม่ใช่ของที่รอคิวอยู่
+    ต้องแยกจาก not_analyzed เพราะสองอันนี้ต่างกันที่ "ยังไม่ถึงคิว" กับ "ถึงคิวแล้วแต่ทำไม่ได้"
+    ยุบรวมกันเมื่อไหร่ คนมาตามเก็บทีหลังจะแยกไม่ออกว่าแถวไหนควรไปนั่งดู
 
     is_finished คนละเรื่องกับ status — status บอกว่าวิเคราะห์ไปถึงไหน
     is_finished บอกว่าชาวบ้านเล่าจบแล้ว ตัวกวาดจะปิดให้เลยไม่ต้องรอเงียบครบเวลา
@@ -85,7 +94,7 @@ class Session(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     user_id: UUID
-    status: Status = "not_analyzed"
+    status: SessionStatus = "not_analyzed"
     is_finished: bool = False   # ai_tools.set_finished_flag ปัก/ถอนตามที่ communicator อ่านได้
     created_at: datetime = Field(default_factory=datetime.now)
 

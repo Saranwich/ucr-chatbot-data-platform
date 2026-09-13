@@ -91,7 +91,7 @@ async def init_db() -> None:
         CREATE TABLE IF NOT EXISTS sessions (
             id          uuid        PRIMARY KEY,
             user_id     uuid        NOT NULL,
-            status      text        NOT NULL,   -- not_analyzed | pending | analyzed
+            status      text        NOT NULL,   -- not_analyzed | pending | analyzed | analysis_failed
             is_finished boolean     NOT NULL,   -- ชาวบ้านบอกว่าเล่าจบแล้ว ตัวกวาดปิดได้เลยไม่ต้องรอเงียบ
             created_at  timestamptz NOT NULL
         )

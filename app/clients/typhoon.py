@@ -1,3 +1,10 @@
+"""ตัวต่อสายไปหา typhoon — endpoint เดียว /chat/completions แต่เรียกได้สองแบบ
+
+chat() ใช้ตอนคุยกับชาวบ้าน อยากได้แค่ข้อความที่มันเขียนออกมา
+chat_with_tools() ใช้ตอนให้โมเดลสั่งงานแอป ต้องคืน message ทั้งก้อนเพราะ tool_calls อยู่ข้าง ๆ content
+สองตัวใช้ body คนละหน้าตาแต่ยิงที่เดียวกัน เลยแยกตัวยิงออกมาเป็นตัวกลางให้ใช้ร่วมกัน
+"""
+
 import httpx
 
 from app.clients import psql
@@ -8,14 +15,13 @@ PROCESS_NAME = "clients.typhoon" #use for logs
 TIMEOUT = 30
 
 
-async def chat (messages: list[dict], model: str, temperature: float, max_tokens: int) -> str | None:
+async def _post_chat_completions (body: dict) -> dict | None:
+    """ยิง body ที่ปั้นเสร็จแล้วไปที่ /chat/completions คืน json ทั้งก้อน ไม่ 200 ก็ log แล้วคืน None
+
+    ตัวนี้ไม่แกะ choices ให้ เพราะคนเรียกสองคนอยากได้คนละชิ้นจากก้อนเดียวกัน
+    ไม่ครอบ try ไว้ที่นี่ ให้ httpx โยนขึ้นไปตามเดิม คนเรียกแต่ละคนตัดสินใจเองว่าจะรับหรือปล่อย
+    """
     headers = {"Authorization": f"Bearer {TYPHOON_API_KEY}"}
-    body = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
 
     async with httpx.AsyncClient(timeout=TIMEOUT) as cli:
         resp = await cli.post(
@@ -28,4 +34,71 @@ async def chat (messages: list[dict], model: str, temperature: float, max_tokens
         )
         return None
     #log ด้วย
-    return resp.json()["choices"][0]["message"]["content"]
+    return resp.json()
+
+
+async def chat (messages: list[dict], model: str, temperature: float, max_tokens: int) -> str | None:
+    """ถามโมเดลเอาข้อความเปล่า ๆ หนึ่งก้อน — ทางที่ communicator ใช้อยู่"""
+    body = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    data = await _post_chat_completions(body)
+    if data is None:
+        return None
+
+    return data["choices"][0]["message"]["content"]
+
+
+async def chat_with_tools (
+    messages: list[dict],
+    tools: list[dict],
+    model: str,
+    temperature: float,
+    max_tokens: int,
+) -> dict | None:
+    """ถามโมเดลโดยยื่นรายการ tool ให้เลือกใช้ คืน message ทั้งก้อน พังก็คืน None
+
+    ห้ามคืนแต่ content เพราะของที่คนเรียกอยากได้จริงคือ tool_calls ที่อยู่ในก้อนเดียวกัน
+    รอบที่มันสั่ง tool ช่อง content มักว่างหรือเป็น None การคืน content อย่างเดียวจะกลายเป็น "ไม่ตอบ"
+    tool_choice=auto ตาม openai-compatible ที่ typhoon รับแน่ ๆ ไม่ได้แปลว่าไม่เรียกก็ได้
+    คนเรียกฝั่งเราบังคับเองว่าต้องเรียกทุกครั้ง ไม่เรียกคือรอบที่ล้ม แล้วพาไปอ่านใหม่
+    ไม่ใช้ required เพราะยังไม่ได้ยืนยันว่า typhoon รองรับ ส่งไปแล้วถูกปฏิเสธทั้ง request จะแย่กว่า
+    และรอบที่มันเงียบเรายังได้ content กลับมาอ่านว่ามันเข้าใจงานผิดตรงไหน ซึ่ง required ไม่ให้
+
+    ตัวนี้ครอบ try ไว้ ต่างจาก chat() เพราะคนเรียกคือตัวกวาดที่รันอยู่หลังบ้าน
+    เน็ตสะดุดครั้งเดียวแล้วโยนทะลุขึ้นไป session จะค้างสถานะ pending ไปตลอด ไม่มีใครมาลองใหม่
+    """
+    body = {
+        "model": model,
+        "messages": messages,
+        "tools": tools,
+        "tool_choice": "auto",
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    # ValueError กิน json.JSONDecodeError ด้วย — 200 แต่ตัว body ไม่ใช่ json ก็มาลงตรงนี้
+    try:
+        data = await _post_chat_completions(body)
+    except (httpx.HTTPError, ValueError) as error:
+        await psql.create_and_save_log(PROCESS_NAME, f"typhoon ยิงไม่ถึง {type(error).__name__} {error}")
+        return None
+
+    if data is None:
+        return None
+
+    try:
+        message = data["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError) as error:
+        await psql.create_and_save_log(PROCESS_NAME, f"typhoon ตอบมาในรูปที่อ่านไม่ออก {type(error).__name__} {error}")
+        return None
+
+    if not isinstance(message, dict):
+        await psql.create_and_save_log(PROCESS_NAME, f"typhoon ตอบ message ที่ไม่ใช่ก้อนข้อมูล {type(message).__name__}")
+        return None
+
+    return message

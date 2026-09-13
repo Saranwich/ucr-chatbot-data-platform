@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.api import line
 from app.clients import psql, redis
+from app.services import runtime
 from app.services.config import ai_config, system_config
 
 
@@ -14,6 +15,7 @@ async def lifespan(app: FastAPI):
     await ai_config.reload()
     await system_config.reload()
     app.state.redis = await redis.init_redis()
+    runtime.start()
     print("app opened")
     try:
         yield
@@ -21,6 +23,7 @@ async def lifespan(app: FastAPI):
     finally:
 
     # --- shutdown ---
+        await runtime.stop()
         await psql.close_pool()
         await redis.close_client()
         print("app closed")

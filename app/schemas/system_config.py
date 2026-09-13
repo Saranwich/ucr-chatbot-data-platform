@@ -2,7 +2,11 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.core.default_value import DEFAULT_SESSION_TTL_SECONDS
+from app.core.default_value import (
+    DEFAULT_CLOSE_WHEN_TTL_UNDER_SECONDS,
+    DEFAULT_SESSION_TTL_SECONDS,
+    DEFAULT_SWEEP_INTERVAL_SECONDS,
+)
 
 
 class SystemConfig(BaseModel, frozen=True):
@@ -17,3 +21,5 @@ class SystemConfig(BaseModel, frozen=True):
     note: str | None = None                       # เปลี่ยนแถวนี้เพราะอะไร
 
     session_ttl_seconds: int = Field(DEFAULT_SESSION_TTL_SECONDS, gt=0)  # เงียบไปนานเท่านี้ บอทลืมบทสนทนา
+    close_when_ttl_under_seconds: int = Field(DEFAULT_CLOSE_WHEN_TTL_UNDER_SECONDS, gt=0)  # เหลืออายุน้อยกว่านี้ ตัวกวาดชิงปิด
+    sweep_interval_seconds: int = Field(DEFAULT_SWEEP_INTERVAL_SECONDS, gt=0)              # ตัวกวาดวนมาทุกกี่วินาที

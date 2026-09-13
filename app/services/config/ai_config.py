@@ -31,6 +31,8 @@ async def reload() -> AiConfig:
             if row["prompt_id"] is not None:
                 await psql.create_and_save_log(PROCESS, f"ai_configuration id {row['id']} ชี้ไป prompt id {row['prompt_id']} ที่ไม่มี ใช้ prompt default")
             row["prompt"] = DEFAULT_AGENT_CONFIG.get(row["agent"], {}).get("prompt", "")
+            # ล้าง prompt_id ให้ตรงกับของที่ใช้จริง — ชี้ค้างไว้แล้วล็อกจะรายงานว่าใช้ prompt แถวนั้นทั้งที่ไม่ได้ใช้
+            row["prompt_id"] = None
         try:
             config = AgentConfig(**row)
         except ValidationError as e:
@@ -50,7 +52,7 @@ async def reload() -> AiConfig:
 
     _current = AiConfig(**loaded)
     summary = ", ".join(
-        f"{name}=id {cfg.id if cfg.id is not None else 'default'} prompt {_prompt_label(name, cfg)}"
+        f"{name}=id {cfg.id if cfg.id is not None else 'default'} prompt {_prompt_label(cfg)}"
         for name, cfg in _current
     )
     await psql.create_and_save_log(PROCESS, f"โหลด ai config {summary}")
@@ -58,8 +60,9 @@ async def reload() -> AiConfig:
     return _current
 
 
-def _prompt_label(agent: str, config: AgentConfig) -> str:
-    """prompt_id ว่าง หรือเนื้อตรงกับ default (กรณีชี้ไป id ที่ไม่มี) = default"""
-    if config.prompt_id is None or config.prompt == DEFAULT_AGENT_CONFIG[agent]["prompt"]:
-        return "default"
-    return str(config.prompt_id)
+def _prompt_label(config: AgentConfig) -> str:
+    """prompt มาจากแถวไหน — ว่าง = ไม่ได้มาจากฐาน ใช้ default ใน core/default_value.py
+
+    ห้ามตัดสินจากเนื้อ prompt เพราะแอดมินยก default ขึ้นฐานแล้วเนื้อจะตรงกัน ทั้งที่มาจากฐานจริง
+    """
+    return "default" if config.prompt_id is None else str(config.prompt_id)

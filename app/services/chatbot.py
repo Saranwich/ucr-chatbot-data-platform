@@ -93,7 +93,7 @@ async def handle_user_events(line_user_id: str, events: list[dict]) -> None:
     print("chatbot ปั้นของให้ LLM:", user.id, reply_token, session)
 
     # send to ai
-    resp, agent_config = await ai.communicator_reply(session)
+    resp, tool_calls, agent_config = await ai.communicator_reply(session)
 
     # verify ai response
     if resp is None:
@@ -115,6 +115,9 @@ async def handle_user_events(line_user_id: str, events: list[dict]) -> None:
 
     # replie message to user via line pltform
     await line_cli.replie(reply_token, [resp])
+
+    # tool บอกความตั้งใจว่าจะปิด แต่ลงมือหลังตอบ LINE แล้ว ป้องกัน runtime ปิด session กลางทาง
+    await ai_tools.run_communicator_tool_calls(session_id, tool_calls)
     print("ส่งข้อความกลับไปแล้ว")
 
 

@@ -1,6 +1,6 @@
 """ตัวต่อสายไปหา typhoon — endpoint เดียว /chat/completions แต่เรียกได้สองแบบ
 
-chat() ใช้ตอนคุยกับชาวบ้าน อยากได้แค่ข้อความที่มันเขียนออกมา
+chat() เป็นทางข้อความล้วนสำหรับ caller ที่ไม่ใช้ tool
 chat_with_tools() ใช้ตอนให้โมเดลสั่งงานแอป ต้องคืน message ทั้งก้อนเพราะ tool_calls อยู่ข้าง ๆ content
 สองตัวใช้ body คนละหน้าตาแต่ยิงที่เดียวกัน เลยแยกตัวยิงออกมาเป็นตัวกลางให้ใช้ร่วมกัน
 """
@@ -59,15 +59,14 @@ async def chat_with_tools (
     model: str,
     temperature: float,
     max_tokens: int,
+    tool_choice: str | dict = "auto",
 ) -> dict | None:
     """ถามโมเดลโดยยื่นรายการ tool ให้เลือกใช้ คืน message ทั้งก้อน พังก็คืน None
 
     ห้ามคืนแต่ content เพราะของที่คนเรียกอยากได้จริงคือ tool_calls ที่อยู่ในก้อนเดียวกัน
     รอบที่มันสั่ง tool ช่อง content มักว่างหรือเป็น None การคืน content อย่างเดียวจะกลายเป็น "ไม่ตอบ"
-    tool_choice=auto ตาม openai-compatible ที่ typhoon รับแน่ ๆ ไม่ได้แปลว่าไม่เรียกก็ได้
-    คนเรียกฝั่งเราบังคับเองว่าต้องเรียกทุกครั้ง ไม่เรียกคือรอบที่ล้ม แล้วพาไปอ่านใหม่
-    ไม่ใช้ required เพราะยังไม่ได้ยืนยันว่า typhoon รองรับ ส่งไปแล้วถูกปฏิเสธทั้ง request จะแย่กว่า
-    และรอบที่มันเงียบเรายังได้ content กลับมาอ่านว่ามันเข้าใจงานผิดตรงไหน ซึ่ง required ไม่ให้
+    tool_choice เลือกได้ตามงาน: analyzer ใช้ auto แล้วตรวจเอง ส่วน communicator ใช้ required
+    เพื่อบังคับคืน boolean ทุกตา และใช้ none ในรอบตอบหลัง tool ทำงาน
 
     ตัวนี้ครอบ try ไว้ ต่างจาก chat() เพราะคนเรียกคือตัวกวาดที่รันอยู่หลังบ้าน
     เน็ตสะดุดครั้งเดียวแล้วโยนทะลุขึ้นไป session จะค้างสถานะ pending ไปตลอด ไม่มีใครมาลองใหม่
@@ -76,7 +75,7 @@ async def chat_with_tools (
         "model": model,
         "messages": messages,
         "tools": tools,
-        "tool_choice": "auto",
+        "tool_choice": tool_choice,
         "temperature": temperature,
         "max_tokens": max_tokens,
     }

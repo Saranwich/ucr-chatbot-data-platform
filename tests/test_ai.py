@@ -126,39 +126,88 @@ class AnalyzerTest (unittest.IsolatedAsyncioTestCase):
 
 
 class CommunicatorReplyTest (unittest.IsolatedAsyncioTestCase):
-    """ทางคุยกับชาวบ้านห้ามเปลี่ยน — ยังยิงผ่าน chat() เปล่า ๆ และไม่รู้จัก tool ใด ๆ"""
+    """communicator คุยตามเดิม และเปิด tool สำหรับปักธงจบโดยไม่ลงมือเอง"""
 
     def setUp (self):
         self.log = patch_log(ai).start()
-        self.chat = patch.object(ai.typhoon, "chat", new=AsyncMock(return_value="สวัสดีค่ะ")).start()
-        self.chat_with_tools = patch.object(ai.typhoon, "chat_with_tools", new=AsyncMock()).start()
+        self.chat = patch.object(ai.typhoon, "chat", new=AsyncMock()).start()
+        self.tool_call_false = {
+            "id": "finish_false",
+            "type": "function",
+            "function": {"name": "set_finished_flag", "arguments": '{"is_finished": false}'},
+        }
+        self.chat_with_tools = patch.object(
+            ai.typhoon,
+            "chat_with_tools",
+            new=AsyncMock(side_effect=[
+                {"role": "assistant", "content": None, "tool_calls": [self.tool_call_false]},
+                {"role": "assistant", "content": "สวัสดีค่ะ", "tool_calls": []},
+            ]),
+        ).start()
         self.addCleanup(patch.stopall)
 
     async def test_ยังคืนข้อความกับ_config_เหมือนเดิม (self):
-        reply, config = await ai.communicator_reply(CONVERSATION)
+        reply, tool_calls, config = await ai.communicator_reply(CONVERSATION)
 
         self.assertEqual(reply, "สวัสดีค่ะ")
+        self.assertEqual(tool_calls, [self.tool_call_false])
         self.assertEqual(config.agent, "communicator")
 
-    async def test_ไม่แตะทาง_tool_calling (self):
+    async def test_ส่ง_tool_ปักธงจบและไม่ใช้_chat_ทางเก่า (self):
         await ai.communicator_reply(CONVERSATION)
 
-        self.chat.assert_awaited_once()
-        self.chat_with_tools.assert_not_awaited()
+        tools = self.chat_with_tools.await_args_list[0].args[1]
+        self.assertEqual([tool["function"]["name"] for tool in tools], ["set_finished_flag"])
+        self.assertIn(ai.SET_FINISHED_PROTOCOL, self.chat_with_tools.await_args_list[0].args[0][0]["content"])
+        self.assertEqual(self.chat_with_tools.await_args_list[0].kwargs["tool_choice"], "required")
+        self.chat.assert_not_awaited()
 
     async def test_ส่งบทสนทนาเป็นหลายตาเหมือนเดิม (self):
         """analyzer ยุบเป็นก้อนเดียว แต่ communicator ต้องยังส่งทีละตา"""
         await ai.communicator_reply(CONVERSATION)
 
-        messages = self.chat.await_args.args[0]
+        messages = self.chat_with_tools.await_args_list[0].args[0]
         self.assertEqual([m["role"] for m in messages], ["system", "user", "assistant"])
 
-    async def test_โมเดลไม่ตอบ_ยังคืน_None (self):
-        self.chat.return_value = None
+    async def test_มี_tool_call_ส่งผลกลับแล้วคืนข้อความรอบสอง (self):
+        tool_call = {
+            "id": "finish_1",
+            "type": "function",
+            "function": {"name": "set_finished_flag", "arguments": '{"is_finished": true}'},
+        }
+        self.chat_with_tools.side_effect = [
+            {"role": "assistant", "content": None, "tool_calls": [tool_call]},
+            {"role": "assistant", "content": "ขอบคุณที่มาเล่าให้ฟังนะคะ", "tool_calls": []},
+        ]
 
-        reply, _ = await ai.communicator_reply(CONVERSATION)
+        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
+
+        self.assertEqual(reply, "ขอบคุณที่มาเล่าให้ฟังนะคะ")
+        self.assertEqual(tool_calls, [tool_call])
+        followup = self.chat_with_tools.await_args_list[1].args[0]
+        self.assertEqual(followup[-2]["tool_calls"], [tool_call])
+        self.assertEqual(followup[-1]["role"], "tool")
+        self.assertEqual(followup[-1]["tool_call_id"], "finish_1")
+        self.assertEqual(self.chat_with_tools.await_args_list[0].kwargs["tool_choice"], "required")
+        self.assertEqual(self.chat_with_tools.await_args_list[1].kwargs["tool_choice"], "none")
+
+    async def test_โมเดลไม่ตอบ_ยังคืน_None (self):
+        self.chat_with_tools.side_effect = None
+        self.chat_with_tools.return_value = None
+
+        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
 
         self.assertIsNone(reply)
+        self.assertEqual(tool_calls, [])
+
+    async def test_required_แต่ไม่เรียก_tool_ถือว่าไม่ตอบ (self):
+        self.chat_with_tools.side_effect = None
+        self.chat_with_tools.return_value = {"role": "assistant", "content": "จบแล้วค่ะ", "tool_calls": []}
+
+        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
+
+        self.assertIsNone(reply)
+        self.assertEqual(tool_calls, [])
 
 
 if __name__ == "__main__":

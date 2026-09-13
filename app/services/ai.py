@@ -3,7 +3,12 @@ from uuid import UUID
 from app.clients import psql, typhoon
 from app.schemas.ai_config import AgentConfig
 from app.schemas.turn import Turn
-from app.services.ai_tools import SAVE_ANALYSE_PROTOCOL, SAVE_ANALYSE_TOOL
+from app.services.ai_tools import (
+    SAVE_ANALYSE_PROTOCOL,
+    SAVE_ANALYSE_TOOL,
+    SET_FINISHED_FLAG_TOOL,
+    SET_FINISHED_PROTOCOL,
+)
 from app.services.config import ai_config
 
 PROCESS = "services.ai"
@@ -18,30 +23,83 @@ def chatbot_session_to_messages (session: list[Turn]) -> list[dict]:
     return [{"role": turn.role, "content": turn.content} for turn in session]
 
 
-async def communicator_reply (session: list[Turn]) -> tuple[str | None, AgentConfig]:
-    """ถามโมเดลว่าจะตอบอะไร — ตอนนี้มี provider เดียวคือ typhoon
+async def communicator_reply (session: list[Turn]) -> tuple[str | None, list[dict], AgentConfig]:
+    """ถามโมเดลว่าจะตอบอะไร และคืน tool calls ให้ chatbot ลงมือหลังตอบ LINE
 
     คืน config ที่ใช้ยิงรอบนั้นกลับไปด้วย คนเรียกจะได้เก็บลงฐานว่าคำตอบนี้ออกมาจากโมเดลตัวไหน
+    ถ้าโมเดลสั่ง tool ต้องส่งผลจำลองกลับไปให้มันอีกรอบเพื่อเอาข้อความตอบ แต่ยังไม่ลงมือจริงตรงนี้
+    chatbot จะลงมือหลังบันทึกและส่งคำตอบแล้ว ป้องกัน runtime ปิด session แทรกระหว่างสองรอบ
     """
     config = ai_config.get().communicator
     if config.provider != "typhoon":
         await psql.create_and_save_log(PROCESS, f"communicator ตั้ง provider {config.provider} ที่ยังไม่รองรับ รอบนี้เลยเงียบ")
-        return None, config
+        return None, [], config
 
-    # prompt ไม่เก็บลง session เอาไว้หน้าสุดตอนยิงทุกรอบ แก้ prompt แล้ว session ที่คุยค้างได้ของใหม่ทันที
+    # protocol ต่อท้ายเสมอเพราะ prompt ในฐานอาจเก่ากว่าฟีเจอร์ tool calling
     messages = chatbot_session_to_messages(session)
-    if config.prompt:
-        messages = [{"role": "system", "content": config.prompt}, *messages]
+    system = f"{config.prompt}\n\n{SET_FINISHED_PROTOCOL}" if config.prompt else SET_FINISHED_PROTOCOL
+    messages = [{"role": "system", "content": system}, *messages]
 
-    reply = await typhoon.chat(
+    message = await typhoon.chat_with_tools(
         messages,
+        [SET_FINISHED_FLAG_TOOL],
         config.model_name,
         config.temperature,
         config.max_output_tokens,
+        tool_choice="required",
     )
-    if reply is None:
+    if message is None:
         await psql.create_and_save_log(PROCESS, "ไม่มี provider ไหนตอบได้ รอบนี้เลยเงียบ")
-    return reply, config
+        return None, [], config
+
+    tool_calls = message.get("tool_calls") or []
+    if not isinstance(tool_calls, list):
+        await psql.create_and_save_log(PROCESS, "communicator คืน tool_calls ในรูปที่อ่านไม่ออก")
+        return None, [], config
+
+    if len(tool_calls) != 1:
+        await psql.create_and_save_log(PROCESS, f"communicator ต้องเรียก set_finished_flag หนึ่งครั้ง แต่ได้ {len(tool_calls)} ครั้ง")
+        return None, [], config
+
+    if tool_calls:
+        tool_messages = []
+        for call in tool_calls:
+            tool_call_id = call.get("id") if isinstance(call, dict) else None
+            if not isinstance(tool_call_id, str) or not tool_call_id:
+                await psql.create_and_save_log(PROCESS, "communicator คืน tool call ที่ไม่มี id")
+                return None, [], config
+            tool_messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": '{"accepted": true, "instruction": "Reply to the user now without another tool call."}',
+            })
+
+        assistant_message = {
+            "role": "assistant",
+            "content": message.get("content"),
+            "tool_calls": tool_calls,
+        }
+        message = await typhoon.chat_with_tools(
+            [*messages, assistant_message, *tool_messages],
+            [SET_FINISHED_FLAG_TOOL],
+            config.model_name,
+            config.temperature,
+            config.max_output_tokens,
+            tool_choice="none",
+        )
+        if message is None:
+            await psql.create_and_save_log(PROCESS, "communicator ไม่ตอบหลังรับผล tool")
+            return None, [], config
+        if message.get("tool_calls"):
+            await psql.create_and_save_log(PROCESS, "communicator เรียก tool ซ้ำหลังได้รับผลแล้ว")
+            return None, [], config
+
+    reply = message.get("content")
+    if not isinstance(reply, str) or not reply.strip():
+        await psql.create_and_save_log(PROCESS, "communicator ไม่คืนข้อความสำหรับตอบผู้ใช้")
+        return None, [], config
+
+    return reply, tool_calls, config
 
 def conversation_to_transcript (conversation: list[Turn]) -> str:
     """ปั้นบทสนทนาเป็นข้อความก้อนเดียวให้ analyzer อ่าน

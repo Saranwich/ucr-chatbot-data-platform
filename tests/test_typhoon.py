@@ -66,6 +66,13 @@ class TyphoonClientTest (unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.recorder["body"]["tools"], tools)
         self.assertEqual(self.recorder["body"]["tool_choice"], "auto")
 
+    async def test_chat_with_tools_รับ_tool_choice_จากคนเรียก (self):
+        self.serve(FakeResponse(200, {"choices": [{"message": {"content": None, "tool_calls": TOOL_CALLS}}]}))
+
+        await typhoon.chat_with_tools([], [], "โมเดล", 0.3, 512, tool_choice="required")
+
+        self.assertEqual(self.recorder["body"]["tool_choice"], "required")
+
     async def test_chat_with_tools_response_ผิดรูป_คืน_None (self):
         self.serve(FakeResponse(200, {"ไม่มีช่อง choices": True}))
 

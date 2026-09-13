@@ -39,6 +39,36 @@ class ReportDraft (TypedDict, total=False):
 
 
 ## tool ของ communicator ##
+SET_FINISHED_FLAG_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "set_finished_flag",
+        "description": (
+            "รายงานว่าชาวบ้านจบบทสนทนารอบนี้แล้วหรือยัง ต้องเรียกหนึ่งครั้งทุกตา "
+            "ส่ง true เมื่อเขาบอกชัดว่าไม่มีเรื่องจะเล่าต่อ ต้องการหยุด หรือกล่าวลา นอกนั้นส่ง false"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "is_finished": {
+                    "type": "boolean",
+                    "description": "true=ชาวบ้านต้องการจบรอบนี้, false=ยังไม่ได้ยืนยันว่าจบ",
+                }
+            },
+            "required": ["is_finished"],
+        },
+    },
+}
+
+SET_FINISHED_PROTOCOL = """\
+# กติกาการปิดบทสนทนา (ระบบกำหนด)
+- ต้องเรียก set_finished_flag หนึ่งครั้งทุกตาก่อนตอบ
+- ส่ง is_finished=true เมื่อชาวบ้านยืนยันว่าไม่มีเรื่องจะเล่าต่อ ต้องการหยุด หรือกล่าวลาชัดเจน
+- ส่ง is_finished=false เมื่อยังไม่ได้ยืนยันว่าจบ รวมถึงคำสั้น ๆ อย่างขอบคุณหรือโอเคที่ยังอาจคุยต่อ
+- ถ้าได้รับผลของ tool แล้ว ให้ตอบชาวบ้านตามปกติโดยไม่เรียก tool ซ้ำ
+"""
+
+
 async def set_finished_flag (session_id: UUID, is_finished: bool) -> bool:
     """บอกว่าชาวบ้านเล่าจบแล้วหรือยัง จบแล้วตัวกวาดจะปิดให้เลยไม่ต้องรอเงียบครบเวลา
 
@@ -54,6 +84,58 @@ async def set_finished_flag (session_id: UUID, is_finished: bool) -> bool:
     if not ok:
         await psql.create_and_save_log(PROCESS, f"set_finished_flag ไม่เจอ session {session_id} ในฐาน")
     return ok
+
+
+COMMUNICATOR_TOOLS = {
+    "set_finished_flag": set_finished_flag,
+}
+
+
+async def run_communicator_tool_calls (session_id: UUID, tool_calls: list) -> int:
+    """ทำตาม tool call ของ communicator หลังส่งคำตอบ LINE แล้ว คืนจำนวนคำสั่งที่ทำสำเร็จ
+
+    จงใจทำหลังตอบผู้ใช้ ไม่ทำระหว่างสองรอบของ tool protocol เพราะถ้าปัก finished เร็วไป
+    runtime อาจปิด session ขณะที่ communicator ยังสร้างคำตอบรอบสุดท้ายอยู่
+    """
+    executed = 0
+
+    for call in tool_calls or []:
+        function = call.get("function") if isinstance(call, dict) else None
+        if not isinstance(function, dict):
+            await psql.create_and_save_log(PROCESS, f"session {session_id} สั่ง communicator tool มาในรูปที่อ่านไม่ออก")
+            continue
+
+        name = function.get("name")
+        handler = COMMUNICATOR_TOOLS.get(name)
+        if handler is None:
+            await psql.create_and_save_log(PROCESS, f"session {session_id} สั่ง communicator tool ชื่อ {name} ที่ไม่มีสิทธิ์เรียก")
+            continue
+
+        raw = function.get("arguments")
+        if isinstance(raw, str):
+            try:
+                arguments = json.loads(raw)
+            except (ValueError, TypeError) as error:
+                await psql.create_and_save_log(PROCESS, f"session {session_id} สั่ง {name} ด้วย json ที่อ่านไม่ได้ {error}")
+                continue
+        else:
+            arguments = raw
+
+        if not isinstance(arguments, dict) or type(arguments.get("is_finished")) is not bool:
+            await psql.create_and_save_log(PROCESS, f"session {session_id} สั่ง {name} ด้วย is_finished ที่ไม่ใช่ boolean")
+            continue
+
+        arguments.pop("session_id", None)
+        try:
+            ok = await handler(session_id, **arguments)
+        except Exception as error:
+            await psql.create_and_save_log(PROCESS, f"session {session_id} เรียก {name} แล้วพัง {type(error).__name__} {error}")
+            continue
+
+        if ok:
+            executed += 1
+
+    return executed
 
 
 ## tool ของ analyzer ##

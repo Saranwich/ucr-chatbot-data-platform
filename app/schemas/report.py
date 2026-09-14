@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.ai_config import AgentName
 
@@ -66,12 +66,19 @@ class Location(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     session_id: UUID
+    report_id: UUID | None = None      # analyzer ผูกทีหลัง เมื่อรู้ว่าพิกัดนี้เป็นของเรื่องไหน
     number: int                    # ข้อความที่เท่าไหร่ใน session ที่พิกัดนี้ติดมาด้วย
     type: LocationType
-    lat: float | None = None
-    lon: float | None = None
+    lat: float | None = Field(None, ge=-90, le=90)
+    lon: float | None = Field(None, ge=-180, le=180)
     address: str | None = None     # ช่อง "str" ในโน้ต — เลี่ยงชื่อ str เพราะชนกับชนิดข้อมูลของ python
     created_at: datetime = Field(default_factory=datetime.now)
+
+    @model_validator(mode="after")
+    def shared_pin_must_have_coordinates(self):
+        if self.type == "lat_lon" and (self.lat is None or self.lon is None):
+            raise ValueError("location แบบ lat_lon ต้องมี latitude และ longitude ครบคู่")
+        return self
 
 
 class Session(BaseModel):

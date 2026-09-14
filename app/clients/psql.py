@@ -1,3 +1,5 @@
+from uuid import UUID
+
 import asyncpg
 from app.core.config import DATABASE_URL
 from app.schemas.logs import LogsRecord
@@ -179,6 +181,7 @@ async def init_db() -> None:
         CREATE TABLE IF NOT EXISTS locations (
             id         uuid    PRIMARY KEY,
             session_id uuid    NOT NULL,
+            report_id  uuid    REFERENCES reports(id) ON DELETE SET NULL,
             number     integer NOT NULL,   -- ข้อความที่เท่าไหร่ใน session ที่พิกัดติดมาด้วย
             type       text    NOT NULL,   -- lat_lon | str
             lat        double precision,
@@ -186,6 +189,17 @@ async def init_db() -> None:
             address    text,
             created_at timestamptz NOT NULL
         )
+    """)
+    # ฐานเดิมมี locations ก่อนเริ่มผูกพิกัดเข้ากับ report จึงเติมคอลัมน์ให้ตอน startup
+    await get_pool().execute("""
+        ALTER TABLE locations
+            ADD COLUMN IF NOT EXISTS report_id uuid REFERENCES reports(id) ON DELETE SET NULL
+    """)
+    await get_pool().execute("""
+        CREATE INDEX IF NOT EXISTS locations_session_id ON locations (session_id)
+    """)
+    await get_pool().execute("""
+        CREATE INDEX IF NOT EXISTS locations_report_id ON locations (report_id)
     """)
 
 
@@ -300,10 +314,10 @@ async def set_image_desc(image_id, desc: str) -> bool:
 
 ## location part ##
 async def save_location(location: Location) -> None:
-    """เขียนแถวพิกัดทั้งแถวตาม id — ยังไม่มีก็สร้างใหม่"""
+    """เขียนพิกัดที่รับจาก LINE — การรับซ้ำต้องไม่ถอน report ที่ analyzer ผูกไว้แล้ว"""
     await get_pool().execute("""
-        INSERT INTO locations (id, session_id, number, type, lat, lon, address, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO locations (id, session_id, report_id, number, type, lat, lon, address, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (id) DO UPDATE SET
             session_id = EXCLUDED.session_id,
             number     = EXCLUDED.number,
@@ -311,7 +325,7 @@ async def save_location(location: Location) -> None:
             lat        = EXCLUDED.lat,
             lon        = EXCLUDED.lon,
             address    = EXCLUDED.address
-    """, location.id, location.session_id, location.number, location.type,
+    """, location.id, location.session_id, location.report_id, location.number, location.type,
          location.lat, location.lon, location.address, location.created_at)
 
 
@@ -356,7 +370,7 @@ async def get_conversation(session_id) -> list[Turn]:
 
     อ่านจากฐาน ไม่ใช่ redis เพราะ redis หายไปแล้วตอน analyzer ทำงาน
     content_type เป็น text หมดเพราะฐานไม่ได้เก็บว่าตาไหนมาจากรูปหรือพิกัด
-    ตัวข้อความบอกอยู่แล้วด้วยป้าย [got image from user] / [got location from user]
+    ตัวข้อความบอกอยู่แล้วด้วยป้าย [got image from user] / [got location from user: location_id=...]
     """
     rows = await get_pool().fetch("""
         SELECT created_at, 'user'      AS role, content FROM messages     WHERE session_id = $1
@@ -395,13 +409,9 @@ async def set_session_finished(session_id, is_finished: bool) -> bool:
 
 
 ## report part ##
-async def save_report(report: Report) -> None:
-    """เขียนหนึ่งเรื่องที่ analyzer สรุปได้ — id ซ้ำก็เขียนทับ
-
-    หนึ่ง session มีได้หลายแถว เพราะบทสนทนาเดียวชาวบ้านเล่าได้หลายเรื่อง
-    ช่องเนื้อหาว่างได้หมด ว่าง = ยังไม่ได้ถาม ไม่ใช่ไม่มี
-    """
-    await get_pool().execute("""
+async def _save_report(executor, report: Report) -> None:
+    """คำสั่งเขียน report ที่ใช้ได้ทั้งกับ pool ปกติและ connection ใน transaction"""
+    await executor.execute("""
         INSERT INTO reports (id, created_at, status, session_id, title, type,
                              threat, frequency, effect, is_has_image, is_has_location)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -417,3 +427,64 @@ async def save_report(report: Report) -> None:
     """, report.id, report.created_at, report.status, report.session_id,
          report.title, report.type, report.threat, report.frequency,
          report.effect, report.is_has_image, report.is_has_location)
+
+
+async def save_report(report: Report) -> None:
+    """เขียนหนึ่งเรื่องที่ analyzer สรุปได้ — id ซ้ำก็เขียนทับ
+
+    หนึ่ง session มีได้หลายแถว เพราะบทสนทนาเดียวชาวบ้านเล่าได้หลายเรื่อง
+    ช่องเนื้อหาว่างได้หมด ว่าง = ยังไม่ได้ถาม ไม่ใช่ไม่มี
+    """
+    await _save_report(get_pool(), report)
+
+
+async def save_report_with_locations(report: Report, location_ids: list[UUID]) -> UUID | None:
+    """เขียน report และผูก location ใน transaction เดียว คืน report id จริงที่ใช้
+
+    พิกัดทุกแถวต้องอยู่ใน session ของ report และชี้ report เดียวกัน การล็อกแถวก่อนเขียนทำให้
+    analyzer สองงานแย่งพิกัดไม่ได้ ถ้าเป็น retry ของงานที่เคยเขียนสำเร็จบางส่วน จะใช้ report id เดิม
+    และอัปเดตเนื้อหาแทนการสร้างซ้ำ จึงยังจบรอบ retry ได้
+    """
+    if not location_ids:
+        await save_report(report)
+        return report.id
+
+    async with get_pool().acquire() as connection:
+        async with connection.transaction():
+            rows = await connection.fetch("""
+                SELECT location.id, location.report_id, report.session_id AS report_session_id
+                FROM locations AS location
+                LEFT JOIN reports AS report ON report.id = location.report_id
+                WHERE location.id = ANY($1::uuid[])
+                  AND location.session_id = $2
+                  AND location.lat IS NOT NULL
+                  AND location.lon IS NOT NULL
+                FOR UPDATE OF location
+            """, location_ids, report.session_id)
+            if len(rows) != len(location_ids):
+                return None
+
+            existing_report_ids = {row["report_id"] for row in rows if row["report_id"] is not None}
+            if len(existing_report_ids) > 1:
+                return None
+            if any(
+                row["report_id"] is not None and row["report_session_id"] != report.session_id
+                for row in rows
+            ):
+                return None
+
+            report_id = next(iter(existing_report_ids), report.id)
+            report_to_save = report if report_id == report.id else report.model_copy(update={"id": report_id})
+
+            await _save_report(connection, report_to_save)
+            result = await connection.execute("""
+                UPDATE locations
+                SET report_id = $1
+                WHERE id = ANY($2::uuid[])
+                  AND session_id = $3
+                  AND (report_id IS NULL OR report_id = $1)
+            """, report_id, location_ids, report.session_id)
+            if result != f"UPDATE {len(location_ids)}":
+                raise RuntimeError("จำนวน location ที่ผูกไม่ตรงกับจำนวนที่ตรวจไว้")
+
+    return report_id

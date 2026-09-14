@@ -40,7 +40,7 @@ class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
             order.append(f"finished:{value}")
             return True
 
-        async def remember_reply(reply_token, messages):
+        async def remember_reply(reply_token, messages, quick_replies=None):
             order.append("line_reply")
 
         self.set_finished.side_effect = remember_finished
@@ -74,7 +74,9 @@ class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
             [(self.session_id, False), (self.session_id, True)],
         )
         self.assertEqual(self.provider.await_count, 2)
-        self.reply.assert_awaited_once_with("reply-token", ["ขอบคุณที่มาเล่าให้ฟังนะคะ"])
+        self.reply.assert_awaited_once_with(
+            "reply-token", ["ขอบคุณที่มาเล่าให้ฟังนะคะ"], quick_replies=[]
+        )
         self.assertEqual(order, ["finished:False", "line_reply", "finished:True"])
 
     async def test_provider_ไม่เรียก_tool_ยังตอบผู้ใช้และคง_finished_false(self):
@@ -103,6 +105,50 @@ class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
         self.reply.assert_awaited_once_with(
             "reply-token",
             ["สวัสดีค่ะ มีเรื่องสภาพพื้นที่อยากเล่าไหมคะ"],
+            quick_replies=[],
+        )
+
+    async def test_communicator_ขอปุ่มแชร์พิกัด_แล้วส่ง_location_action_ไป_LINE(self):
+        finish_call = {
+            "id": "finish_false",
+            "type": "function",
+            "function": {
+                "name": "set_finished_flag",
+                "arguments": json.dumps(
+                    {
+                        "is_finished": False,
+                        "quick_replies": [
+                            {"type": "location", "label": "แชร์พิกัด", "text": None}
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        }
+        self.provider.side_effect = [
+            {"role": "assistant", "content": None, "tool_calls": [finish_call]},
+            {"role": "assistant", "content": "ช่วยแชร์พิกัดจุดที่น้ำท่วมได้ไหมคะ", "tool_calls": []},
+        ]
+
+        await chatbot.handle_user_events(
+            "U-test",
+            [{
+                "type": "message",
+                "replyToken": "reply-token",
+                "message": {"type": "text", "text": "ฝนตกแล้วน้ำท่วมค่ะ"},
+            }],
+        )
+
+        self.reply.assert_awaited_once_with(
+            "reply-token",
+            ["ช่วยแชร์พิกัดจุดที่น้ำท่วมได้ไหมคะ"],
+            quick_replies=[
+                {"type": "location", "label": "แชร์พิกัด", "text": None}
+            ],
+        )
+        self.assertEqual(
+            [call.args for call in self.set_finished.await_args_list],
+            [(self.session_id, False), (self.session_id, False)],
         )
 
 

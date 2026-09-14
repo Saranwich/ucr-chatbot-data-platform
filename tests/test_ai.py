@@ -158,6 +158,7 @@ class CommunicatorReplyTest (unittest.IsolatedAsyncioTestCase):
 
         tools = self.chat_with_tools.await_args_list[0].args[1]
         self.assertEqual([tool["function"]["name"] for tool in tools], ["set_finished_flag"])
+        self.assertIn("quick_replies", tools[0]["function"]["parameters"]["properties"])
         self.assertIn(ai.SET_FINISHED_PROTOCOL, self.chat_with_tools.await_args_list[0].args[0][0]["content"])
         self.assertEqual(self.chat_with_tools.await_args_list[0].kwargs["tool_choice"], "required")
         self.chat.assert_not_awaited()

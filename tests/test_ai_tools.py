@@ -72,7 +72,7 @@ class CommunicatorToolTest(unittest.IsolatedAsyncioTestCase):
         tool = ai_tools.SET_FINISHED_FLAG_TOOL["function"]
 
         self.assertEqual(tool["name"], "set_finished_flag")
-        self.assertEqual(tool["parameters"]["required"], ["is_finished"])
+        self.assertEqual(tool["parameters"]["required"], ["is_finished", "quick_replies"])
         self.assertEqual(set(ai_tools.COMMUNICATOR_TOOLS), {"set_finished_flag"})
 
     async def test_เติม_session_id_แล้วปักธงจริง(self):

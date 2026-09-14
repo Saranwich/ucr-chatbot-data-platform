@@ -9,7 +9,7 @@
 """
 
 import json
-from typing import NamedTuple, TypedDict, get_args
+from typing import Literal, NamedTuple, TypedDict, get_args
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -36,9 +36,22 @@ class ReportDraft (TypedDict, total=False):
     effect: str
     is_has_image: bool
     is_has_location: bool
+    location_ids: list[str] | None
+
+
+class QuickReply (TypedDict):
+    """ปุ่มที่ communicator ขอให้ LINE แสดง — ยังต้องตรวจค่าจากโมเดลก่อนใช้"""
+
+    type: Literal["message", "location"]
+    label: str
+    text: str | None
 
 
 ## tool ของ communicator ##
+QUICK_REPLY_MAX_ITEMS = 5
+QUICK_REPLY_MAX_LABEL_UNITS = 20
+QUICK_REPLY_MAX_TEXT_UNITS = 300
+
 SET_FINISHED_FLAG_TOOL = {
     "type": "function",
     "function": {
@@ -53,18 +66,56 @@ SET_FINISHED_FLAG_TOOL = {
                 "is_finished": {
                     "type": "boolean",
                     "description": "true=ชาวบ้านต้องการจบรอบนี้, false=ยังไม่ได้ยืนยันว่าจบ",
+                },
+                "quick_replies": {
+                    "type": "array",
+                    "minItems": 0,
+                    "maxItems": QUICK_REPLY_MAX_ITEMS,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["message", "location"],
+                                "description": "message=ส่งข้อความกลับ, location=เปิดหน้าจอแชร์พิกัด",
+                            },
+                            "label": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": QUICK_REPLY_MAX_LABEL_UNITS,
+                                "description": "ข้อความสั้นที่แสดงบนปุ่ม ต้องยาวไม่เกิน 20 ตัวอักษรตามข้อกำหนด LINE",
+                            },
+                            "text": {
+                                "type": ["string", "null"],
+                                "maxLength": QUICK_REPLY_MAX_TEXT_UNITS,
+                                "description": "ข้อความที่จะส่งเมื่อ type=message; ต้องเป็น null เมื่อ type=location",
+                            },
+                        },
+                        "required": ["type", "label", "text"],
+                        "additionalProperties": False,
+                    },
+                    "description": (
+                        "ปุ่มใต้ข้อความ: message ใช้ตอบตัวเลือกสั้น ๆ, location ใช้ขอให้แชร์พิกัด "
+                        "ถ้าไม่ควรมีปุ่มให้ส่ง []"
+                    ),
                 }
             },
-            "required": ["is_finished"],
+            "required": ["is_finished", "quick_replies"],
         },
     },
 }
 
 SET_FINISHED_PROTOCOL = """\
 # กติกาการปิดบทสนทนา (ระบบกำหนด)
+- ป้าย [got location from user: location_id=...] แปลว่าเขาแชร์พิกัดมา รหัสเป็นของระบบ ห้ามพูดรหัสกลับไป
 - ต้องเรียก set_finished_flag หนึ่งครั้งทุกตาก่อนตอบ
 - ส่ง is_finished=true เมื่อชาวบ้านยืนยันว่าไม่มีเรื่องจะเล่าต่อ ต้องการหยุด หรือกล่าวลาชัดเจน
 - ส่ง is_finished=false เมื่อยังไม่ได้ยืนยันว่าจบ รวมถึงคำสั้น ๆ อย่างขอบคุณหรือโอเคที่ยังอาจคุยต่อ
+- ใน set_finished_flag ให้ส่ง quick_replies เป็นรายการ object ที่มี type, label และ text ถ้าไม่ควรมีปุ่มให้ส่ง []
+- ปุ่มตอบข้อความใช้ {"type":"message","label":"บางครั้ง","text":"บางครั้ง"} ให้ 2-5 ตัวเลือกสั้นชัดเจน
+- ปุ่มขอพิกัดใช้ {"type":"location","label":"แชร์พิกัด","text":null} ใช้ปุ่มเดียวได้ และใช้เมื่อกำลังขอจุดเกิดเหตุเท่านั้น
+- label ทุกปุ่มยาวไม่เกิน 20 ตัวอักษรโดยเด็ดขาด ห้ามใส่คำถามหรือประโยคอธิบายในปุ่ม
+- คำถามที่ควรให้พิมพ์เล่าเองหรือขอรูป ไม่ต้องสร้าง quick reply
 - ถ้าได้รับผลของ tool แล้ว ให้ตอบชาวบ้านตามปกติโดยไม่เรียก tool ซ้ำ
 """
 
@@ -89,6 +140,83 @@ async def set_finished_flag (session_id: UUID, is_finished: bool) -> bool:
 COMMUNICATOR_TOOLS = {
     "set_finished_flag": set_finished_flag,
 }
+
+
+def _utf16_units(value: str) -> int:
+    """LINE นับความยาว label เป็น UTF-16 code units ไม่ใช่จำนวนตัวอักษรของ Python"""
+    return len(value.encode("utf-16-le")) // 2
+
+
+async def extract_quick_replies(tool_calls: list) -> list[QuickReply]:
+    """อ่านคำขอ quick reply จากโมเดล คืนข้อความที่ส่งให้ LINE ได้จริง
+
+    Quick reply เป็นข้อมูลประกอบคำตอบ ไม่ใช่ side effect จึงปั้นก่อนส่ง LINE ส่วน is_finished
+    ใน tool ก้อนเดียวกันค่อยถูก execute หลังส่ง รายการผิดถูกตัดเฉพาะปุ่ม คำตอบหลักยังส่งต่อได้
+    """
+    calls = [
+        call for call in (tool_calls or [])
+        if isinstance(call, dict)
+        and isinstance(call.get("function"), dict)
+        and call["function"].get("name") == "set_finished_flag"
+    ]
+    if not calls:
+        return []
+    if len(calls) > 1:
+        await psql.create_and_save_log(PROCESS, "communicator เรียก set_finished_flag ซ้ำ ตัด quick reply รอบนี้ทิ้ง")
+        return []
+
+    raw = calls[0]["function"].get("arguments")
+    if isinstance(raw, str):
+        try:
+            arguments = json.loads(raw)
+        except (ValueError, TypeError) as error:
+            await psql.create_and_save_log(PROCESS, f"set_finished_flag ส่ง json ที่อ่านไม่ได้ {error}")
+            return []
+    else:
+        arguments = raw
+
+    if not isinstance(arguments, dict) or not isinstance(arguments.get("quick_replies"), list):
+        await psql.create_and_save_log(PROCESS, "set_finished_flag ต้องส่ง quick_replies เป็นลิสต์")
+        return []
+
+    quick_replies: list[QuickReply] = []
+    for raw_item in arguments["quick_replies"]:
+        if not isinstance(raw_item, dict):
+            continue
+        action_type = raw_item.get("type")
+        raw_label = raw_item.get("label")
+        if not isinstance(raw_label, str):
+            continue
+        label = raw_label.strip()
+        if not label or "\n" in label or _utf16_units(label) > QUICK_REPLY_MAX_LABEL_UNITS:
+            continue
+
+        if action_type == "message":
+            raw_text = raw_item.get("text")
+            if not isinstance(raw_text, str):
+                continue
+            reply_text = raw_text.strip()
+            if not reply_text or _utf16_units(reply_text) > QUICK_REPLY_MAX_TEXT_UNITS:
+                continue
+            item: QuickReply = {"type": "message", "label": label, "text": reply_text}
+        elif action_type == "location":
+            if raw_item.get("text") is not None:
+                continue
+            item = {"type": "location", "label": label, "text": None}
+        else:
+            continue
+
+        if item not in quick_replies:
+            quick_replies.append(item)
+        if len(quick_replies) == QUICK_REPLY_MAX_ITEMS:
+            break
+
+    # ตัวเลือกข้อความปุ่มเดียวไม่มีประโยชน์ แต่ location ปุ่มเดียวคือคำสั่งเปิดหน้าแชร์พิกัดที่สมบูรณ์
+    if len(quick_replies) == 1 and quick_replies[0]["type"] != "location":
+        # [] หมายถึงตั้งใจไม่แสดงปุ่ม ไม่ต้องสร้าง log รบกวน
+        await psql.create_and_save_log(PROCESS, "quick_replies แบบข้อความเหลือปุ่มเดียว ตัดทิ้ง")
+        return []
+    return quick_replies
 
 
 async def run_communicator_tool_calls (session_id: UUID, tool_calls: list) -> int:
@@ -125,6 +253,7 @@ async def run_communicator_tool_calls (session_id: UUID, tool_calls: list) -> in
             await psql.create_and_save_log(PROCESS, f"session {session_id} สั่ง {name} ด้วย is_finished ที่ไม่ใช่ boolean")
             continue
 
+        arguments.pop("quick_replies", None)  # ใช้ประกอบข้อความ LINE ไปแล้ว ไม่ใช่อาร์กิวเมนต์ของ handler
         arguments.pop("session_id", None)
         try:
             ok = await handler(session_id, **arguments)
@@ -159,7 +288,8 @@ async def save_analyse (session_id: UUID, reports: list[ReportDraft]) -> SaveOut
 
     หนึ่งก้อนใน reports คือหนึ่งเรื่อง ช่องที่ใส่ได้ดูที่ ReportDraft ข้างบน ช่องไหนไม่รู้ให้ปล่อยว่าง
     ว่างแปลว่า "ยังไม่ได้ถาม" ไม่ใช่ "ไม่มี" — ห้ามเดาเติมแทนเขา
-    session_id กับ status ไม่ต้องส่งมา ที่นี่เติมให้เอง ส่งมาก็ถูกทับ
+    location_ids เป็นรหัสจากป้ายในบทสนทนา โค้ดตรวจว่าอยู่ใน session นี้และไม่ชี้ข้าม report
+    session_id, report_id, lat, lon กับ status ไม่ต้องส่งมา ที่นี่เติมหรือดึงของจริงจากฐานเอง
     status เป็น analyzed ตั้งแต่แรกเพราะแถวนี้เป็นผลของการวิเคราะห์ ไม่ใช่ของที่รอวิเคราะห์
 
     annotation ของ python ไม่มีผลตอนรัน คนกันจริงคือ Report(...) ข้างล่าง
@@ -168,15 +298,77 @@ async def save_analyse (session_id: UUID, reports: list[ReportDraft]) -> SaveOut
     คืนมาไม่ครบจำนวนที่ส่งไปคือมีเรื่องตก ดูสาเหตุใน log ได้
     """
     saved: list[UUID] = []
+    locations_used_in_this_call: set[UUID] = set()
+
     for record in reports:
         try:
-            report = Report(**{**dict(record), "session_id": session_id, "status": "analyzed"})
+            values = dict(record)
         except (ValidationError, TypeError, ValueError) as error:
             await psql.create_and_save_log(PROCESS, f"save_analyse ของ session {session_id} ค่าไม่ผ่าน {error}")
             continue
 
-        await psql.save_report(report)
-        saved.append(report.id)
+        raw_location_ids = values.pop("location_ids", [])
+        if raw_location_ids is None:
+            raw_location_ids = []
+        if not isinstance(raw_location_ids, list):
+            await psql.create_and_save_log(
+                PROCESS, f"save_analyse ของ session {session_id} location_ids ต้องเป็นลิสต์"
+            )
+            continue
+
+        try:
+            location_ids: list[UUID] = []
+            for value in raw_location_ids:
+                if not isinstance(value, str):
+                    raise ValueError("location_id ต้องเป็นข้อความ UUID")
+                location_ids.append(UUID(value))
+        except (ValueError, TypeError) as error:
+            await psql.create_and_save_log(
+                PROCESS, f"save_analyse ของ session {session_id} location_id อ่านไม่ได้ {error}"
+            )
+            continue
+
+        location_id_set = set(location_ids)
+        if len(location_id_set) != len(location_ids):
+            await psql.create_and_save_log(
+                PROCESS, f"save_analyse ของ session {session_id} ใส่ location_id ซ้ำใน report เดียว"
+            )
+            continue
+        if location_id_set & locations_used_in_this_call:
+            await psql.create_and_save_log(
+                PROCESS, f"save_analyse ของ session {session_id} เอา location เดียวไปผูกหลาย report"
+            )
+            continue
+
+        # true ต้องมีพิกัดจริงรองรับ ส่วน false/null ยังเก็บความหมายเดิมเมื่อไม่มี location ให้ผูก
+        if location_ids:
+            values["is_has_location"] = True
+        elif values.get("is_has_location") is True:
+            await psql.create_and_save_log(
+                PROCESS, f"save_analyse ของ session {session_id} อ้างว่ามีพิกัดแต่ไม่ส่ง location_id"
+            )
+            continue
+
+        try:
+            report = Report(**{**values, "session_id": session_id, "status": "analyzed"})
+        except (ValidationError, TypeError, ValueError) as error:
+            await psql.create_and_save_log(PROCESS, f"save_analyse ของ session {session_id} ค่าไม่ผ่าน {error}")
+            continue
+
+        if location_ids:
+            saved_report_id = await psql.save_report_with_locations(report, location_ids)
+            if saved_report_id is None:
+                await psql.create_and_save_log(
+                    PROCESS,
+                    f"save_analyse ของ session {session_id} อ้าง location ที่ไม่มี พิกัดไม่ครบ อยู่คนละ session หรือชี้คนละ report",
+                )
+                continue
+        else:
+            await psql.save_report(report)
+            saved_report_id = report.id
+
+        saved.append(saved_report_id)
+        locations_used_in_this_call.update(location_id_set)
 
     await psql.create_and_save_log(
         PROCESS, f"บันทึกเรื่องของ session {session_id} แล้ว {len(saved)} จาก {len(reports)} เรื่อง"
@@ -245,9 +437,19 @@ SAVE_ANALYSE_TOOL = {
                             },
                             "is_has_location": {
                                 "type": ["boolean", "null"],
-                                "description": "เรื่องนี้มีพิกัดที่เขาแชร์มาไหม true=มี false=ถามแล้วไม่มี null=ยังไม่ได้คุยเรื่องพิกัด",
+                                "description": "true เมื่อ location_ids มีพิกัดที่ผูกกับเรื่องนี้ได้ false=ถามแล้วไม่มี null=ยังไม่รู้",
+                            },
+                            "location_ids": {
+                                "type": ["array", "null"],
+                                "items": {"type": "string", "format": "uuid"},
+                                "uniqueItems": True,
+                                "description": (
+                                    "รหัสจากป้าย [got location from user: location_id=...] ที่เป็นของเรื่องนี้แน่ ๆ "
+                                    "ใช้ได้เฉพาะรหัสที่มีในบทสนทนา ไม่มีหรือจับคู่ไม่ได้ให้ส่ง []"
+                                ),
                             },
                         },
+                        "required": ["location_ids"],
                     },
                 }
             },
@@ -267,7 +469,9 @@ SAVE_ANALYSE_PROTOCOL = """\
 - มีกี่เรื่องใส่ให้ครบใน reports ของการเรียกครั้งนั้น
 - ไม่มีเรื่องสภาพพื้นที่เลย ก็ยังต้องเรียก โดยส่ง {"reports": []} ห้ามสร้าง report เปล่ามากลบ
 - ห้ามตอบเป็นข้อความเปล่าแทนการเรียก tool ระบบไม่อ่านข้อความ รับเฉพาะ tool call
-- ช่องที่ชาวบ้านไม่ได้บอกให้ใส่ null ห้ามเดา และห้ามส่ง session_id หรือ status
+- ป้าย [got location from user: location_id=...] มีรหัสพิกัดภายใน ให้ใส่รหัสที่ตรงกับแต่ละเรื่องใน location_ids
+- ใช้ได้เฉพาะ location_id ที่ปรากฏในบทสนทนาและผูกกับเรื่องนั้นชัดเจน จับคู่ไม่ได้ให้ส่ง [] ห้ามสร้างรหัสเอง
+- ช่องที่ชาวบ้านไม่ได้บอกให้ใส่ null ห้ามเดา และห้ามส่ง session_id, report_id, lat, lon หรือ status
 - ไม่เรียก tool ถือว่าทำงานไม่สำเร็จ ระบบจะสั่งให้อ่านใหม่ทั้งรอบ
 """
 """กติกาที่ต้องมีเสมอ ไม่ว่า prompt ที่ใช้จริงจะมาจากไหน

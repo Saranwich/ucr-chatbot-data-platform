@@ -1,6 +1,8 @@
 import json
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
+
 from app.clients import psql, redis, line as line_cli, storage, typhoon
 from app.schemas.report import AiResponse, Image, Location, Message, Session
 from app.schemas.turn import Turn
@@ -114,7 +116,8 @@ async def handle_user_events(line_user_id: str, events: list[dict]) -> None:
     await save_session_to_redis(redis_key, session_id, session)
 
     # replie message to user via line pltform
-    await line_cli.replie(reply_token, [resp])
+    quick_replies = await ai_tools.extract_quick_replies(tool_calls)
+    await line_cli.replie(reply_token, [resp], quick_replies=quick_replies)
 
     # tool บอกความตั้งใจว่าจะปิด แต่ลงมือหลังตอบ LINE แล้ว ป้องกัน runtime ปิด session กลางทาง
     await ai_tools.run_communicator_tool_calls(session_id, tool_calls)
@@ -314,26 +317,30 @@ async def message_image_handler(user: User, session_id: UUID, number: int, messa
     return turn
 
 
-async def message_location_handler(user: User, session_id: UUID, number: int, message: dict) -> Turn:
-    """เก็บพิกัดไว้ แล้วบอกโมเดลแค่ว่ามีพิกัดเข้ามา ไม่ส่งตัวเลขให้
+async def message_location_handler(user: User, session_id: UUID, number: int, message: dict) -> Turn | None:
+    """เก็บพิกัดไว้ แล้วบอกโมเดลด้วย id ภายใน ไม่ส่งตัวเลขพิกัดให้
 
     ตัวเลขพิกัดไม่มีความหมายกับโมเดล มันบอกไม่ได้ว่าตรงนั้นคือที่ไหน ส่งไปมีแต่จะหลอกให้มันเดาชื่อซอย
-    ตัวพิกัดเก็บไว้ให้ analyzer เอาไปปักหมุดทีหลัง
+    id ทำให้ analyzer จับคู่พิกัดกับ report ได้ตรงแถว โค้ดจะตรวจซ้ำว่า id อยู่ใน session นี้จริง
     """
-    location = Location(
-        session_id=session_id,
-        number=number,
-        type="lat_lon",          # แชร์ผ่านไลน์ได้ตัวเลขมาเสมอ แบบ str ไว้รอเคสที่เขาพิมพ์บอกเอง
-        lat=message.get("latitude"),
-        lon=message.get("longitude"),
-        address=message.get("address"),
-    )
+    try:
+        location = Location(
+            session_id=session_id,
+            number=number,
+            type="lat_lon",          # แชร์ผ่านไลน์ได้ตัวเลขมาเสมอ แบบ str ไว้รอเคสที่เขาพิมพ์บอกเอง
+            lat=message.get("latitude"),
+            lon=message.get("longitude"),
+            address=message.get("address"),
+        )
+    except ValidationError as error:
+        await psql.create_and_save_log(PROCESS, f"{user.id} ส่ง location ที่อ่านไม่ได้ {error}")
+        return None
     await psql.save_location(location)
 
     turn = Turn(
         role="user",
         content_type="location",
-        content="[got location from user]",
+        content=f"[got location from user: location_id={location.id}]",
     )
     print("message_location_handler:", turn, location.lat, location.lon)
     return turn

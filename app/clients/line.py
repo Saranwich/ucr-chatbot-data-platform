@@ -8,12 +8,21 @@ PROCESS_NAME = "clinents.line" #use for logs
 TIMEOUT = 10
 
 
-async def replie (replytoken: str, messages: list[str]) -> int:
+async def replie (replytoken: str, messages: list[str], quick_replies: list[dict] | None = None) -> int:
 
     headers = {"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"}
+    message_objects = [{"type": "text", "text": text} for text in messages[:5]]
+    if quick_replies and message_objects:
+        items = []
+        for reply in quick_replies[:13]:
+            action = {"type": reply["type"], "label": reply["label"]}
+            if reply["type"] == "message":
+                action["text"] = reply["text"]
+            items.append({"type": "action", "action": action})
+        message_objects[-1]["quickReply"] = {"items": items}
     body = {
         "replyToken": replytoken,
-        "messages": [{"type": "text", "text": text} for text in messages[:5]],
+        "messages": message_objects,
     }
 
     async with httpx.AsyncClient(timeout=TIMEOUT) as cli:

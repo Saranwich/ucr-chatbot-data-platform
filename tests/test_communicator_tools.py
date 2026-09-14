@@ -77,6 +77,34 @@ class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
         self.reply.assert_awaited_once_with("reply-token", ["ขอบคุณที่มาเล่าให้ฟังนะคะ"])
         self.assertEqual(order, ["finished:False", "line_reply", "finished:True"])
 
+    async def test_provider_ไม่เรียก_tool_ยังตอบผู้ใช้และคง_finished_false(self):
+        self.provider.return_value = {
+            "role": "assistant",
+            "content": "สวัสดีค่ะ มีเรื่องสภาพพื้นที่อยากเล่าไหมคะ",
+            "tool_calls": [],
+        }
+
+        await chatbot.handle_user_events(
+            "U-test",
+            [
+                {
+                    "type": "message",
+                    "replyToken": "reply-token",
+                    "message": {"type": "text", "text": "อ้าว ทำไมเงียบ"},
+                }
+            ],
+        )
+
+        self.assertEqual(
+            [call.args for call in self.set_finished.await_args_list],
+            [(self.session_id, False)],
+        )
+        self.provider.assert_awaited_once()
+        self.reply.assert_awaited_once_with(
+            "reply-token",
+            ["สวัสดีค่ะ มีเรื่องสภาพพื้นที่อยากเล่าไหมคะ"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

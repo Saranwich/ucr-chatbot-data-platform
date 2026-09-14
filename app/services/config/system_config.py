@@ -9,6 +9,31 @@ PROCESS = "services.config.system_config"
 _current = SystemConfig()
 
 
+def _duration(seconds: int) -> str:
+    hours, remainder = divmod(seconds, 3600)
+    minutes, remaining_seconds = divmod(remainder, 60)
+    if not hours and not minutes:
+        return f"{seconds}s"
+    parts = []
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    if remaining_seconds:
+        parts.append(f"{remaining_seconds}s")
+    return f"{seconds}s ({' '.join(parts)})"
+
+
+def _print_config(config: SystemConfig, source: str) -> None:
+    print("[config.system]")
+    print(f"  source             {source}")
+    print(f"  note               {config.note or '-'}")
+    print(f"  session TTL        {_duration(config.session_ttl_seconds)}")
+    print(f"  finished grace     {_duration(config.finished_grace_seconds)}")
+    print(f"  inactive timeout   {_duration(config.inactive_session_seconds)}")
+    print(f"  sweep interval     {_duration(config.sweep_interval_seconds)}")
+
+
 def get() -> SystemConfig:
     """อ่านจาก memory ไม่แตะ db"""
     return _current
@@ -26,16 +51,16 @@ async def reload() -> SystemConfig:
     if row is None:
         _current = SystemConfig()
         await psql.create_and_save_log(PROCESS, "system_config ไม่มีแถว active ใช้ค่า default")
-        print("system_config: ไม่มีแถว active ใช้ค่า default", _current)
+        _print_config(_current, "default")
         return _current
 
     try:
         _current = SystemConfig(**row)
     except ValidationError as e:
         await psql.create_and_save_log(PROCESS, f"system_config id {row['id']} ค่าเพี้ยน ถือก้อนเดิมต่อ {e}")
-        print("system_config: ค่าเพี้ยน ถือก้อนเดิมต่อ", _current)
+        _print_config(_current, "previous (active row invalid)")
         return _current
 
     await psql.create_and_save_log(PROCESS, f"โหลด system_config id {_current.id}")
-    print("system_config:", _current)
+    _print_config(_current, f"database id={_current.id}")
     return _current

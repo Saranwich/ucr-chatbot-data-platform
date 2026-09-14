@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     await system_config.reload()
     app.state.redis = await redis.init_redis()
     runtime.start()
-    print("app opened")
+    print("[app] ready")
     try:
         yield
 
@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
         await runtime.stop()
         await psql.close_pool()
         await redis.close_client()
-        print("app closed")
+        print("[app] stopped")
 
 
 app = FastAPI(

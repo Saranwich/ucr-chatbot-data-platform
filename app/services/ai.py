@@ -57,9 +57,26 @@ async def communicator_reply (session: list[Turn]) -> tuple[str | None, list[dic
         await psql.create_and_save_log(PROCESS, "communicator คืน tool_calls ในรูปที่อ่านไม่ออก")
         return None, [], config
 
-    if len(tool_calls) != 1:
-        await psql.create_and_save_log(PROCESS, f"communicator ต้องเรียก set_finished_flag หนึ่งครั้ง แต่ได้ {len(tool_calls)} ครั้ง")
+    if len(tool_calls) > 1:
+        await psql.create_and_save_log(
+            PROCESS,
+            f"communicator ต้องเรียก set_finished_flag หนึ่งครั้ง แต่ได้ {len(tool_calls)} ครั้ง",
+        )
         return None, [], config
+
+    # Typhoon อาจไม่ทำตาม tool_choice=required แต่ยังคืนข้อความที่ใช้ตอบผู้ใช้ได้
+    # อย่าทิ้งข้อความจน LINE เงียบ — รอบนี้ chatbot ถอน is_finished เป็น False ไว้แล้ว
+    # จึงตอบต่อได้อย่างปลอดภัย เพียงแค่ไม่ปิด session ทันทีและปล่อยให้ TTL ปิดตามปกติ
+    if not tool_calls:
+        reply = message.get("content")
+        if not isinstance(reply, str) or not reply.strip():
+            await psql.create_and_save_log(PROCESS, "communicator ไม่เรียก set_finished_flag และไม่มีข้อความสำหรับตอบผู้ใช้")
+            return None, [], config
+        await psql.create_and_save_log(
+            PROCESS,
+            "communicator ไม่เรียก set_finished_flag แต่มีข้อความตอบ ใช้ข้อความนั้นโดยไม่เปลี่ยนธงจบ",
+        )
+        return reply, [], config
 
     if tool_calls:
         tool_messages = []

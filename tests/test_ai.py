@@ -200,14 +200,19 @@ class CommunicatorReplyTest (unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(reply)
         self.assertEqual(tool_calls, [])
 
-    async def test_required_แต่ไม่เรียก_tool_ถือว่าไม่ตอบ (self):
+    async def test_required_แต่ไม่เรียก_tool_ยังคืนข้อความไปตอบ (self):
         self.chat_with_tools.side_effect = None
-        self.chat_with_tools.return_value = {"role": "assistant", "content": "จบแล้วค่ะ", "tool_calls": []}
+        self.chat_with_tools.return_value = {
+            "role": "assistant",
+            "content": "สวัสดีค่ะ มีเรื่องสภาพพื้นที่อยากเล่าไหมคะ",
+            "tool_calls": [],
+        }
 
         reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
 
-        self.assertIsNone(reply)
+        self.assertEqual(reply, "สวัสดีค่ะ มีเรื่องสภาพพื้นที่อยากเล่าไหมคะ")
         self.assertEqual(tool_calls, [])
+        self.assertEqual(self.chat_with_tools.await_count, 1)
 
 
 if __name__ == "__main__":

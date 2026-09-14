@@ -56,7 +56,10 @@ async def reload() -> AiConfig:
         for name, cfg in _current
     )
     await psql.create_and_save_log(PROCESS, f"โหลด ai config {summary}")
-    print("ai_config:", summary)
+    print("[config.ai]")
+    for name, cfg in _current:
+        config_id = cfg.id if cfg.id is not None else "default"
+        print(f"  {name:<18} id={str(config_id):<8} prompt={_prompt_label(cfg)}")
     return _current
 
 

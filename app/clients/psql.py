@@ -77,9 +77,22 @@ async def init_db() -> None:
             note                text,
             is_active           boolean     NOT NULL DEFAULT false,
             session_ttl_seconds integer     NOT NULL CHECK (session_ttl_seconds > 0),
-            close_when_ttl_under_seconds integer NOT NULL CHECK (close_when_ttl_under_seconds > 0),
+            close_when_ttl_under_seconds integer NOT NULL DEFAULT 600
+                CHECK (close_when_ttl_under_seconds > 0), -- legacy, runtime ไม่อ่านแล้ว
+            finished_grace_seconds integer   NOT NULL DEFAULT 60 CHECK (finished_grace_seconds > 0),
+            inactive_session_seconds integer NOT NULL DEFAULT 600 CHECK (inactive_session_seconds > 0),
             sweep_interval_seconds       integer NOT NULL CHECK (sweep_interval_seconds > 0)
         )
+    """)
+    # อัปเกรดฐานเดิมที่สร้างก่อนแยกเวลารอของ "จบแล้ว" กับ "เงียบหาย"
+    # close_when_ttl_under_seconds เดิมปล่อยไว้เพื่อไม่ทำ migration แบบลบข้อมูล แต่โค้ดไม่อ่านแล้ว
+    await get_pool().execute("""
+        ALTER TABLE system_config
+            ADD COLUMN IF NOT EXISTS finished_grace_seconds
+                integer NOT NULL DEFAULT 60 CHECK (finished_grace_seconds > 0),
+            ADD COLUMN IF NOT EXISTS inactive_session_seconds
+                integer NOT NULL DEFAULT 600 CHECK (inactive_session_seconds > 0),
+            ALTER COLUMN close_when_ttl_under_seconds SET DEFAULT 600
     """)
     await get_pool().execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS system_config_one_active
@@ -251,7 +264,7 @@ async def get_active_system_config() -> dict | None:
     """แถวที่ is_active — คืน dict ดิบให้ services.config.system_config ตรวจเอง ไม่มีก็คืน None"""
     row = await get_pool().fetchrow("""
         SELECT id, created_at, note, session_ttl_seconds,
-               close_when_ttl_under_seconds, sweep_interval_seconds
+               finished_grace_seconds, inactive_session_seconds, sweep_interval_seconds
         FROM system_config
         WHERE is_active
     """)

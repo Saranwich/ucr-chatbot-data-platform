@@ -1,8 +1,8 @@
 """ตัวกวาดที่เดินอยู่ในแอป คอยปิดบทสนทนาที่ใกล้หมดอายุแล้วส่งให้ analyzer
 
 ถ้าปล่อยให้ redis หมดอายุเอง ตัวบทสนทนาจะหายไปก่อนมีใครได้อ่าน เลยต้องชิงปิดก่อนมันหมดอายุ
-ปิดได้สองเหตุ เงียบนานจนใกล้หมดอายุ หรือ session ถูกปักธง is_finished ว่าเล่าจบแล้ว
-ธงมาถึงก่อนก็ไม่ต้องรอเงียบ ไม่มีธงก็ยังปิดด้วยความเงียบเหมือนเดิม ไม่มีใครกดจบเองได้
+ปิดได้สองเหตุที่มีเวลารอคนละค่า: บอกว่าจบแล้วและเงียบครบ grace
+หรือไม่ได้บอกว่าจบแต่เงียบครบ inactive timeout
 """
 
 import asyncio
@@ -19,7 +19,7 @@ _task: asyncio.Task | None = None
 async def sweep_once() -> int:
     """กวาดหนึ่งรอบ คืนจำนวน session ที่ปิดไป"""
     closed = 0
-    close_under = system_config.get().close_when_ttl_under_seconds
+    config = system_config.get()
 
     for redis_key in await redis.scan_session_keys():
         ttl = await redis.get_ttl(redis_key)
@@ -29,10 +29,19 @@ async def sweep_once() -> int:
             continue
 
         # -1 คือไม่ได้ตั้งอายุไว้ ไม่มีทางรู้ว่าเงียบมานานแค่ไหน ปล่อยไว้ดีกว่าปิดมั่ว
-        # ยังไม่ถึงคิวด้วยความเงียบ แต่ถ้าชาวบ้านบอกว่าเล่าจบแล้ว ปิดเลยไม่ต้องรอ
-        if ttl < 0 or ttl >= close_under:
-            if not await chatbot.is_session_finished(redis_key):
-                continue
+        if ttl < 0:
+            continue
+
+        # Redis ต่ออายุเต็มทุกครั้งที่มีข้อความ จึงใช้ TTL ที่ลดลงวัดเวลาตั้งแต่ข้อความล่าสุดได้
+        idle_seconds = max(0, config.session_ttl_seconds - ttl)
+        is_finished = await chatbot.is_session_finished(redis_key)
+        required_idle = (
+            config.finished_grace_seconds
+            if is_finished
+            else config.inactive_session_seconds
+        )
+        if idle_seconds < required_idle:
+            continue
 
         if await chatbot.close_session(redis_key) is not None:
             closed += 1
@@ -60,7 +69,7 @@ def start() -> None:
     global _task
     if _task is None:
         _task = asyncio.create_task(run_forever())
-        print("runtime: เปิดตัวกวาดแล้ว กวาดทุก", system_config.get().sweep_interval_seconds, "วินาที")
+        print(f"[runtime] sweeper started (every {system_config.get().sweep_interval_seconds}s)")
 
 
 async def stop() -> None:

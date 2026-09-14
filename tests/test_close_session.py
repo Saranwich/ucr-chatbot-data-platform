@@ -12,6 +12,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from app.schemas.report import Report, Session
+from app.schemas.system_config import SystemConfig
 from app.services import ai_tools, chatbot
 from tests.support import patch_log
 
@@ -273,6 +274,62 @@ class SweepOnceWiringTest (unittest.IsolatedAsyncioTestCase):
         self.save_report.assert_awaited_once()
         self.assertEqual(self.save_report.await_args.args[0].title, "น้ำท่วมปากซอย")
         self.assertEqual([call.args[1] for call in self.set_status.await_args_list], ["pending", "analyzed"])
+
+
+class SweepTimingTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        from app.services import runtime
+
+        self.runtime = runtime
+        self.config = SystemConfig(
+            session_ttl_seconds=660,
+            finished_grace_seconds=60,
+            inactive_session_seconds=600,
+            sweep_interval_seconds=20,
+        )
+        patch.object(runtime.system_config, "get", return_value=self.config).start()
+        patch.object(runtime.redis, "scan_session_keys", new=AsyncMock(return_value=[REDIS_KEY])).start()
+        self.get_ttl = patch.object(runtime.redis, "get_ttl", new=AsyncMock()).start()
+        self.is_finished = patch.object(chatbot, "is_session_finished", new=AsyncMock()).start()
+        self.close_session = patch.object(chatbot, "close_session", new=AsyncMock(return_value=0)).start()
+        self.addCleanup(patch.stopall)
+
+    async def test_จบแล้วแต่เงียบยังไม่ครบ_grace_ยังไม่ปิด(self):
+        self.get_ttl.return_value = 620  # เงียบ 40 วินาที
+        self.is_finished.return_value = True
+
+        self.assertEqual(await self.runtime.sweep_once(), 0)
+        self.close_session.assert_not_awaited()
+
+    async def test_จบแล้วและเงียบครบ_grace_จึงปิด(self):
+        self.get_ttl.return_value = 600  # เงียบ 60 วินาที
+        self.is_finished.return_value = True
+
+        self.assertEqual(await self.runtime.sweep_once(), 1)
+        self.close_session.assert_awaited_once_with(REDIS_KEY)
+
+    async def test_ยังไม่จบและเงียบยังไม่ครบ_inactive_timeout_ยังไม่ปิด(self):
+        self.get_ttl.return_value = 100  # เงียบ 560 วินาที
+        self.is_finished.return_value = False
+
+        self.assertEqual(await self.runtime.sweep_once(), 0)
+        self.close_session.assert_not_awaited()
+
+    async def test_ยังไม่จบและเงียบครบ_inactive_timeout_จึงปิด(self):
+        self.get_ttl.return_value = 60  # เงียบ 600 วินาที
+        self.is_finished.return_value = False
+
+        self.assertEqual(await self.runtime.sweep_once(), 1)
+        self.close_session.assert_awaited_once_with(REDIS_KEY)
+
+    def test_timeout_ต้องเหลือเวลาให้ตัวกวาดก่อน_redis_หมดอายุ(self):
+        with self.assertRaises(ValidationError):
+            SystemConfig(
+                session_ttl_seconds=100,
+                finished_grace_seconds=20,
+                inactive_session_seconds=90,
+                sweep_interval_seconds=20,
+            )
 
 
 if __name__ == "__main__":

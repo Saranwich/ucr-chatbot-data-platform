@@ -5,6 +5,7 @@ from app.core.load_env import BASE_DIR
 LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 LINE_CONTENT_URL = "https://api-data.line.me/v2/bot/message/{message_id}/content"
+LINE_LOADING_URL = "https://api.line.me/v2/bot/chat/loading/start"
 TYPHOON_API_ENDPOINT = "https://api.opentyphoon.ai/v1"
 
 # --- ที่เก็บไฟล์ ---

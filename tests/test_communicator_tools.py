@@ -30,6 +30,7 @@ class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
         patch.object(chatbot.psql, "create_and_save_log", new=AsyncMock()).start()
         patch.object(chatbot.psql, "save_ai_response", new=AsyncMock()).start()
         self.reply = patch.object(chatbot.line_cli, "replie", new=AsyncMock()).start()
+        self.loading = patch.object(chatbot.line_cli, "start_loading", new=AsyncMock()).start()
         self.provider = patch.object(ai.typhoon, "chat_with_tools", new=AsyncMock()).start()
         self.addCleanup(patch.stopall)
 
@@ -78,6 +79,33 @@ class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
             "reply-token", ["ขอบคุณที่มาเล่าให้ฟังนะคะ"], quick_replies=[]
         )
         self.assertEqual(order, ["finished:False", "line_reply", "finished:True"])
+
+    async def test_ขึ้นจุดโหลดก่อนถามโมเดล(self):
+        """จุดต้องขึ้นก่อนช่วงที่รอนาน ขึ้นหลังตอบไปแล้วก็ไม่มีประโยชน์"""
+        order = []
+
+        async def remember_loading(line_user_id):
+            order.append(f"loading:{line_user_id}")
+
+        async def remember_provider(*args, **kwargs):
+            order.append("provider")
+            return {"role": "assistant", "content": "สวัสดีค่ะ", "tool_calls": []}
+
+        self.loading.side_effect = remember_loading
+        self.provider.side_effect = remember_provider
+
+        await chatbot.handle_user_events(
+            "U-test",
+            [
+                {
+                    "type": "message",
+                    "replyToken": "reply-token",
+                    "message": {"type": "text", "text": "สวัสดีครับ"},
+                }
+            ],
+        )
+
+        self.assertEqual(order, ["loading:U-test", "provider"])
 
     async def test_provider_ไม่เรียก_tool_ยังตอบผู้ใช้และคง_finished_false(self):
         self.provider.return_value = {

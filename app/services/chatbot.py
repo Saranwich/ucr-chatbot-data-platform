@@ -94,6 +94,9 @@ async def handle_user_events(line_user_id: str, events: list[dict]) -> None:
     await psql.create_and_save_log(PROCESS,f"{user.id} ต่อ session {session_id} {len(turns)} ตา รวมเป็น {len(session)} ตา พร้อมส่งให้ LLM",)
     print("chatbot ปั้นของให้ LLM:", user.id, reply_token, session)
 
+    # ขึ้นจุดสามจุดก่อนเข้าช่วงที่รอนานจริง คือตอนรอโมเดลเขียนคำตอบ
+    await line_cli.start_loading(line_user_id)
+
     # send to ai
     resp, tool_calls, agent_config = await ai.communicator_reply(session)
 

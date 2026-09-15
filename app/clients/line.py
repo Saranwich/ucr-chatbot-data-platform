@@ -6,6 +6,7 @@ from app.clients import psql
 from app.core.config import (
     LINE_CHANNEL_ACCESS_TOKEN,
     LINE_CONTENT_URL,
+    LINE_LOADING_URL,
     LINE_PUSH_URL,
     LINE_REPLY_URL,
 )
@@ -13,6 +14,10 @@ from app.core.config import (
 PROCESS_NAME = "clinents.line" #use for logs
 
 TIMEOUT = 10
+
+# ไลน์รับเฉพาะ 5-60 และต้องเป็นจำนวนเท่าของ 5 — รอบที่ช้าสุดเท่าที่วัดได้คือ 12 วิ
+# เผื่อไว้เกินไม่เสียหาย จุดหายเองทันทีที่ข้อความจริงไปถึง ไม่ต้องสั่งหยุด
+LOADING_SECONDS = 30
 
 
 async def replie (replytoken: str, messages: list[str], quick_replies: list[dict] | None = None) -> int:
@@ -67,6 +72,32 @@ async def push (line_user_id: str, messages: list[str], retry_key: UUID | None =
             PROCESS_NAME, f"ยิงข้อความไม่สำเร็จ {resp.status_code} {resp.text}"
         )
     return resp.status_code
+
+
+async def start_loading (line_user_id: str) -> None:
+    """ขึ้นจุดสามจุดในแชทของคนคนนั้น บอกว่ากำลังคิดอยู่ ไม่ได้เงียบใส่
+
+    ครอบ try ไว้ทั้งก้อนเพราะนี่เป็นของประดับ ล้มยังไงก็ห้ามพาคำตอบล้มตาม
+    ชาวบ้านไม่เห็นจุดยังคุยต่อได้ แต่ไม่ได้คำตอบคือจบ
+
+    ใช้ได้เฉพาะแชทตัวต่อตัว กลุ่มกับห้องหลายคนไลน์ไม่รองรับ — โปรเจกต์นี้มีแต่แชทตัวต่อตัวอยู่แล้ว
+    """
+    headers = {
+        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    body = {"chatId": line_user_id, "loadingSeconds": LOADING_SECONDS}
+
+    # ดักกว้างกว่าที่อื่นในไฟล์นี้โดยตั้งใจ ที่อื่นล้มแล้วชาวบ้านเสียของจริง ที่นี่เสียแค่จุดสามจุด
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as cli:
+            resp = await cli.post(LINE_LOADING_URL, headers=headers, json=body)
+        if resp.status_code != 202:
+            await psql.create_and_save_log(
+                PROCESS_NAME, f"ขึ้นจุดโหลดไม่สำเร็จ {resp.status_code} {resp.text}"
+            )
+    except Exception as error:
+        await psql.create_and_save_log(PROCESS_NAME, f"ขึ้นจุดโหลดไม่ได้ {type(error).__name__} {error}")
 
 
 async def get_image_content (message_id: str) -> tuple[str, bytes | None, str]:

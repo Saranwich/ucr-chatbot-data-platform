@@ -68,12 +68,27 @@ class CommunicatorToolTest(unittest.IsolatedAsyncioTestCase):
         ).start()
         self.addCleanup(patch.stopall)
 
-    async def test_schema_และ_allowlist_มีแค่_set_finished_flag(self):
+    async def test_ยื่นสอง_tool_แต่ลงมือได้ตัวเดียว(self):
+        """ปุ่มเป็นข้อมูลที่แนบมากับคำตอบ ไม่ใช่คำสั่งให้แอปไปทำอะไร จึงไม่มี handler"""
         tool = ai_tools.SET_FINISHED_FLAG_TOOL["function"]
 
         self.assertEqual(tool["name"], "set_finished_flag")
-        self.assertEqual(tool["parameters"]["required"], ["is_finished", "quick_replies"])
+        self.assertEqual(tool["parameters"]["required"], ["is_finished"])
+        self.assertEqual(
+            [schema["function"]["name"] for schema in ai_tools.COMMUNICATOR_TOOL_SCHEMAS],
+            ["set_finished_flag", "attach_quick_replies"],
+        )
         self.assertEqual(set(ai_tools.COMMUNICATOR_TOOLS), {"set_finished_flag"})
+        self.assertEqual(ai_tools.DATA_ONLY_TOOLS, frozenset({"attach_quick_replies"}))
+
+    async def test_เจอ_tool_ปุ่มแล้วข้ามเงียบ_ไม่ฟ้องว่าไม่มีสิทธิ์(self):
+        calls = [tool_call("attach_quick_replies", {"items": []})]
+
+        executed = await ai_tools.run_communicator_tool_calls(SESSION_ID, calls)
+
+        self.assertEqual(executed, 0)
+        self.set_finished.assert_not_awaited()
+        self.log.assert_not_awaited()
 
     async def test_เติม_session_id_แล้วปักธงจริง(self):
         calls = [tool_call("set_finished_flag", {"is_finished": True})]

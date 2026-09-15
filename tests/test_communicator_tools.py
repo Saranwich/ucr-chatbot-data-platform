@@ -137,26 +137,22 @@ class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_communicator_ขอปุ่มแชร์พิกัด_แล้วส่ง_location_action_ไป_LINE(self):
-        finish_call = {
-            "id": "finish_false",
+        button_call = {
+            "id": "buttons_1",
             "type": "function",
             "function": {
-                "name": "set_finished_flag",
+                "name": "attach_quick_replies",
                 "arguments": json.dumps(
-                    {
-                        "is_finished": False,
-                        "quick_replies": [
-                            {"type": "location", "label": "แชร์พิกัด", "text": None}
-                        ],
-                    },
+                    {"items": [{"type": "location", "label": "แชร์พิกัด", "text": None}]},
                     ensure_ascii=False,
                 ),
             },
         }
-        self.provider.side_effect = [
-            {"role": "assistant", "content": None, "tool_calls": [finish_call]},
-            {"role": "assistant", "content": "ช่วยแชร์พิกัดจุดที่น้ำท่วมได้ไหมคะ", "tool_calls": []},
-        ]
+        self.provider.return_value = {
+            "role": "assistant",
+            "content": "ช่วยแชร์พิกัดจุดที่น้ำท่วมได้ไหมคะ",
+            "tool_calls": [button_call],
+        }
 
         await chatbot.handle_user_events(
             "U-test",
@@ -174,9 +170,64 @@ class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
                 {"type": "location", "label": "แชร์พิกัด", "text": None}
             ],
         )
+        # แปะปุ่มอย่างเดียว ไม่ได้แตะธงจบ — เหลือแค่ครั้งที่ chatbot ถอนให้ตอนรับข้อความ
         self.assertEqual(
             [call.args for call in self.set_finished.await_args_list],
-            [(self.session_id, False), (self.session_id, False)],
+            [(self.session_id, False)],
+        )
+
+    async def test_เรียกสอง_tool_ในตาเดียว_ได้ทั้งปุ่มและธงจบ(self):
+        """แยก tool แล้วสองคำสั่งในตาเดียวเป็นเรื่องปกติ ไม่ใช่ความผิดพลาดอีกต่อไป"""
+        self.provider.return_value = {
+            "role": "assistant",
+            "content": "ขอบคุณที่เล่าให้ฟังนะคะ",
+            "tool_calls": [
+                {
+                    "id": "finish_1",
+                    "type": "function",
+                    "function": {
+                        "name": "set_finished_flag",
+                        "arguments": json.dumps({"is_finished": True}),
+                    },
+                },
+                {
+                    "id": "buttons_1",
+                    "type": "function",
+                    "function": {
+                        "name": "attach_quick_replies",
+                        "arguments": json.dumps(
+                            {"items": [
+                                {"type": "message", "label": "มีอีกเรื่อง", "text": "มีอีกเรื่อง"},
+                                {"type": "message", "label": "พอแล้ว", "text": "พอแล้ว"},
+                            ]},
+                            ensure_ascii=False,
+                        ),
+                    },
+                },
+            ],
+        }
+
+        await chatbot.handle_user_events(
+            "U-test",
+            [{
+                "type": "message",
+                "replyToken": "reply-token",
+                "message": {"type": "text", "text": "พอแค่นี้ครับ"},
+            }],
+        )
+
+        self.provider.assert_awaited_once()
+        self.reply.assert_awaited_once_with(
+            "reply-token",
+            ["ขอบคุณที่เล่าให้ฟังนะคะ"],
+            quick_replies=[
+                {"type": "message", "label": "มีอีกเรื่อง", "text": "มีอีกเรื่อง"},
+                {"type": "message", "label": "พอแล้ว", "text": "พอแล้ว"},
+            ],
+        )
+        self.assertEqual(
+            [call.args for call in self.set_finished.await_args_list],
+            [(self.session_id, False), (self.session_id, True)],
         )
 
 

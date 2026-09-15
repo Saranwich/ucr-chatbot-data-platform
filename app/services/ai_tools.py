@@ -58,19 +58,39 @@ SET_FINISHED_FLAG_TOOL = {
     "function": {
         "name": "set_finished_flag",
         "description": (
-            "รายงานว่าชาวบ้านจบบทสนทนารอบนี้แล้วหรือยัง ต้องเรียกหนึ่งครั้งทุกตา "
-            "ส่ง true เมื่อเขาบอกชัดว่าไม่มีเรื่องจะเล่าต่อ ต้องการหยุด หรือกล่าวลา นอกนั้นส่ง false"
+            "บอกระบบว่าชาวบ้านเล่าจบรอบนี้แล้ว ระบบจะได้ปิดบทสนทนาโดยไม่ต้องรอเงียบครบสิบนาที "
+            "เรียกเมื่อเขาบอกว่าไม่มีเรื่องจะเล่าต่อ ขอหยุด ไม่ว่าง หรือกล่าวลา "
+            "ไม่ต้องเรียกเมื่อบทสนทนายังเดินอยู่ ระบบถือว่ายังไม่จบอยู่แล้วถ้าไม่ได้ยินอะไรจากคุณ "
+            "เรียกด้วย false เฉพาะตอนที่เพิ่งบอกว่าจบไปแล้วในตาก่อน แต่ตานี้เขาพิมพ์เรื่องใหม่มาต่อ"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "is_finished": {
                     "type": "boolean",
-                    "description": "true=ชาวบ้านต้องการจบรอบนี้, false=ยังไม่ได้ยืนยันว่าจบ",
+                    "description": "true=ชาวบ้านต้องการจบรอบนี้, false=ถอนคืนเพราะเขากลับมาเล่าต่อ",
                 },
-                "quick_replies": {
+            },
+            "required": ["is_finished"],
+        },
+    },
+}
+
+QUICK_REPLY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "attach_quick_replies",
+        "description": (
+            "แปะปุ่มกดใต้ข้อความที่คุณกำลังจะตอบ ชาวบ้านกดแล้วข้อความในปุ่มจะถูกส่งกลับมาเป็นคำตอบของเขา "
+            "เรียกเมื่อคำถามของคุณมีตัวเลือกสั้นและชัดเจน หรือเมื่อกำลังขอจุดเกิดเหตุ "
+            "ตาไหนอยากให้เขาพิมพ์เล่าเอง หรือกำลังขอรูป ไม่ต้องเรียก ข้อความที่ตอบยังต้องเขียนตามปกติเสมอ"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "items": {
                     "type": "array",
-                    "minItems": 0,
+                    "minItems": 1,
                     "maxItems": QUICK_REPLY_MAX_ITEMS,
                     "items": {
                         "type": "object",
@@ -96,30 +116,29 @@ SET_FINISHED_FLAG_TOOL = {
                         "additionalProperties": False,
                     },
                     "description": (
-                        "ปุ่มใต้ข้อความ: message ใช้ตอบตัวเลือกสั้น ๆ, location ใช้ขอให้แชร์พิกัด "
-                        "ถ้าไม่ควรมีปุ่มให้ส่ง []"
+                        "ปุ่มตอบข้อความให้ 2-5 ปุ่ม เช่น {\"type\":\"message\",\"label\":\"บางครั้ง\",\"text\":\"บางครั้ง\"} "
+                        "ปุ่มขอพิกัดใช้ {\"type\":\"location\",\"label\":\"แชร์พิกัด\",\"text\":null} ปุ่มเดียวพอ"
                     ),
                 }
             },
-            "required": ["is_finished", "quick_replies"],
+            "required": ["items"],
         },
     },
 }
 
+COMMUNICATOR_TOOL_SCHEMAS = [SET_FINISHED_FLAG_TOOL, QUICK_REPLY_TOOL]
+
 SET_FINISHED_PROTOCOL = """\
-# กติกาการปิดบทสนทนา (ระบบกำหนด)
+# ป้ายจากระบบ
 - ป้าย [got image from user: image_id=...] แปลว่าเขาส่งรูป รหัสเป็นของระบบ คุณมองเนื้อหารูปไม่เห็น ห้ามพูดรหัสกลับไป
 - ป้าย [image download failed] แปลว่าได้รับรูปแต่ระบบโหลดไฟล์ไม่ได้ จึงไม่มี image_id ที่ใช้อ้างอิง ห้ามอ้างว่าเห็นรูป
 - ป้าย [got location from user: location_id=...] แปลว่าเขาแชร์พิกัดมา รหัสเป็นของระบบ ห้ามพูดรหัสกลับไป
-- ต้องเรียก set_finished_flag หนึ่งครั้งทุกตาก่อนตอบ
-- ส่ง is_finished=true เมื่อชาวบ้านยืนยันว่าไม่มีเรื่องจะเล่าต่อ ต้องการหยุด หรือกล่าวลาชัดเจน
-- ส่ง is_finished=false เมื่อยังไม่ได้ยืนยันว่าจบ รวมถึงคำสั้น ๆ อย่างขอบคุณหรือโอเคที่ยังอาจคุยต่อ
-- ใน set_finished_flag ให้ส่ง quick_replies เป็นรายการ object ที่มี type, label และ text ถ้าไม่ควรมีปุ่มให้ส่ง []
-- ปุ่มตอบข้อความใช้ {"type":"message","label":"บางครั้ง","text":"บางครั้ง"} ให้ 2-5 ตัวเลือกสั้นชัดเจน
-- ปุ่มขอพิกัดใช้ {"type":"location","label":"แชร์พิกัด","text":null} ใช้ปุ่มเดียวได้ และใช้เมื่อกำลังขอจุดเกิดเหตุเท่านั้น
-- label ทุกปุ่มยาวไม่เกิน 20 ตัวอักษรโดยเด็ดขาด ห้ามใส่คำถามหรือประโยคอธิบายในปุ่ม
-- คำถามที่ควรให้พิมพ์เล่าเองหรือขอรูป ไม่ต้องสร้าง quick reply
-- ถ้าได้รับผลของ tool แล้ว ให้ตอบชาวบ้านตามปกติโดยไม่เรียก tool ซ้ำ
+
+# เครื่องมือ
+- คุณมีเครื่องมือสองตัว เรียกเมื่อเห็นว่าถึงจังหวะของมัน ตาไหนไม่ถึงจังหวะก็ตอบข้อความอย่างเดียว
+- ทุกตาต้องเขียนข้อความตอบชาวบ้านเสมอ ไม่ว่าจะเรียกเครื่องมือหรือไม่
+- เรียกพร้อมกันสองตัวในตาเดียวได้ ถ้าจังหวะมาพร้อมกัน
+- label ของปุ่มยาวไม่เกิน 20 ตัวอักษรโดยเด็ดขาด ห้ามใส่คำถามหรือประโยคอธิบายในปุ่ม
 """
 
 
@@ -144,6 +163,10 @@ COMMUNICATOR_TOOLS = {
     "set_finished_flag": set_finished_flag,
 }
 
+# tool ที่โมเดลเรียกเพื่อ "แนบของมากับคำตอบ" ไม่ใช่เพื่อสั่งให้แอปทำอะไร
+# ถูกอ่านไปใช้ตอนปั้นข้อความแล้ว ตัวลงมือจึงข้ามไปเงียบ ๆ ไม่ใช่ของแปลกปลอม
+DATA_ONLY_TOOLS = frozenset({"attach_quick_replies"})
+
 
 def _utf16_units(value: str) -> int:
     """LINE นับความยาว label เป็น UTF-16 code units ไม่ใช่จำนวนตัวอักษรของ Python"""
@@ -153,19 +176,19 @@ def _utf16_units(value: str) -> int:
 async def extract_quick_replies(tool_calls: list) -> list[QuickReply]:
     """อ่านคำขอ quick reply จากโมเดล คืนข้อความที่ส่งให้ LINE ได้จริง
 
-    Quick reply เป็นข้อมูลประกอบคำตอบ ไม่ใช่ side effect จึงปั้นก่อนส่ง LINE ส่วน is_finished
-    ใน tool ก้อนเดียวกันค่อยถูก execute หลังส่ง รายการผิดถูกตัดเฉพาะปุ่ม คำตอบหลักยังส่งต่อได้
+    Quick reply เป็นข้อมูลประกอบคำตอบ ไม่ใช่ side effect จึงปั้นก่อนส่ง LINE ส่วนธงจบที่มาใน
+    tool อีกตัวค่อยถูก execute หลังส่ง รายการผิดถูกตัดเฉพาะปุ่ม คำตอบหลักยังส่งต่อได้
     """
     calls = [
         call for call in (tool_calls or [])
         if isinstance(call, dict)
         and isinstance(call.get("function"), dict)
-        and call["function"].get("name") == "set_finished_flag"
+        and call["function"].get("name") == "attach_quick_replies"
     ]
     if not calls:
         return []
     if len(calls) > 1:
-        await psql.create_and_save_log(PROCESS, "communicator เรียก set_finished_flag ซ้ำ ตัด quick reply รอบนี้ทิ้ง")
+        await psql.create_and_save_log(PROCESS, "communicator เรียก attach_quick_replies ซ้ำ ตัด quick reply รอบนี้ทิ้ง")
         return []
 
     raw = calls[0]["function"].get("arguments")
@@ -173,17 +196,17 @@ async def extract_quick_replies(tool_calls: list) -> list[QuickReply]:
         try:
             arguments = json.loads(raw)
         except (ValueError, TypeError) as error:
-            await psql.create_and_save_log(PROCESS, f"set_finished_flag ส่ง json ที่อ่านไม่ได้ {error}")
+            await psql.create_and_save_log(PROCESS, f"attach_quick_replies ส่ง json ที่อ่านไม่ได้ {error}")
             return []
     else:
         arguments = raw
 
-    if not isinstance(arguments, dict) or not isinstance(arguments.get("quick_replies"), list):
-        await psql.create_and_save_log(PROCESS, "set_finished_flag ต้องส่ง quick_replies เป็นลิสต์")
+    if not isinstance(arguments, dict) or not isinstance(arguments.get("items"), list):
+        await psql.create_and_save_log(PROCESS, "attach_quick_replies ต้องส่ง items เป็นลิสต์")
         return []
 
     quick_replies: list[QuickReply] = []
-    for raw_item in arguments["quick_replies"]:
+    for raw_item in arguments["items"]:
         if not isinstance(raw_item, dict):
             continue
         action_type = raw_item.get("type")
@@ -237,6 +260,11 @@ async def run_communicator_tool_calls (session_id: UUID, tool_calls: list) -> in
             continue
 
         name = function.get("name")
+
+        # ปุ่มถูกแปะไปกับข้อความตั้งแต่ก่อนส่ง LINE แล้ว ไม่มีอะไรให้ลงมือต่อที่นี่
+        if name in DATA_ONLY_TOOLS:
+            continue
+
         handler = COMMUNICATOR_TOOLS.get(name)
         if handler is None:
             await psql.create_and_save_log(PROCESS, f"session {session_id} สั่ง communicator tool ชื่อ {name} ที่ไม่มีสิทธิ์เรียก")
@@ -256,7 +284,6 @@ async def run_communicator_tool_calls (session_id: UUID, tool_calls: list) -> in
             await psql.create_and_save_log(PROCESS, f"session {session_id} สั่ง {name} ด้วย is_finished ที่ไม่ใช่ boolean")
             continue
 
-        arguments.pop("quick_replies", None)  # ใช้ประกอบข้อความ LINE ไปแล้ว ไม่ใช่อาร์กิวเมนต์ของ handler
         arguments.pop("session_id", None)
         try:
             ok = await handler(session_id, **arguments)

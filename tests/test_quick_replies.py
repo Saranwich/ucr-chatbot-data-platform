@@ -15,10 +15,8 @@ def quick_reply_call(items) -> dict:
         "id": "quick_1",
         "type": "function",
         "function": {
-            "name": "set_finished_flag",
-            "arguments": json.dumps(
-                {"is_finished": False, "quick_replies": items}, ensure_ascii=False
-            ),
+            "name": "attach_quick_replies",
+            "arguments": json.dumps({"items": items}, ensure_ascii=False),
         },
     }
 
@@ -36,13 +34,15 @@ class QuickReplyToolTest(unittest.IsolatedAsyncioTestCase):
         self.log = patch_log(ai_tools).start()
         self.addCleanup(patch.stopall)
 
-    async def test_schema_เพิ่ม_quick_reply_ใน_tool_เดิมของ_communicator(self):
-        function = ai_tools.SET_FINISHED_FLAG_TOOL["function"]
-        spec = function["parameters"]["properties"]["quick_replies"]
+    async def test_schema_ปุ่มแยกเป็น_tool_ของตัวเอง(self):
+        """ปุ่มเป็นของเลือกได้ ธงจบเป็นอีกเรื่อง อยู่ tool เดียวกันเมื่อไหร่โมเดลจะสับสนสองหน้าที่"""
+        function = ai_tools.QUICK_REPLY_TOOL["function"]
+        spec = function["parameters"]["properties"]["items"]
 
-        self.assertEqual(function["name"], "set_finished_flag")
-        self.assertIn("quick_replies", function["parameters"]["required"])
-        self.assertEqual((spec["minItems"], spec["maxItems"]), (0, 5))
+        self.assertEqual(function["name"], "attach_quick_replies")
+        self.assertEqual(function["parameters"]["required"], ["items"])
+        self.assertEqual((spec["minItems"], spec["maxItems"]), (1, 5))
+        self.assertNotIn("quick_replies", ai_tools.SET_FINISHED_FLAG_TOOL["function"]["parameters"]["properties"])
         self.assertEqual(spec["items"]["properties"]["type"]["enum"], ["message", "location"])
         self.assertEqual(spec["items"]["properties"]["label"]["maxLength"], 20)
 

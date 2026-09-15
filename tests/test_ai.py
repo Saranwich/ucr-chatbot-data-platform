@@ -157,10 +157,13 @@ class CommunicatorReplyTest (unittest.IsolatedAsyncioTestCase):
         await ai.communicator_reply(CONVERSATION)
 
         tools = self.chat_with_tools.await_args_list[0].args[1]
-        self.assertEqual([tool["function"]["name"] for tool in tools], ["set_finished_flag"])
-        self.assertIn("quick_replies", tools[0]["function"]["parameters"]["properties"])
+        self.assertEqual(
+            [tool["function"]["name"] for tool in tools],
+            ["set_finished_flag", "attach_quick_replies"],
+        )
         self.assertIn(ai.SET_FINISHED_PROTOCOL, self.chat_with_tools.await_args_list[0].args[0][0]["content"])
-        self.assertEqual(self.chat_with_tools.await_args_list[0].kwargs["tool_choice"], "required")
+        # ไม่ส่ง tool_choice = ใช้ auto ของ client โมเดลตัดสินใจเองว่าจะเรียกไหม
+        self.assertNotIn("tool_choice", self.chat_with_tools.await_args_list[0].kwargs)
         self.chat.assert_not_awaited()
 
     async def test_ส่งบทสนทนาเป็นหลายตาเหมือนเดิม (self):
@@ -189,7 +192,7 @@ class CommunicatorReplyTest (unittest.IsolatedAsyncioTestCase):
         self.assertEqual(followup[-2]["tool_calls"], [tool_call])
         self.assertEqual(followup[-1]["role"], "tool")
         self.assertEqual(followup[-1]["tool_call_id"], "finish_1")
-        self.assertEqual(self.chat_with_tools.await_args_list[0].kwargs["tool_choice"], "required")
+        self.assertNotIn("tool_choice", self.chat_with_tools.await_args_list[0].kwargs)
         self.assertEqual(self.chat_with_tools.await_args_list[1].kwargs["tool_choice"], "none")
 
     async def test_รอบแรกมีทั้ง_tool_และข้อความ_ใช้เลยไม่ยิงรอบสอง (self):

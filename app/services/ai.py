@@ -4,9 +4,9 @@ from app.clients import psql, typhoon
 from app.schemas.ai_config import AgentConfig
 from app.schemas.turn import Turn
 from app.services.ai_tools import (
+    COMMUNICATOR_TOOL_SCHEMAS,
     SAVE_ANALYSE_PROTOCOL,
     SAVE_ANALYSE_TOOL,
-    SET_FINISHED_FLAG_TOOL,
     SET_FINISHED_PROTOCOL,
 )
 from app.services.config import ai_config
@@ -45,11 +45,10 @@ async def communicator_reply (session: list[Turn]) -> tuple[str | None, list[dic
 
     message = await typhoon.chat_with_tools(
         messages,
-        [SET_FINISHED_FLAG_TOOL],
+        COMMUNICATOR_TOOL_SCHEMAS,
         config.model_name,
         config.temperature,
         config.max_output_tokens,
-        tool_choice="required",
     )
     if message is None:
         await psql.create_and_save_log(PROCESS, "ไม่มี provider ไหนตอบได้ รอบนี้เลยเงียบ")
@@ -60,28 +59,15 @@ async def communicator_reply (session: list[Turn]) -> tuple[str | None, list[dic
         await psql.create_and_save_log(PROCESS, "communicator คืน tool_calls ในรูปที่อ่านไม่ออก")
         return None, [], config
 
-    if len(tool_calls) > 1:
-        await psql.create_and_save_log(
-            PROCESS,
-            f"communicator ต้องเรียก set_finished_flag หนึ่งครั้ง แต่ได้ {len(tool_calls)} ครั้ง",
-        )
-        return None, [], config
-
-    # มีข้อความมาแล้วก็ใช้เลย ไม่ว่าจะสั่ง tool มาด้วยหรือไม่ — ข้อความคือของที่ชาวบ้านรอ
+    # มีข้อความมาแล้วก็ใช้เลย ไม่ว่าจะแนบ tool มาด้วยหรือไม่ — ข้อความคือของที่ชาวบ้านรอ
     # ทิ้งเมื่อไหร่ LINE เงียบทันที และเงียบแพงกว่าการไม่ได้ปักธงจบมาก
+    # ไม่เรียก tool เลยคือเรื่องปกติของตาที่บทสนทนายังเดินอยู่ ไม่ต้อง log
     reply = message.get("content")
     if isinstance(reply, str) and reply.strip():
-        # ไม่มี tool = ธงจบไม่ถูกแตะรอบนี้ ปลอดภัยเพราะ chatbot ถอนเป็น False ไว้ก่อนถามแล้ว
-        # session ไม่ปิดทันทีก็แค่รอ TTL ปิดตามปกติ
-        if not tool_calls:
-            await psql.create_and_save_log(
-                PROCESS,
-                "communicator ไม่เรียก set_finished_flag แต่มีข้อความตอบ ใช้ข้อความนั้นโดยไม่เปลี่ยนธงจบ",
-            )
         return reply, tool_calls, config
 
     if not tool_calls:
-        await psql.create_and_save_log(PROCESS, "communicator ไม่เรียก set_finished_flag และไม่มีข้อความสำหรับตอบผู้ใช้")
+        await psql.create_and_save_log(PROCESS, "communicator ไม่เรียก tool และไม่มีข้อความสำหรับตอบผู้ใช้")
         return None, [], config
 
     # เหลือทางเดียว: สั่ง tool มาแต่ไม่เขียนอะไรให้ชาวบ้าน ต้องยิงอีกรอบเอาเฉพาะข้อความ
@@ -105,7 +91,7 @@ async def communicator_reply (session: list[Turn]) -> tuple[str | None, list[dic
     }
     message = await typhoon.chat_with_tools(
         [*messages, assistant_message, *tool_messages],
-        [SET_FINISHED_FLAG_TOOL],
+        COMMUNICATOR_TOOL_SCHEMAS,
         config.model_name,
         config.temperature,
         config.max_output_tokens,

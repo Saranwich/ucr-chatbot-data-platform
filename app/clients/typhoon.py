@@ -37,14 +37,28 @@ async def _post_chat_completions (body: dict) -> dict | None:
     return resp.json()
 
 
-async def chat (messages: list[dict], model: str, temperature: float, max_tokens: int) -> str | None:
-    """ถามโมเดลเอาข้อความเปล่า ๆ หนึ่งก้อน — ทางที่ communicator ใช้อยู่"""
+async def chat (
+    messages: list[dict],
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    response_format: dict | None = None,
+) -> str | None:
+    """ถามโมเดลเอาข้อความเปล่า ๆ หนึ่งก้อน — ทางที่ communicator ใช้อยู่
+
+    response_format คือคำขอให้คายเป็น JSON ตามรูปที่กำหนด ใส่หรือไม่ใส่ก็ได้
+    วัดแล้วว่า typhoon ทิ้งช่องนี้เงียบ ๆ (ส่ง type มั่วไปมันยังไม่ฟ้อง) แต่เจ้าอื่นบังคับตามจริง
+    ยังส่งไปเพราะไม่มีต้นทุน และเป็นสิ่งเดียวที่จะยกระดับจาก "ขอร้อง" เป็น "บังคับ" ตอนสลับ provider
+    """
     body = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+
+    if response_format is not None:
+        body["response_format"] = response_format
 
     data = await _post_chat_completions(body)
     if data is None:

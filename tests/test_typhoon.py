@@ -34,6 +34,15 @@ class TyphoonClientTest (unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.recorder["body"]["temperature"], 0.7)
         self.assertEqual(self.recorder["body"]["max_tokens"], 512)
 
+    async def test_chat_ส่ง_response_format_ให้ถ้าคนเรียกขอ (self):
+        """typhoon ทิ้งช่องนี้เงียบ ๆ (วัดแล้ว) แต่ client ต้องส่งให้ ไม่ใช่ตัดสินใจแทนคนเรียก"""
+        self.serve(FakeResponse(200, {"choices": [{"message": {"content": "{}"}}]}))
+        fmt = {"type": "json_schema", "json_schema": {"name": "x", "strict": True, "schema": {}}}
+
+        await typhoon.chat([], "โมเดล", 0.7, 512, response_format=fmt)
+
+        self.assertEqual(self.recorder["body"]["response_format"], fmt)
+
     async def test_chat_ไม่ส่ง_tools_ไปด้วย (self):
         """communicator ยังคุยแบบเดิม ไม่ควรมีช่อง tools/tool_choice โผล่ใน body"""
         self.serve(FakeResponse(200, {"choices": [{"message": {"content": "ค่ะ"}}]}))
@@ -42,6 +51,7 @@ class TyphoonClientTest (unittest.IsolatedAsyncioTestCase):
 
         self.assertNotIn("tools", self.recorder["body"])
         self.assertNotIn("tool_choice", self.recorder["body"])
+        self.assertNotIn("response_format", self.recorder["body"])
 
     async def test_chat_ไม่_200_คืน_None_แล้ว_log (self):
         self.serve(FakeResponse(500, None, "พัง"))

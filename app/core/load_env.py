@@ -32,5 +32,9 @@ LINE_CHANNEL_SECRET = os.environ["LINE_CHANNEL_SECRET"]
 LINE_CHANNEL_ACCESS_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
 TYPHOON_API_KEY = os.environ["TYPHOON_API_KEY"]
 
+# ยังไม่มีใครในแอปเรียก google ai เลยยังไม่บังคับ เครื่องที่ไม่ได้ตั้งต้องเปิดแอปได้ตามเดิม
+# วันที่ย้ายมาใช้จริงค่อยเลื่อนขึ้นไปอยู่ใน REQUIRED
+GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "")
+
 # from load_env import * ส่งออกแค่ของลับ ไม่ลาก os / sys / ตัวช่วยไปด้วย
-__all__ = list(REQUIRED)
+__all__ = [*REQUIRED, "GOOGLE_AI_API_KEY"]

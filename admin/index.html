@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UCR community reports</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script defer src="admin.js"></script>
+</head>
+<body>
+  <header><strong>UCR community reports</strong><nav aria-label="Main navigation">
+    <a href="#map" aria-current="page">Map &amp; reports</a>
+    <a href="#dashboard">Dashboard</a>
+    <a href="#broadcasts">Broadcasts</a>
+  </nav></header>
+  <main>
+    <p id="notice" role="status" aria-live="polite" hidden></p>
+    <section id="page-map" aria-labelledby="map-heading">
+      <div class="toolbar"><h1 id="map-heading">Problems in the community</h1>
+        <label>Problem type <select id="type-filter"><option value="">All types</option><option value="flood">Flood</option><option value="heat">Heat</option><option value="light">Street lighting</option><option value="other">Other</option></select></label>
+        <button id="refresh-reports" type="button">Refresh</button>
+      </div>
+      <p id="report-summary">Loading reports…</p>
+      <div class="map-layout"><div id="map" aria-label="Map of reported problems"></div>
+        <aside id="report-detail" aria-live="polite"><h2>Report details</h2><p>Select a map spot or a report below.</p></aside>
+      </div>
+      <h2>Reports <small>including reports without coordinates</small></h2>
+      <div id="report-list" class="report-list"></div>
+      <button id="load-more" type="button" hidden>Load more reports</button>
+    </section>
+    <section id="page-dashboard" aria-labelledby="dashboard-heading" hidden>
+      <div class="toolbar"><h1 id="dashboard-heading">Dashboard</h1>
+        <label>Report period <select id="stats-days"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last year</option></select></label>
+        <button id="refresh-stats" type="button">Refresh</button></div>
+      <div id="statistics" aria-live="polite">Loading statistics…</div>
+    </section>
+    <section id="page-broadcasts" aria-labelledby="broadcast-heading" hidden>
+      <div class="toolbar"><h1 id="broadcast-heading">Broadcasts</h1><span id="auto-status" class="badge">Automatic broadcasts: disabled</span></div>
+      <div class="broadcast-layout">
+        <form id="broadcast-form">
+          <h2>New message</h2>
+          <label for="broadcast-text">Message to send through LINE</label>
+          <textarea id="broadcast-text" required maxlength="5000" rows="7"></textarea>
+          <label for="audience">Recipients</label>
+          <select id="audience"><option value="all">All known users</option><option value="selected">Selected users</option></select>
+          <div id="user-picker" hidden><p>Choose recipients</p><div id="user-list">Loading users…</div><button id="more-users" type="button" hidden>Load more users</button></div>
+          <label class="checkbox" for="force-send"><input id="force-send" type="checkbox"> Force send to people who are mid-conversation</label>
+          <button type="submit" id="create-draft">Send now</button>
+          <p class="muted">You confirm once, then the message goes out immediately.</p>
+        </form>
+        <aside id="broadcast-detail" aria-live="polite"><h2>Message details</h2><p>Select a saved message to review its content and sending status.</p></aside>
+      </div>
+      <div class="toolbar"><h2>History</h2><button id="refresh-broadcasts" type="button">Refresh</button></div>
+      <p class="muted">Sent means LINE accepted the request. It does not confirm that the recipient read it.</p>
+      <div id="broadcast-history"></div>
+      <button id="more-broadcasts" type="button" hidden>Load more messages</button>
+    </section>
+  </main>
+</body>
+</html>

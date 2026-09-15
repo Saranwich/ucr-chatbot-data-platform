@@ -1,47 +1,49 @@
-"""หน้าแผนที่ให้ทีมออกแบบเปิดดู — อ่านอย่างเดียว ไม่มีอะไรเขียนกลับ
+from uuid import UUID
 
-หน้าเว็บเป็นไฟล์เดียวใน static/ ที่ไปเรียก /api/dashboard/reports เอาเอง
-ไฟล์นี้จึงมีแค่ 3 ทาง: หน้าเว็บ, ข้อมูล, และรูป
-"""
-
-import asyncpg
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from app.api.deps import get_db
-from app.clients import media, storage
-from app.core.config import BASE_DIR
+from app.schemas.dashboard import ReportDetail, ReportPage, Statistics, UserPage
+from app.schemas.report import ProblemType
+from app.services import dashboard as service
 
-router = APIRouter()
-
-PAGE = BASE_DIR / "app" / "static" / "dashboard.html"
+router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
-@router.get("/dashboard")
-async def page() -> FileResponse:
-    return FileResponse(PAGE)
+@router.get("/reports", response_model=ReportPage)
+async def reports(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    type: ProblemType | None = Query(None),
+    days: int | None = Query(None, ge=1, le=365),
+):
+    return await service.list_reports(limit, offset, type, days)
 
 
-@router.get("/api/dashboard/reports")
-async def reports(pool: asyncpg.Pool = Depends(get_db)) -> list[dict]:
-    """ทุกใบที่เก็บไว้ พร้อมพิกัดและรายการรูป
-
-    ส่งใบที่ไม่มีพิกัดมาด้วย **ตั้งใจ** — ใบพวกนั้นปักหมุดเองไม่ได้ ต้องให้ทีม
-    มาปักมือทีหลัง ถ้ากรองทิ้งตรงนี้มันจะหายไปจากสายตาทุกคนตลอดกาล
-    """
-    return await storage.list_reports(pool)
+@router.get("/reports/{report_id}", response_model=ReportDetail)
+async def report_detail(report_id: UUID):
+    report = await service.get_report(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report
 
 
-@router.get("/api/dashboard/image/{image_id}")
-async def image(image_id: int, pool: asyncpg.Pool = Depends(get_db)) -> FileResponse:
-    """รูปของใบนั้น อ้างด้วย id ของรูป ไม่ใช่ path — ข้างนอกไม่ต้องรู้ว่าไฟล์อยู่ไหน"""
-    key = await storage.image_key(pool, image_id)
-    if key is None:
-        raise HTTPException(status_code=404, detail="ไม่มีรูปนี้")
+@router.get("/statistics", response_model=Statistics)
+async def statistics(days: int = Query(30, ge=1, le=365)):
+    return await service.get_statistics(days)
 
-    path = media.local_file(key)
+
+@router.get("/users", response_model=UserPage)
+async def users(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    return await service.list_users(limit, offset)
+
+
+@router.get("/images/{image_id}", response_class=FileResponse)
+async def image(image_id: UUID):
+    path = await service.get_image_path(image_id)
     if path is None:
-        # แถวมีแต่ไฟล์หาย — เกิดได้ถ้าย้ายเครื่องแล้วสำรองมาแต่ฐานข้อมูล
-        raise HTTPException(status_code=404, detail="มีรูปในระบบแต่หาไฟล์ไม่เจอ")
-
-    return FileResponse(path, media_type="image/jpeg")
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(path)

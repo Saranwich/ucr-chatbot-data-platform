@@ -1,29 +1,16 @@
-from dotenv import load_dotenv
-import os
-from pathlib import Path
+from app.core.load_env import *  # noqa: F403 — DATABASE_URL, REDIS_URL, LINE_*, TYPHOON_API_KEY
+from app.core.load_env import BASE_DIR
 
+# --- endpoint ---
+LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
+LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
+LINE_CONTENT_URL = "https://api-data.line.me/v2/bot/message/{message_id}/content"
+LINE_LOADING_URL = "https://api.line.me/v2/bot/chat/loading/start"
+TYPHOON_API_ENDPOINT = "https://api.opentyphoon.ai/v1"
+# หน้า openai-compatible ของ google ai studio ไม่ใช่ทางเดิมของกูเกิล — path /openai/ คือตัวแยก
+GOOGLE_AI_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai"
 
-
-# app/core/config.py -> app/core -> app -> project root
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(BASE_DIR / ".env")
-
-API_KEY = os.getenv("API_KEY")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-DATABASE_URL = os.getenv("DATABASE_URL")
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-
-# **ต้องเป็น base ของช่องทางที่พูดภาษา OpenAI ไม่ใช่ URL ของ endpoint ตัวเดียว**
-# ของ Gemini คือ .../v1beta/openai/ ไม่ใช่ .../v1beta/models/<model>:generateContent
-# (อันหลังเป็น REST ดั้งเดิมของ Google คนละภาษากับที่ไลบรารีนี้พูด)
-# ตั้ง default ไว้ให้ เพราะเป็นค่าที่ถูกอยู่แล้ว ไม่ต้องให้ทุกคนไปจำเอง
-API_ENDPOINT = os.getenv(
-    "API_ENDPOINT", "https://generativelanguage.googleapis.com/v1beta/openai/"
-)
-
-# **ยิงข้อความหาชาวบ้านจริงหรือยัง** — ปิดไว้โดยปริยาย ตั้งใจ
-#
-# การขึ้นโค้ดกับการเริ่มทักคนจริงเป็นคนละการตัดสินใจกัน ตัวนี้ทำให้หยุดยิงได้
-# ด้วยการแก้ .env แล้วรีสตาร์ท ไม่ต้องถอยโค้ด
-BROADCAST_ENABLED = os.getenv("BROADCAST_ENABLED", "").lower() in ("1", "true", "yes")
+# --- ที่เก็บไฟล์ ---
+# อยู่ใต้ storage/ ที่ .gitignore กันไว้แล้ว รูปของชาวบ้านจะได้ไม่ขึ้น git
+# save_image() คืน path ที่ตัดถึงแค่ "uploads/..." วันย้ายขึ้น s3 คีย์เดิมใช้ต่อได้
+UPLOAD_DIR = BASE_DIR / "storage" / "uploads"

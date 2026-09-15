@@ -1,159 +1,121 @@
-"""ส่งข้อความกลับ LINE
+from uuid import UUID
 
-นาฬิกา 2 เรือนที่ต้องจำ
-  2 วินาที  = ต้องตอบ 200 กลับ LINE ให้ทัน — เรื่องนั้นจัดการที่ api/line.py
-  1 นาที    = อายุ reply token ทันใช้ reply (ฟรี) ไม่ทันต้อง push (กินโควตา)
-"""
+import httpx
 
-import logging
-
-from linebot.v3.messaging import (
-    AsyncApiClient,
-    AsyncMessagingApi,
-    AsyncMessagingApiBlob,
-    CameraAction,
-    CameraRollAction,
-    Configuration,
-    LocationAction,
-    PushMessageRequest,
-    QuickReply,
-    QuickReplyItem,
-    ReplyMessageRequest,
-    ShowLoadingAnimationRequest,
-    TextMessage,
+from app.clients import psql
+from app.core.config import (
+    LINE_CHANNEL_ACCESS_TOKEN,
+    LINE_CONTENT_URL,
+    LINE_LOADING_URL,
+    LINE_PUSH_URL,
+    LINE_REPLY_URL,
 )
 
-from app.core.config import LINE_CHANNEL_ACCESS_TOKEN
+PROCESS_NAME = "clinents.line" #use for logs
 
-log = logging.getLogger(__name__)
+TIMEOUT = 10
 
-configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
-
-# ปุ่มลัด โผล่เฉพาะตาที่บอทกำลังขอของนั้นอยู่ กดง่ายกว่าให้เขาหาเมนูเอง
-_LOCATION_BUTTON = QuickReply(
-    items=[QuickReplyItem(action=LocationAction(label="ส่งตำแหน่ง"))]
-)
-
-# ให้ทั้งสองทาง — เรื่องที่เกิดอยู่ตอนนี้ถ่ายสด เรื่องเมื่อวานหยิบจากอัลบั้ม
-_PHOTO_BUTTONS = QuickReply(
-    items=[
-        QuickReplyItem(action=CameraAction(label="ถ่ายรูป")),
-        QuickReplyItem(action=CameraRollAction(label="เลือกจากอัลบั้ม")),
-    ]
-)
+# ไลน์รับเฉพาะ 5-60 และต้องเป็นจำนวนเท่าของ 5 — รอบที่ช้าสุดเท่าที่วัดได้คือ 12 วิ
+# เผื่อไว้เกินไม่เสียหาย จุดหายเองทันทีที่ข้อความจริงไปถึง ไม่ต้องสั่งหยุด
+LOADING_SECONDS = 30
 
 
-def _message(text: str, ask_location: bool, ask_photo: bool) -> TextMessage:
-    """ปุ่มขึ้นได้ชุดเดียว ตำแหน่งมาก่อนเสมอ — ไม่มีพิกัด = ไม่ขึ้นหมุดบนแผนที่"""
-    quick_reply = None
-    if ask_location:
-        quick_reply = _LOCATION_BUTTON
-    elif ask_photo:
-        quick_reply = _PHOTO_BUTTONS
+async def replie (replytoken: str, messages: list[str], quick_replies: list[dict] | None = None) -> int:
 
-    return TextMessage(text=text, quickReply=quick_reply)
+    headers = {"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"}
+    message_objects = [{"type": "text", "text": text} for text in messages[:5]]
+    if quick_replies and message_objects:
+        items = []
+        for reply in quick_replies[:13]:
+            action = {"type": reply["type"], "label": reply["label"]}
+            if reply["type"] == "message":
+                action["text"] = reply["text"]
+            items.append({"type": "action", "action": action})
+        message_objects[-1]["quickReply"] = {"items": items}
+    body = {
+        "replyToken": replytoken,
+        "messages": message_objects,
+    }
 
+    async with httpx.AsyncClient(timeout=TIMEOUT) as cli:
+        resp = await cli.post(LINE_REPLY_URL, headers=headers, json=body)
 
-async def reply(
-    reply_token: str, text: str, ask_location: bool = False, ask_photo: bool = False
-) -> None:
-    async with AsyncApiClient(configuration) as api_client:
-        await AsyncMessagingApi(api_client).reply_message(
-            ReplyMessageRequest(
-                reply_token=reply_token,
-                messages=[_message(text, ask_location, ask_photo)],
-            )
+    if resp.status_code != 200:
+        await psql.create_and_save_log(
+            PROCESS_NAME, f"ตอบกลับไม่สำเร็จ {resp.status_code} {resp.text}"
         )
+    await psql.create_and_save_log(PROCESS_NAME, f"ตอบกลับสำเร็จ {resp.status_code} {resp.text}")
+    return resp.status_code #status code
 
 
-async def push(
-    to: str, text: str, ask_location: bool = False, ask_photo: bool = False
-) -> None:
-    """ใช้ตอน reply token หมดอายุแล้ว — อันนี้กินโควตารายเดือนของ OA"""
-    async with AsyncApiClient(configuration) as api_client:
-        await AsyncMessagingApi(api_client).push_message(
-            PushMessageRequest(
-                to=to,
-                messages=[_message(text, ask_location, ask_photo)],
-            )
+async def push (line_user_id: str, messages: list[str], retry_key: UUID | None = None) -> int:
+    """ยิงข้อความหาคนคนเดียวโดยไม่ต้องมี replytoken
+
+    retry_key ให้ไลน์รู้ว่าเป็นคำขอเดิม ยิงซ้ำด้วยคีย์เดิมจะไม่ส่งซ้ำถึงชาวบ้าน
+    """
+    headers = {
+        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    if retry_key is not None:
+        headers["X-Line-Retry-Key"] = str(retry_key)
+    body = {
+        "to": line_user_id,
+        "messages": [{"type": "text", "text": text} for text in messages[:5]],
+    }
+
+    async with httpx.AsyncClient(timeout=TIMEOUT) as cli:
+        resp = await cli.post(LINE_PUSH_URL, headers=headers, json=body)
+
+    if resp.status_code != 200:
+        await psql.create_and_save_log(
+            PROCESS_NAME, f"ยิงข้อความไม่สำเร็จ {resp.status_code} {resp.text}"
         )
+    return resp.status_code
 
 
-# ------------------------------------------------ ตอนเราเป็นฝ่ายเปิดเรื่องก่อน
+async def start_loading (line_user_id: str) -> None:
+    """ขึ้นจุดสามจุดในแชทของคนคนนั้น บอกว่ากำลังคิดอยู่ ไม่ได้เงียบใส่
 
+    ครอบ try ไว้ทั้งก้อนเพราะนี่เป็นของประดับ ล้มยังไงก็ห้ามพาคำตอบล้มตาม
+    ชาวบ้านไม่เห็นจุดยังคุยต่อได้ แต่ไม่ได้คำตอบคือจบ
 
-async def push_many(recipients: list[str], text: str) -> dict:
-    """ส่งข้อความเดียวกันให้ทุกคนในรายชื่อ คืนว่าถึงใคร พลาดใคร
-
-    ข้อความล้วน ไม่มีการ์ด ไม่มีปุ่ม — **เขาตอบเป็นภาษาคน ไม่ใช่กดตัวเลือก**
-
-    **ทีละคน และคนที่พลาดต้องไม่ลากคนที่เหลือลงไปด้วย** คนหนึ่งบล็อกบอทไปแล้ว
-    อีกร้อยคนที่เหลือไม่เกี่ยว ของเดิมไม่มี try ตรงนี้ คนเดียว throw = ทั้งรอบตาย
-
-    ส่งเรียงทีละคนไม่ส่งพร้อมกัน เพราะ push กินโควตารายเดือนของ OA และ LINE
-    มีเพดานต่อวินาทีอยู่ — เรียงช้ากว่าแต่ไม่มีใครหล่น
+    ใช้ได้เฉพาะแชทตัวต่อตัว กลุ่มกับห้องหลายคนไลน์ไม่รองรับ — โปรเจกต์นี้มีแต่แชทตัวต่อตัวอยู่แล้ว
     """
-    result = {"sent": [], "failed": []}
-    if not recipients:
-        return result
+    headers = {
+        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    body = {"chatId": line_user_id, "loadingSeconds": LOADING_SECONDS}
 
-    async with AsyncApiClient(configuration) as api_client:
-        api = AsyncMessagingApi(api_client)
-        for to in recipients:
-            try:
-                await api.push_message(
-                    PushMessageRequest(to=to, messages=[TextMessage(text=text)])
-                )
-                result["sent"].append(to)
-            except Exception:
-                log.warning("ส่งไม่ถึง to=%s ข้ามไปคนถัดไป", to, exc_info=True)
-                result["failed"].append(to)
-
-    return result
-
-
-async def send(
-    reply_token: str,
-    to: str,
-    text: str,
-    ask_location: bool = False,
-    ask_photo: bool = False,
-) -> None:
-    """ลอง reply ก่อนเพราะฟรี ไม่ได้ค่อย push
-
-    reply พังได้หลายทาง (token หมดอายุ / ถูกใช้ไปแล้ว) ซึ่งเรารู้ตอนยิงเท่านั้น
-    เลยดักตรงนี้แล้วเปลี่ยนไปใช้ push แทน ดีกว่าเงียบหายไปเฉย ๆ
-
-    **push นับเข้าโควตาข้อความรายเดือน ส่วน reply ไม่นับ** โควตาก้อนเดียวกันนี้
-    คือก้อนที่ broadcast จะใช้ ตกมา push บ่อยเมื่อไหร่แปลว่าเรากินโควตาของ
-    broadcast ไปเรื่อย ๆ โดยไม่มีใครเห็น — log บรรทัดนี้คือที่เดียวที่บอกได้
-    """
+    # ดักกว้างกว่าที่อื่นในไฟล์นี้โดยตั้งใจ ที่อื่นล้มแล้วชาวบ้านเสียของจริง ที่นี่เสียแค่จุดสามจุด
     try:
-        await reply(reply_token, text, ask_location, ask_photo)
-    except Exception:
-        log.warning(
-            "reply ไม่สำเร็จ ตกไปใช้ push แทน (กินโควตารายเดือนก้อนเดียวกับ broadcast) to=%s",
-            to,
-            exc_info=True,
-        )
-        await push(to, text, ask_location, ask_photo)
-
-
-async def download_image(message_id: str) -> bytes:
-    """โหลดรูปที่ชาวบ้านส่งมา — LINE เก็บไว้ให้ชั่วคราว ต้องรีบมาเอา"""
-    async with AsyncApiClient(configuration) as api_client:
-        return await AsyncMessagingApiBlob(api_client).get_message_content(message_id)
-
-
-async def show_loading(chat_id: str, seconds: int = 20) -> None:
-    """จุดสามจุดกระพริบระหว่างรอ AI คิด — ได้เฉพาะแชท 1:1 กลุ่มใช้ไม่ได้
-
-    ล้มเหลวได้โดยไม่เป็นไร มันเป็นแค่ของประดับ ห้ามทำให้ข้อความจริงไม่ถูกส่ง
-    """
-    try:
-        async with AsyncApiClient(configuration) as api_client:
-            await AsyncMessagingApi(api_client).show_loading_animation(
-                ShowLoadingAnimationRequest(chatId=chat_id, loadingSeconds=seconds)
+        async with httpx.AsyncClient(timeout=TIMEOUT) as cli:
+            resp = await cli.post(LINE_LOADING_URL, headers=headers, json=body)
+        if resp.status_code != 202:
+            await psql.create_and_save_log(
+                PROCESS_NAME, f"ขึ้นจุดโหลดไม่สำเร็จ {resp.status_code} {resp.text}"
             )
-    except Exception:
-        log.debug("แสดง loading ไม่ได้ ข้ามไป", exc_info=True)
+    except Exception as error:
+        await psql.create_and_save_log(PROCESS_NAME, f"ขึ้นจุดโหลดไม่ได้ {type(error).__name__} {error}")
+
+
+async def get_image_content (message_id: str) -> tuple[str, bytes | None, str]:
+    """โหลดไฟล์รูปจากไลน์ คืน (ที่อยู่รูปฝั่งไลน์, ตัวไฟล์, ชนิดไฟล์)
+
+    ที่อยู่คืนให้เสมอแม้โหลดไม่สำเร็จ เพราะยังเก็บลง db ไว้ตามเก็บใหม่ได้ตราบที่ไลน์ยังไม่ลบ
+    โหลดไม่ได้ = ตัวไฟล์เป็น None — ไลน์เก็บรูปให้ชั่วคราว ปล่อยไว้นานแล้วค่อยมาโหลดจะไม่เจอ
+    """
+    url = LINE_CONTENT_URL.format(message_id=message_id)
+    headers = {"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"}
+
+    async with httpx.AsyncClient(timeout=TIMEOUT) as cli:
+        resp = await cli.get(url, headers=headers)
+
+    if resp.status_code != 200:
+        await psql.create_and_save_log(
+            PROCESS_NAME, f"โหลดรูป {message_id} ไม่สำเร็จ {resp.status_code} {resp.text}"
+        )
+        return url, None, ""
+
+    return url, resp.content, resp.headers.get("content-type", "")

@@ -1,0 +1,59 @@
+:root { font-family: system-ui, sans-serif; color: #202b36; background: #f4f6f8; font-size: 16px; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+header { background: #fff; border-bottom: 1px solid #cbd2d9; padding: 1rem 1.5rem 0; }
+header strong { display: block; margin-bottom: .8rem; }
+nav { display: flex; gap: .4rem; flex-wrap: wrap; }
+nav a { color: #364c60; text-decoration: none; padding: .8rem 1rem; border-bottom: 3px solid transparent; }
+nav a[aria-current] { border-bottom-color: #1768a6; color: #125789; font-weight: 650; }
+main { max-width: 1500px; margin: auto; padding: 1.5rem; }
+h1 { font-size: 1.45rem; margin: 0; }
+h2 { font-size: 1.15rem; }
+small, .muted { color: #546573; font-size: .9rem; font-weight: normal; }
+.toolbar { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.toolbar h1, .toolbar h2 { margin-right: auto; }
+button, select, textarea { font: inherit; border: 1px solid #9daeba; border-radius: 3px; background: #fff; color: inherit; padding: .55rem .75rem; }
+button { cursor: pointer; }
+button:hover { background: #e9f1f7; }
+button:disabled { opacity: .55; cursor: wait; }
+:focus-visible { outline: 3px solid #1768a6; outline-offset: 3px; }
+[hidden] { display: none !important; }
+.map-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 1rem; }
+#map { height: 480px; background: #e3e9ee; border: 1px solid #b8c6d0; z-index: 0; }
+aside, form, .stat-group { padding: 1rem; background: #fff; border: 1px solid #ccd5dd; min-width: 0; }
+aside { max-height: 480px; overflow: auto; }
+aside h2 { margin-top: 0; }
+dl { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: .5rem; }
+dt { color: #546573; }
+dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.report-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .6rem; margin-bottom: 1rem; }
+.report-card { text-align: left; }
+.report-card strong, .report-card span { display: block; }
+.report-card span { font-size: .9rem; color: #546573; margin-top: .35rem; }
+.photos { display: grid; gap: .6rem; }
+.photos img { width: 100%; max-height: 250px; object-fit: contain; border: 1px solid #e0e5ea; }
+.stats-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin: 1.4rem 0; }
+.stat-card { padding: 1rem; border: 1px solid #ccd5dd; background: #fff; }
+.stat-card strong { display: block; font-size: 2rem; }
+.stats-groups, .broadcast-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+table { border-collapse: collapse; width: 100%; background: #fff; }
+th, td { text-align: left; border-bottom: 1px solid #dce2e7; padding: .65rem; overflow-wrap: anywhere; }
+th { color: #546573; font-weight: 600; }
+#notice { border: 1px solid #94b9d0; background: #eaf4fa; padding: .8rem; }
+#notice.error { background: #fff0ef; border-color: #d8847f; color: #882d28; }
+form label { display: block; margin: .9rem 0 .4rem; }
+textarea { display: block; width: 100%; resize: vertical; }
+form button[type=submit] { display: block; margin-top: 1rem; background: #1768a6; color: #fff; }
+#user-list { max-height: 230px; overflow: auto; border: 1px solid #dce2e7; padding: .5rem; }
+#user-list label { margin: .5rem 0; overflow-wrap: anywhere; }
+.badge { padding: .4rem .6rem; background: #e7edf2; font-size: .9rem; }
+.message-text { white-space: pre-wrap; overflow-wrap: anywhere; background: #f4f6f8; padding: .8rem; }
+.send-button { background: #1768a6; color: #fff; }
+#broadcast-history { overflow-x: auto; margin-bottom: 1rem; }
+.daily-chart svg { display: block; width: 100%; min-height: 180px; }
+.daily-chart details { max-height: 300px; overflow: auto; }
+.daily-chart summary { cursor: pointer; padding: .6rem 0; }
+.bar-label { margin: .9rem 0 .35rem; }
+.bar-track { background: #edf1f4; height: 18px; }
+.bar-fill { height: 100%; }
+@media (max-width: 760px) { main { padding: 1rem; } header { padding: 1rem 1rem 0; } .map-layout, .stats-groups, .broadcast-layout { grid-template-columns: 1fr; } #map { height: 350px; } aside { max-height: none; } nav a { padding: .7rem; } }

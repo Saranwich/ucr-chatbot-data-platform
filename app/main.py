@@ -1,36 +1,44 @@
-import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-from app.api import broadcast, dashboard, dev, line
-from app.clients import db
-from app.clients import redis as redis_client
-from app.services import sweeper
+from app.api import admin, dashboard, line
+from app.clients import psql, redis
+from app.core.load_env import BASE_DIR
+from app.services import runtime
+from app.services.config import ai_config, system_config
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- startup ---
-    app.state.redis = redis_client.create_client()
-    await app.state.redis.ping()
-    app.state.db = await db.create_pool()
-    # ตาข่ายรองรับ เก็บใบที่ใกล้หมดอายุก่อนหาย — ดูเหตุผลใน services/sweeper.py
-    sweep = asyncio.create_task(sweeper.run_forever(app.state.redis, app.state.db))
-    print("app opened")
+    app.state.pool = await psql.init_pool()
+    await ai_config.reload()
+    await system_config.reload()
+    app.state.redis = await redis.init_redis()
+    runtime.start()
+    print("[app] ready")
     try:
         yield
+
     finally:
-        # --- shutdown ---
-        sweep.cancel()
-        await app.state.db.close()
-        await app.state.redis.aclose()
-        print("app closed")
+
+    # --- shutdown ---
+        await runtime.stop()
+        await psql.close_pool()
+        await redis.close_client()
+        print("[app] stopped")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 app.include_router(line.router)
-app.include_router(dev.router)
+app.include_router(admin.router)
 app.include_router(dashboard.router)
-app.include_router(broadcast.router)
+app.mount("/admin", StaticFiles(directory=BASE_DIR / "admin", html=True), name="admin")

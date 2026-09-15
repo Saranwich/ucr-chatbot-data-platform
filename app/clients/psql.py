@@ -87,7 +87,10 @@ async def init_db() -> None:
             broadcast_auto_enabled       boolean NOT NULL DEFAULT false
         )
     """)
-    # อัปเกรดฐานเดิมที่สร้างก่อนแยกเวลารอของ "จบแล้ว" กับ "เงียบหาย"
+    # อัปเกรดฐานเดิมที่สร้างก่อนแยกเวลารอของ "จบแล้ว" กับ "เงียบหาย" และก่อนมีสวิตช์บรอดแคสต์
+    # ตารางที่มีอยู่แล้ว CREATE TABLE IF NOT EXISTS ข้ามไปเงียบ ๆ ไม่เติมช่องใหม่ให้
+    # ช่องที่ขาดไม่ได้ทำให้ตอนเปิดแอปพัง แต่ไปพังตอน get_active_system_config เลือกช่องนั้น
+    # เติมที่นี่ทุกช่องที่เพิ่มหลังตารางเกิดแล้ว ไม่งั้นฐานเก่ากับฐานใหม่จะเป็นคนละรูป
     # close_when_ttl_under_seconds เดิมปล่อยไว้เพื่อไม่ทำ migration แบบลบข้อมูล แต่โค้ดไม่อ่านแล้ว
     await get_pool().execute("""
         ALTER TABLE system_config
@@ -95,7 +98,20 @@ async def init_db() -> None:
                 integer NOT NULL DEFAULT 60 CHECK (finished_grace_seconds > 0),
             ADD COLUMN IF NOT EXISTS inactive_session_seconds
                 integer NOT NULL DEFAULT 600 CHECK (inactive_session_seconds > 0),
-            ALTER COLUMN close_when_ttl_under_seconds SET DEFAULT 600
+            ADD COLUMN IF NOT EXISTS broadcast_auto_enabled
+                boolean NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS close_when_ttl_under_seconds
+                integer NOT NULL DEFAULT 600 CHECK (close_when_ttl_under_seconds > 0),
+            ADD COLUMN IF NOT EXISTS sweep_interval_seconds
+                integer NOT NULL DEFAULT 120 CHECK (sweep_interval_seconds > 0)
+    """)
+    # แยกออกมาอีกคำสั่งเพราะใน ALTER TABLE ก้อนเดียว คำสั่งย่อยทุกอันถูกตีความกับรูปตารางก่อนแก้
+    # ALTER COLUMN ที่อ้างช่องซึ่ง ADD COLUMN ข้างบนเพิ่งเติม จะยังมองไม่เห็นแล้วระเบิดทั้ง init_db
+    # default ของ sweep ใส่ไว้เพื่อให้เติมช่องลงตารางที่มีแถวอยู่แล้วได้ ถอนทิ้งให้จบที่รูปเดียวกับฐานใหม่
+    await get_pool().execute("""
+        ALTER TABLE system_config
+            ALTER COLUMN close_when_ttl_under_seconds SET DEFAULT 600,
+            ALTER COLUMN sweep_interval_seconds DROP DEFAULT
     """)
     await get_pool().execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS system_config_one_active
@@ -112,6 +128,13 @@ async def init_db() -> None:
             created_at  timestamptz NOT NULL
         )
     """)
+    # อัปเกรดฐานเดิมที่สร้างก่อนมีธงจบ ขาดช่องนี้แล้วตัวกวาดพังทุกรอบที่อ่าน session
+    # ต้องมี default ตอนเติมเพราะแถวเก่ายังไม่มีค่า แล้วถอนทิ้งให้จบที่รูปเดียวกับฐานที่สร้างใหม่
+    await get_pool().execute("""
+        ALTER TABLE sessions
+            ADD COLUMN IF NOT EXISTS is_finished boolean NOT NULL DEFAULT false
+    """)
+    await get_pool().execute("ALTER TABLE sessions ALTER COLUMN is_finished DROP DEFAULT")
 
     # หนึ่งแถว = ข้อความหนึ่งข้อที่ผู้ใช้ส่งเข้ามา number เริ่มที่ 1 ใหม่ทุก session
     # ไม่มีช่องบอกว่าใครพูด เก็บแต่ฝั่งผู้ใช้ คำตอบของบอทอยู่ใน logs

@@ -57,10 +57,9 @@ class ImageMarkerTest(unittest.IsolatedAsyncioTestCase):
 class AnalyzerImageLinkTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.log = patch_log(ai_tools).start()
-        self.save_media = patch.object(
-            ai_tools.psql, "save_report_with_media", new=AsyncMock(return_value=uuid4())
+        self.save_report = patch.object(
+            ai_tools.psql, "save_report", new=AsyncMock(return_value=uuid4())
         ).start()
-        self.save_report = patch.object(ai_tools.psql, "save_report", new=AsyncMock()).start()
         self.addCleanup(patch.stopall)
 
     async def test_image_ids_are_parsed_and_force_image_flag_true(self):
@@ -70,17 +69,15 @@ class AnalyzerImageLinkTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(result.is_success)
-        report, locations, images = self.save_media.await_args.args
+        report, locations, images = self.save_report.await_args.args
         self.assertTrue(report.is_has_image)
         self.assertEqual((locations, images), ([], [image_id]))
-        self.save_report.assert_not_awaited()
 
     async def test_claiming_image_without_id_is_rejected(self):
         result = await ai_tools.run_tool_calls(
             SESSION_ID, [save_call({"title": "ขยะ", "is_has_image": True, "image_ids": [], "location_ids": []})]
         )
         self.assertFalse(result.is_success)
-        self.save_media.assert_not_awaited()
         self.save_report.assert_not_awaited()
 
     def test_schema_exposes_image_ids_and_not_image_contents(self):
@@ -133,7 +130,7 @@ class MediaTransactionTest(unittest.IsolatedAsyncioTestCase):
         connection = MediaConnection(image_ids)
         report = Report(session_id=SESSION_ID, title="สองรูป", is_has_image=True)
         with patch.object(psql, "get_pool", return_value=FakePool(connection)):
-            result = await psql.save_report_with_media(report, [], image_ids)
+            result = await psql.save_report(report, [], image_ids)
 
         self.assertEqual(result, report.id)
         self.assertEqual(len(connection.executions), 2)
@@ -144,7 +141,7 @@ class MediaTransactionTest(unittest.IsolatedAsyncioTestCase):
         connection = MediaConnection([])
         report = Report(session_id=SESSION_ID, title="รูปเสีย", is_has_image=True)
         with patch.object(psql, "get_pool", return_value=FakePool(connection)):
-            result = await psql.save_report_with_media(report, [], [uuid4()])
+            result = await psql.save_report(report, [], [uuid4()])
         self.assertIsNone(result)
         self.assertEqual(connection.executions, [])
 
@@ -154,8 +151,8 @@ class MediaTransactionTest(unittest.IsolatedAsyncioTestCase):
         first = Report(session_id=SESSION_ID, title="ถนนพัง", is_has_image=True)
         second = Report(session_id=SESSION_ID, title="ขยะ", is_has_image=True)
         with patch.object(psql, "get_pool", return_value=FakePool(connection)):
-            first_id = await psql.save_report_with_media(first, [], [image_id])
-            second_id = await psql.save_report_with_media(second, [], [image_id])
+            first_id = await psql.save_report(first, [], [image_id])
+            second_id = await psql.save_report(second, [], [image_id])
 
         self.assertEqual((first_id, second_id), (first.id, second.id))
         link_writes = [args for query, args in connection.executions if "INSERT INTO report_images" in query]

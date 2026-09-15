@@ -440,37 +440,25 @@ async def _save_report(executor, report: Report) -> None:
          report.effect, report.is_has_image, report.is_has_location)
 
 
-async def save_report(report: Report) -> None:
-    """เขียนหนึ่งเรื่องที่ analyzer สรุปได้ — id ซ้ำก็เขียนทับ
+async def save_report(
+    report: Report,
+    location_ids: list[UUID] | None = None,
+    image_ids: list[UUID] | None = None,
+) -> UUID | None:
+    """เขียนหนึ่งเรื่องที่ analyzer สรุปได้ พร้อมผูกพิกัดและรูปใน transaction เดียว
 
     หนึ่ง session มีได้หลายแถว เพราะบทสนทนาเดียวชาวบ้านเล่าได้หลายเรื่อง
-    ช่องเนื้อหาว่างได้หมด ว่าง = ยังไม่ได้ถาม ไม่ใช่ไม่มี
+    ช่องเนื้อหาว่างได้หมด ว่าง = ยังไม่ได้ถาม ไม่ใช่ไม่มี — id ซ้ำก็เขียนทับ
+
+    พิกัดกับรูปต้องอยู่ใน session ของ report รูปต้องมี image_key ยืนยันว่าโหลดลง storage แล้ว
+    ล็อกแถวก่อนเขียนเพื่อไม่ให้ analyzer สองงานแย่งพิกัดกัน ของที่ตรวจไม่ผ่านคืน None ไม่เขียนอะไรเลย
+    retry ที่พิกัดเดิมเคยผูกไว้แล้วจะใช้ report id เดิมและเขียนทับเนื้อหา
+    รูปเป็น many-to-many จึงใช้ตัดสิน reuse ไม่ได้ คนละเรื่องอ้างรูปเดียวกันได้โดยตั้งใจ
     """
-    await _save_report(get_pool(), report)
-
-
-async def save_report_with_locations(report: Report, location_ids: list[UUID]) -> UUID | None:
-    """เขียน report และผูก location ใน transaction เดียว คืน report id จริงที่ใช้
-
-    พิกัดทุกแถวต้องอยู่ใน session ของ report และชี้ report เดียวกัน การล็อกแถวก่อนเขียนทำให้
-    analyzer สองงานแย่งพิกัดไม่ได้ ถ้าเป็น retry ของงานที่เคยเขียนสำเร็จบางส่วน จะใช้ report id เดิม
-    และอัปเดตเนื้อหาแทนการสร้างซ้ำ จึงยังจบรอบ retry ได้
-    """
-    return await save_report_with_media(report, location_ids, [])
-
-
-async def save_report_with_media(
-    report: Report, location_ids: list[UUID], image_ids: list[UUID]
-) -> UUID | None:
-    """ตรวจและเขียน report พร้อม links ทั้งหมดใน transaction เดียว
-
-    location ต้องอยู่ session เดียวกัน มีพิกัดครบ และยังคงกติกาว่าผูกได้ report เดียว
-    image ต้องอยู่ session เดียวกันและมี image_key ซึ่งยืนยันว่าโหลดไฟล์ลง storage สำเร็จแล้ว
-    retry ที่มี location เดิมจะนำ report id นั้นกลับมาใช้ รูปเป็น many-to-many จึงใช้ตัดสิน
-    reuse report ไม่ได้ เพราะคนละเรื่องอาจอ้างรูปเดียวกันโดยตั้งใจ
-    """
+    location_ids = location_ids or []
+    image_ids = image_ids or []
     if not location_ids and not image_ids:
-        await save_report(report)
+        await _save_report(get_pool(), report)
         return report.id
 
     async with get_pool().acquire() as connection:
@@ -490,7 +478,6 @@ async def save_report_with_media(
                 if len(rows) != len(location_ids):
                     return None
 
-            image_rows = []
             if image_ids:
                 image_rows = await connection.fetch("""
                     SELECT id
@@ -534,17 +521,3 @@ async def save_report_with_media(
                 """, report_id, image_ids)
 
     return report_id
-
-
-async def get_report_media(report_id: UUID) -> dict[str, list[UUID]]:
-    """คืน id ของรูปและพิกัดที่ผูกกับ report สำหรับชั้น API/admin ไปโหลดรายละเอียดต่อ"""
-    image_rows = await get_pool().fetch(
-        "SELECT image_id FROM report_images WHERE report_id = $1 ORDER BY image_id", report_id
-    )
-    location_rows = await get_pool().fetch(
-        "SELECT id FROM locations WHERE report_id = $1 ORDER BY id", report_id
-    )
-    return {
-        "image_ids": [row["image_id"] for row in image_rows],
-        "location_ids": [row["id"] for row in location_rows],
-    }

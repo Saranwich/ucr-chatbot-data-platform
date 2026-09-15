@@ -382,23 +382,13 @@ async def save_analyse (session_id: UUID, reports: list[ReportDraft]) -> SaveOut
             await psql.create_and_save_log(PROCESS, f"save_analyse ของ session {session_id} ค่าไม่ผ่าน {error}")
             continue
 
-        if image_ids:
-            saved_report_id = await psql.save_report_with_media(report, location_ids, image_ids)
-        elif location_ids:
-            # คง helper เดิมไว้ให้ caller/test ที่ผูกเฉพาะพิกัดใช้งานต่อได้
-            saved_report_id = await psql.save_report_with_locations(report, location_ids)
-        else:
-            saved_report_id = None
-        if location_ids or image_ids:
-            if saved_report_id is None:
-                await psql.create_and_save_log(
-                    PROCESS,
-                    f"save_analyse ของ session {session_id} อ้าง media ที่ไม่มี รูปยังโหลดไม่สำเร็จ อยู่คนละ session หรือชี้ report ที่ใช้ไม่ได้",
-                )
-                continue
-        else:
-            await psql.save_report(report)
-            saved_report_id = report.id
+        saved_report_id = await psql.save_report(report, location_ids, image_ids)
+        if saved_report_id is None:
+            await psql.create_and_save_log(
+                PROCESS,
+                f"save_analyse ของ session {session_id} อ้าง media ที่ไม่มี รูปยังโหลดไม่สำเร็จ อยู่คนละ session หรือชี้ report ที่ใช้ไม่ได้",
+            )
+            continue
 
         saved.append(saved_report_id)
         locations_used_in_this_call.update(location_id_set)

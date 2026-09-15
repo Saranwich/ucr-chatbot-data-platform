@@ -72,12 +72,9 @@ class LocationMessageHandlerTest(unittest.IsolatedAsyncioTestCase):
 class LocationReportLinkTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.log = patch_log(ai_tools).start()
-        self.save_report = patch.object(ai_tools.psql, "save_report", new=AsyncMock()).start()
         self.linked_report_id = uuid4()
-        self.save_with_locations = patch.object(
-            ai_tools.psql,
-            "save_report_with_locations",
-            new=AsyncMock(return_value=self.linked_report_id),
+        self.save_report = patch.object(
+            ai_tools.psql, "save_report", new=AsyncMock(return_value=self.linked_report_id)
         ).start()
         self.addCleanup(patch.stopall)
 
@@ -97,14 +94,14 @@ class LocationReportLinkTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(outcome.is_success)
         self.assertEqual((outcome.requested, outcome.saved), (1, 1))
-        report, location_ids = self.save_with_locations.await_args.args
+        report, location_ids, image_ids = self.save_report.await_args.args
         self.assertEqual(location_ids, [location_id])
+        self.assertEqual(image_ids, [])
         self.assertEqual(report.session_id, SESSION_ID)
         self.assertTrue(report.is_has_location)
-        self.save_report.assert_not_awaited()
 
     async def test_location_ไม่อยู่ใน_session_หรือไม่มีจริง_ต้อง_retry(self):
-        self.save_with_locations.return_value = None
+        self.save_report.return_value = None
 
         outcome = await self.run_reports([
             {"title": "ไฟดับ", "location_ids": [str(uuid4())]}
@@ -120,7 +117,6 @@ class LocationReportLinkTest(unittest.IsolatedAsyncioTestCase):
         ])
 
         self.assertFalse(outcome.is_success)
-        self.save_with_locations.assert_not_awaited()
         self.save_report.assert_not_awaited()
 
     async def test_อ้างว่ามีพิกัดแต่ไม่ส่ง_id_ไม่สร้าง_false_positive(self):
@@ -129,7 +125,6 @@ class LocationReportLinkTest(unittest.IsolatedAsyncioTestCase):
         ])
 
         self.assertFalse(outcome.is_success)
-        self.save_with_locations.assert_not_awaited()
         self.save_report.assert_not_awaited()
 
     async def test_ไม่มีพิกัดยังบันทึก_report_ได้ตามเดิม(self):
@@ -138,9 +133,9 @@ class LocationReportLinkTest(unittest.IsolatedAsyncioTestCase):
         ])
 
         self.assertTrue(outcome.is_success)
-        report = self.save_report.await_args.args[0]
+        report, location_ids, _ = self.save_report.await_args.args
         self.assertFalse(report.is_has_location)
-        self.save_with_locations.assert_not_awaited()
+        self.assertEqual(location_ids, [])
 
     async def test_location_เดียวกันผูกได้แค่_report_แรกใน_tool_call(self):
         location_id = str(uuid4())
@@ -152,7 +147,7 @@ class LocationReportLinkTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(outcome.is_success)
         self.assertEqual((outcome.requested, outcome.saved), (2, 1))
-        self.save_with_locations.assert_awaited_once()
+        self.save_report.assert_awaited_once()
         self.assertTrue(any("หลาย report" in call.args[1] for call in self.log.await_args_list))
 
     def test_tool_schema_บอกให้ส่ง_location_ids_แต่ไม่เปิดช่องให้ส่งพิกัดจริง(self):
@@ -217,7 +212,7 @@ class LocationTransactionTest(unittest.IsolatedAsyncioTestCase):
         report = Report(session_id=SESSION_ID, title="สองพิกัด", is_has_location=True)
 
         with patch.object(psql, "get_pool", return_value=FakePool(connection)):
-            linked = await psql.save_report_with_locations(report, location_ids)
+            linked = await psql.save_report(report, location_ids)
 
         self.assertEqual(linked, report.id)
         self.assertEqual(len(connection.executions), 2)
@@ -231,7 +226,7 @@ class LocationTransactionTest(unittest.IsolatedAsyncioTestCase):
         report = Report(session_id=SESSION_ID, title="อ้างพิกัดที่ไม่มี", is_has_location=True)
 
         with patch.object(psql, "get_pool", return_value=FakePool(connection)):
-            linked = await psql.save_report_with_locations(report, location_ids)
+            linked = await psql.save_report(report, location_ids)
 
         self.assertFalse(linked)
         self.assertEqual(connection.executions, [])
@@ -247,7 +242,7 @@ class LocationTransactionTest(unittest.IsolatedAsyncioTestCase):
         corrected = Report(session_id=SESSION_ID, title="รายละเอียดที่แก้แล้ว", is_has_location=True)
 
         with patch.object(psql, "get_pool", return_value=FakePool(connection)):
-            linked = await psql.save_report_with_locations(corrected, [location_id])
+            linked = await psql.save_report(corrected, [location_id])
 
         self.assertEqual(linked, existing_report_id)
         insert_args = connection.executions[0][1]
@@ -264,7 +259,7 @@ class LocationTransactionTest(unittest.IsolatedAsyncioTestCase):
         report = Report(session_id=SESSION_ID, title="ห้ามย้ายเรื่องข้าม session", is_has_location=True)
 
         with patch.object(psql, "get_pool", return_value=FakePool(connection)):
-            linked = await psql.save_report_with_locations(report, [location_id])
+            linked = await psql.save_report(report, [location_id])
 
         self.assertIsNone(linked)
         self.assertEqual(connection.executions, [])

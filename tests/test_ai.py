@@ -126,140 +126,97 @@ class AnalyzerTest (unittest.IsolatedAsyncioTestCase):
 
 
 class CommunicatorReplyTest (unittest.IsolatedAsyncioTestCase):
-    """communicator คุยตามเดิม และเปิด tool สำหรับปักธงจบโดยไม่ลงมือเอง"""
+    """communicator ยิงรอบเดียวจบ ได้ JSON ก้อนเดียวที่มีครบทั้งข้อความ ธงจบ และปุ่ม"""
 
     def setUp (self):
         self.log = patch_log(ai).start()
-        self.chat = patch.object(ai.typhoon, "chat", new=AsyncMock()).start()
-        self.tool_call_false = {
-            "id": "finish_false",
-            "type": "function",
-            "function": {"name": "set_finished_flag", "arguments": '{"is_finished": false}'},
-        }
-        self.chat_with_tools = patch.object(
+        self.chat_with_tools = patch.object(ai.typhoon, "chat_with_tools", new=AsyncMock()).start()
+        self.chat = patch.object(
             ai.typhoon,
-            "chat_with_tools",
-            new=AsyncMock(side_effect=[
-                {"role": "assistant", "content": None, "tool_calls": [self.tool_call_false]},
-                {"role": "assistant", "content": "สวัสดีค่ะ", "tool_calls": []},
-            ]),
+            "chat",
+            new=AsyncMock(return_value='{"reply_text": "สวัสดีค่ะ", "is_finished": false, "quick_replies": []}'),
         ).start()
         self.addCleanup(patch.stopall)
 
-    async def test_ยังคืนข้อความกับ_config_เหมือนเดิม (self):
-        reply, tool_calls, config = await ai.communicator_reply(CONVERSATION)
+    async def test_ยิงรอบเดียวได้คำตอบที่แกะแล้วกับ_config (self):
+        reply, config = await ai.communicator_reply(CONVERSATION)
 
-        self.assertEqual(reply, "สวัสดีค่ะ")
-        self.assertEqual(tool_calls, [self.tool_call_false])
+        self.assertEqual(reply.reply_text, "สวัสดีค่ะ")
+        self.assertFalse(reply.is_finished)
+        self.assertEqual(reply.quick_replies, [])
         self.assertEqual(config.agent, "communicator")
+        self.assertEqual(self.chat.await_count, 1)
 
-    async def test_ส่ง_tool_ปักธงจบและไม่ใช้_chat_ทางเก่า (self):
+    async def test_ไม่แตะทาง_tool_calling_อีกแล้ว (self):
+        """ยิงรอบสองคือการป้อนผลที่เราปั้นเองกลับเข้าไป ตัดทิ้งทั้งเส้นแล้ว"""
         await ai.communicator_reply(CONVERSATION)
 
-        tools = self.chat_with_tools.await_args_list[0].args[1]
+        self.chat_with_tools.assert_not_awaited()
+
+    async def test_เติมสัญญารูปคำตอบต่อท้าย_prompt_เสมอ (self):
+        """prompt ในฐานอาจเก่ากว่ารูปที่โค้ดรออยู่ โค้ดต้องเป็นคนเติมสัญญาให้เอง"""
+        await ai.communicator_reply(CONVERSATION)
+
+        system = self.chat.await_args.args[0][0]["content"]
+        self.assertIn(ai.COMMUNICATOR_OUTPUT_CONTRACT, system)
+
+    async def test_ขอ_response_format_ไปด้วยทุกครั้ง (self):
+        """typhoon ทิ้งช่องนี้ แต่เจ้าที่บังคับตามจริงมีอยู่ ส่งไปไม่มีต้นทุน"""
+        await ai.communicator_reply(CONVERSATION)
+
+        self.assertEqual(self.chat.await_args.kwargs["response_format"], ai.RESPONSE_FORMAT)
+
+    async def test_ตาของบอทในประวัติถูกเขียนกลับเป็น_JSON (self):
+        """โมเดลลอกรูปจากตาเก่าของตัวเอง เห็นร้อยแก้วเมื่อไหร่มันเลิกคาย JSON ทั้งบทสนทนา
+
+        วัดบนบทสนทนาจริง 14 ตา: ประวัติเป็นร้อยแก้วได้ JSON 4/24 ประวัติเป็น JSON ได้ 24/24
+        """
+        import json
+
+        await ai.communicator_reply(CONVERSATION)
+
+        messages = self.chat.await_args.args[0]
+        user_turn, bot_turn = messages[1], messages[2]
+
+        self.assertEqual(user_turn["content"], "หน้าบ้านน้ำท่วมทุกครั้งที่ฝนตก")
         self.assertEqual(
-            [tool["function"]["name"] for tool in tools],
-            ["set_finished_flag", "attach_quick_replies"],
+            json.loads(bot_turn["content"]),
+            {"reply_text": "ท่วมสูงแค่ไหนคะ", "is_finished": False, "quick_replies": []},
         )
-        self.assertIn(ai.SET_FINISHED_PROTOCOL, self.chat_with_tools.await_args_list[0].args[0][0]["content"])
-        # ไม่ส่ง tool_choice = ใช้ auto ของ client โมเดลตัดสินใจเองว่าจะเรียกไหม
-        self.assertNotIn("tool_choice", self.chat_with_tools.await_args_list[0].kwargs)
-        self.chat.assert_not_awaited()
 
     async def test_ส่งบทสนทนาเป็นหลายตาเหมือนเดิม (self):
         """analyzer ยุบเป็นก้อนเดียว แต่ communicator ต้องยังส่งทีละตา"""
         await ai.communicator_reply(CONVERSATION)
 
-        messages = self.chat_with_tools.await_args_list[0].args[0]
+        messages = self.chat.await_args.args[0]
         self.assertEqual([m["role"] for m in messages], ["system", "user", "assistant"])
 
-    async def test_มี_tool_call_ส่งผลกลับแล้วคืนข้อความรอบสอง (self):
-        tool_call = {
-            "id": "finish_1",
-            "type": "function",
-            "function": {"name": "set_finished_flag", "arguments": '{"is_finished": true}'},
-        }
-        self.chat_with_tools.side_effect = [
-            {"role": "assistant", "content": None, "tool_calls": [tool_call]},
-            {"role": "assistant", "content": "ขอบคุณที่มาเล่าให้ฟังนะคะ", "tool_calls": []},
-        ]
+    async def test_โมเดลไม่ตอบ_คืน_None (self):
+        self.chat.return_value = None
 
-        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
-
-        self.assertEqual(reply, "ขอบคุณที่มาเล่าให้ฟังนะคะ")
-        self.assertEqual(tool_calls, [tool_call])
-        followup = self.chat_with_tools.await_args_list[1].args[0]
-        self.assertEqual(followup[-2]["tool_calls"], [tool_call])
-        self.assertEqual(followup[-1]["role"], "tool")
-        self.assertEqual(followup[-1]["tool_call_id"], "finish_1")
-        self.assertNotIn("tool_choice", self.chat_with_tools.await_args_list[0].kwargs)
-        self.assertEqual(self.chat_with_tools.await_args_list[1].kwargs["tool_choice"], "none")
-
-    async def test_รอบแรกมีทั้ง_tool_และข้อความ_ใช้เลยไม่ยิงรอบสอง (self):
-        """typhoon เขียนข้อความมาพร้อม tool_calls เป็นส่วนใหญ่ รอบสองไม่มีอะไรให้เพิ่ม"""
-        self.chat_with_tools.side_effect = None
-        self.chat_with_tools.return_value = {
-            "role": "assistant",
-            "content": "น้ำท่วมตรงไหนคะ ช่วยแชร์พิกัดหน่อยได้ไหมคะ",
-            "tool_calls": [self.tool_call_false],
-        }
-
-        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
-
-        self.assertEqual(reply, "น้ำท่วมตรงไหนคะ ช่วยแชร์พิกัดหน่อยได้ไหมคะ")
-        self.assertEqual(tool_calls, [self.tool_call_false])
-        self.assertEqual(self.chat_with_tools.await_count, 1)
-
-    async def test_รอบสองเรียก_tool_ซ้ำแต่มีข้อความ_ยังเอาไปตอบ (self):
-        """ทิ้งข้อความเพราะ tool ซ้ำ = LINE เงียบ ธงจบยึดของรอบแรกพอ"""
-        repeated = {
-            "id": "finish_2",
-            "type": "function",
-            "function": {"name": "set_finished_flag", "arguments": '{"is_finished": true}'},
-        }
-        self.chat_with_tools.side_effect = [
-            {"role": "assistant", "content": None, "tool_calls": [self.tool_call_false]},
-            {"role": "assistant", "content": "ขอบคุณที่เล่าให้ฟังนะคะ", "tool_calls": [repeated]},
-        ]
-
-        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
-
-        self.assertEqual(reply, "ขอบคุณที่เล่าให้ฟังนะคะ")
-        self.assertEqual(tool_calls, [self.tool_call_false])
-
-    async def test_รอบสองเรียก_tool_ซ้ำและไม่มีข้อความ_คืน_None (self):
-        self.chat_with_tools.side_effect = [
-            {"role": "assistant", "content": None, "tool_calls": [self.tool_call_false]},
-            {"role": "assistant", "content": None, "tool_calls": [self.tool_call_false]},
-        ]
-
-        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
+        reply, config = await ai.communicator_reply(CONVERSATION)
 
         self.assertIsNone(reply)
-        self.assertEqual(tool_calls, [])
+        self.assertEqual(config.agent, "communicator")
 
-    async def test_โมเดลไม่ตอบ_ยังคืน_None (self):
-        self.chat_with_tools.side_effect = None
-        self.chat_with_tools.return_value = None
+    async def test_provider_ที่ยังไม่รองรับ_ไม่เรียกโมเดล (self):
+        config = ai.ai_config.get()
+        communicator = config.communicator.model_copy(update={"provider": "openai"})
+        patch.object(ai.ai_config, "get", return_value=config.model_copy(update={"communicator": communicator})).start()
 
-        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
+        reply, _ = await ai.communicator_reply(CONVERSATION)
 
         self.assertIsNone(reply)
-        self.assertEqual(tool_calls, [])
+        self.chat.assert_not_awaited()
 
-    async def test_required_แต่ไม่เรียก_tool_ยังคืนข้อความไปตอบ (self):
-        self.chat_with_tools.side_effect = None
-        self.chat_with_tools.return_value = {
-            "role": "assistant",
-            "content": "สวัสดีค่ะ มีเรื่องสภาพพื้นที่อยากเล่าไหมคะ",
-            "tool_calls": [],
-        }
+    async def test_โมเดลลืมรูปคายร้อยแก้วมา_ยังได้ตอบชาวบ้าน (self):
+        """วัดจากของจริงแล้วเจอ 2/72 ครั้ง — ทั้งสองครั้งเป็นคำตอบที่ใช้ได้ ห้ามทิ้ง"""
+        self.chat.return_value = "ขอบคุณค่ะ น้ำท่วมที่นั่นบ่อยไหมคะ"
 
-        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
+        reply, _ = await ai.communicator_reply(CONVERSATION)
 
-        self.assertEqual(reply, "สวัสดีค่ะ มีเรื่องสภาพพื้นที่อยากเล่าไหมคะ")
-        self.assertEqual(tool_calls, [])
-        self.assertEqual(self.chat_with_tools.await_count, 1)
+        self.assertEqual(reply.reply_text, "ขอบคุณค่ะ น้ำท่วมที่นั่นบ่อยไหมคะ")
+        self.assertFalse(reply.is_finished)
 
 
 if __name__ == "__main__":

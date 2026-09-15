@@ -98,10 +98,10 @@ async def handle_user_events(line_user_id: str, events: list[dict]) -> None:
     await line_cli.start_loading(line_user_id)
 
     # send to ai
-    resp, tool_calls, agent_config = await ai.communicator_reply(session)
+    reply, agent_config = await ai.communicator_reply(session)
 
     # verify ai response
-    if resp is None:
+    if reply is None:
         print("chatbot: ไม่มีคำตอบจากโมเดล ไม่มีข้อความตอบกลับ")
         return
 
@@ -111,19 +111,24 @@ async def handle_user_events(line_user_id: str, events: list[dict]) -> None:
         agent=agent_config.agent,
         ai_config_id=agent_config.id,
         model_name=agent_config.model_name,
-        content=resp,
+        content=reply.reply_text,
     ))
 
     # add ai response into session
-    session.append(Turn(role="assistant", content_type="text", content=resp))
+    session.append(Turn(role="assistant", content_type="text", content=reply.reply_text))
     await save_session_to_redis(redis_key, session_id, session)
 
     # replie message to user via line pltform
-    quick_replies = await ai_tools.extract_quick_replies(tool_calls)
-    await line_cli.replie(reply_token, [resp], quick_replies=quick_replies)
+    await line_cli.replie(
+        reply_token,
+        [reply.reply_text],
+        quick_replies=[item.model_dump() for item in reply.quick_replies],
+    )
 
-    # tool บอกความตั้งใจว่าจะปิด แต่ลงมือหลังตอบ LINE แล้ว ป้องกัน runtime ปิด session กลางทาง
-    await ai_tools.run_communicator_tool_calls(session_id, tool_calls)
+    # ปักธงหลังตอบไลน์แล้ว ป้องกันตัวกวาดปิด session แทรกตอนที่คำตอบยังไม่ถึงชาวบ้าน
+    # ไม่ต้องถอนธงตรงนี้ บรรทัดบนถอนให้ทุกตาที่มีข้อความเข้ามาอยู่แล้ว
+    if reply.is_finished and not await psql.set_session_finished(session_id, True):
+        await psql.create_and_save_log(PROCESS, f"ปักธงจบไม่สำเร็จ ไม่เจอ session {session_id} ในฐาน")
     print("ส่งข้อความกลับไปแล้ว")
 
 
@@ -138,7 +143,7 @@ async def open_session(user: User) -> UUID:
 async def is_session_finished(redis_key: str) -> bool:
     """บทสนทนารอบนี้ถูกปักธงว่าเล่าจบแล้วหรือยัง — ตัวกวาดถามก่อนตัดสินใจว่าจะรอเงียบต่อไหม
 
-    ธงอยู่ในฐาน ไม่ได้อยู่ใน redis เพราะคนปักคือ ai_tools.set_finished_flag ที่คุยกับฐานทางเดียว
+    ธงอยู่ในฐาน ไม่ได้อยู่ใน redis เพราะคนปักคือ handle_user_events ที่คุยกับฐานทางเดียว
     ต้องไปเอา session_id จาก redis ก่อน เพราะตัวกวาดถือแต่ชื่อ key
     """
     session_id, _ = await load_session_from_redis(redis_key)

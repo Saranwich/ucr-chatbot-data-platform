@@ -8,7 +8,7 @@ from uuid import uuid4
 from app.clients import psql
 from app.schemas.report import Report
 from app.schemas.user import User
-from app.services import ai_tools, chatbot
+from app.services import ai_tools, chatbot, communicator_output
 from tests.support import patch_log
 
 
@@ -36,7 +36,7 @@ class ImageMarkerTest(unittest.IsolatedAsyncioTestCase):
         image = saved.await_args.args[0]
         self.assertEqual(turn.content, f"[got image from user: image_id={image.id}]")
         self.assertEqual(image.image_key, "images/one.jpg")
-        self.assertIn("มองเนื้อหารูปไม่เห็น", ai_tools.SET_FINISHED_PROTOCOL)
+        self.assertIn("มองเนื้อหารูปไม่เห็น", communicator_output.COMMUNICATOR_OUTPUT_CONTRACT)
 
     async def test_failed_download_has_no_usable_image_id_marker(self):
         saved = AsyncMock()

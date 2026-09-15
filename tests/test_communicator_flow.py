@@ -1,17 +1,32 @@
-"""เส้นทาง communicator tool calling — ชาวบ้านบอกว่าจบแล้วต้องปัก session ก่อนตอบกลับ"""
+"""เส้นทาง communicator เต็มเส้น — จากข้อความชาวบ้าน ถึงคำตอบใน LINE และธงจบในฐาน
+
+จุดที่เทสต์ชุดนี้คุมคือ "ลำดับ" ไม่ใช่เนื้อคำตอบ
+ปักธงก่อนตอบเมื่อไหร่ ตัวกวาดปิด session ทับระหว่างที่คำตอบยังไม่ถึงชาวบ้าน
+"""
 
 import json
 import unittest
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-from app.schemas.turn import Turn
 from app.schemas.user import User
 from app.services import ai, chatbot
 
 
-class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
+def model_says (reply_text: str, is_finished: bool = False, quick_replies=None) -> str:
+    """คำตอบดิบก้อนเดียวแบบที่โมเดลคายมาจริง"""
+    return json.dumps(
+        {
+            "reply_text": reply_text,
+            "is_finished": is_finished,
+            "quick_replies": quick_replies or [],
+        },
+        ensure_ascii=False,
+    )
+
+
+class CommunicatorFlowTest (unittest.IsolatedAsyncioTestCase):
+    def setUp (self):
         self.user = User(id=uuid4(), line_user_id="U-test")
         self.session_id = uuid4()
         self.redis_key = f"session:{self.user.id}"
@@ -31,100 +46,69 @@ class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
         patch.object(chatbot.psql, "save_ai_response", new=AsyncMock()).start()
         self.reply = patch.object(chatbot.line_cli, "replie", new=AsyncMock()).start()
         self.loading = patch.object(chatbot.line_cli, "start_loading", new=AsyncMock()).start()
-        self.provider = patch.object(ai.typhoon, "chat_with_tools", new=AsyncMock()).start()
+        self.provider = patch.object(ai.typhoon, "chat", new=AsyncMock()).start()
         self.addCleanup(patch.stopall)
 
-    async def test_บอกว่าจบแล้ว_ปัก_finished_แล้วตอบผู้ใช้(self):
+    async def say (self, text: str):
+        await chatbot.handle_user_events(
+            "U-test",
+            [{
+                "type": "message",
+                "replyToken": "reply-token",
+                "message": {"type": "text", "text": text},
+            }],
+        )
+
+    async def test_บอกว่าจบแล้ว_ตอบผู้ใช้ก่อนแล้วค่อยปักธง (self):
         order = []
 
-        async def remember_finished(session_id, value):
+        async def remember_finished (session_id, value):
             order.append(f"finished:{value}")
             return True
 
-        async def remember_reply(reply_token, messages, quick_replies=None):
+        async def remember_reply (reply_token, messages, quick_replies=None):
             order.append("line_reply")
 
         self.set_finished.side_effect = remember_finished
         self.reply.side_effect = remember_reply
-        tool_call = {
-            "id": "finish_1",
-            "type": "function",
-            "function": {
-                "name": "set_finished_flag",
-                "arguments": json.dumps({"is_finished": True}),
-            },
-        }
-        self.provider.side_effect = [
-            {"role": "assistant", "content": None, "tool_calls": [tool_call]},
-            {"role": "assistant", "content": "ขอบคุณที่มาเล่าให้ฟังนะคะ", "tool_calls": []},
-        ]
+        self.provider.return_value = model_says("ขอบคุณที่มาเล่าให้ฟังนะคะ", is_finished=True)
 
-        await chatbot.handle_user_events(
-            "U-test",
-            [
-                {
-                    "type": "message",
-                    "replyToken": "reply-token",
-                    "message": {"type": "text", "text": "จบแล้วครับ"},
-                }
-            ],
-        )
+        await self.say("จบแล้วครับ")
 
         self.assertEqual(
             [call.args for call in self.set_finished.await_args_list],
             [(self.session_id, False), (self.session_id, True)],
         )
-        self.assertEqual(self.provider.await_count, 2)
+        self.assertEqual(self.provider.await_count, 1)
         self.reply.assert_awaited_once_with(
             "reply-token", ["ขอบคุณที่มาเล่าให้ฟังนะคะ"], quick_replies=[]
         )
         self.assertEqual(order, ["finished:False", "line_reply", "finished:True"])
 
-    async def test_ขึ้นจุดโหลดก่อนถามโมเดล(self):
+    async def test_ขึ้นจุดโหลดก่อนถามโมเดล (self):
         """จุดต้องขึ้นก่อนช่วงที่รอนาน ขึ้นหลังตอบไปแล้วก็ไม่มีประโยชน์"""
         order = []
 
-        async def remember_loading(line_user_id):
+        async def remember_loading (line_user_id):
             order.append(f"loading:{line_user_id}")
 
-        async def remember_provider(*args, **kwargs):
+        async def remember_provider (*args, **kwargs):
             order.append("provider")
-            return {"role": "assistant", "content": "สวัสดีค่ะ", "tool_calls": []}
+            return model_says("สวัสดีค่ะ")
 
         self.loading.side_effect = remember_loading
         self.provider.side_effect = remember_provider
 
-        await chatbot.handle_user_events(
-            "U-test",
-            [
-                {
-                    "type": "message",
-                    "replyToken": "reply-token",
-                    "message": {"type": "text", "text": "สวัสดีครับ"},
-                }
-            ],
-        )
+        await self.say("สวัสดีครับ")
 
         self.assertEqual(order, ["loading:U-test", "provider"])
 
-    async def test_provider_ไม่เรียก_tool_ยังตอบผู้ใช้และคง_finished_false(self):
-        self.provider.return_value = {
-            "role": "assistant",
-            "content": "สวัสดีค่ะ มีเรื่องสภาพพื้นที่อยากเล่าไหมคะ",
-            "tool_calls": [],
-        }
+    async def test_ยังคุยอยู่_ไม่ปักธงจบเพิ่ม (self):
+        self.provider.return_value = model_says("สวัสดีค่ะ มีเรื่องสภาพพื้นที่อยากเล่าไหมคะ")
 
-        await chatbot.handle_user_events(
-            "U-test",
-            [
-                {
-                    "type": "message",
-                    "replyToken": "reply-token",
-                    "message": {"type": "text", "text": "อ้าว ทำไมเงียบ"},
-                }
-            ],
-        )
+        await self.say("อ้าว ทำไมเงียบ")
 
+        # เหลือแค่ครั้งที่ chatbot ถอนให้ตอนรับข้อความ ไม่มีใครปักเพิ่ม
         self.assertEqual(
             [call.args for call in self.set_finished.await_args_list],
             [(self.session_id, False)],
@@ -136,85 +120,36 @@ class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
             quick_replies=[],
         )
 
-    async def test_communicator_ขอปุ่มแชร์พิกัด_แล้วส่ง_location_action_ไป_LINE(self):
-        button_call = {
-            "id": "buttons_1",
-            "type": "function",
-            "function": {
-                "name": "attach_quick_replies",
-                "arguments": json.dumps(
-                    {"items": [{"type": "location", "label": "แชร์พิกัด", "text": None}]},
-                    ensure_ascii=False,
-                ),
-            },
-        }
-        self.provider.return_value = {
-            "role": "assistant",
-            "content": "ช่วยแชร์พิกัดจุดที่น้ำท่วมได้ไหมคะ",
-            "tool_calls": [button_call],
-        }
-
-        await chatbot.handle_user_events(
-            "U-test",
-            [{
-                "type": "message",
-                "replyToken": "reply-token",
-                "message": {"type": "text", "text": "ฝนตกแล้วน้ำท่วมค่ะ"},
-            }],
+    async def test_ขอปุ่มแชร์พิกัด_แล้วส่ง_location_action_ไป_LINE (self):
+        self.provider.return_value = model_says(
+            "ช่วยแชร์พิกัดจุดที่น้ำท่วมได้ไหมคะ",
+            quick_replies=[{"type": "location", "label": "แชร์พิกัด", "text": None}],
         )
+
+        await self.say("ฝนตกแล้วน้ำท่วมค่ะ")
 
         self.reply.assert_awaited_once_with(
             "reply-token",
             ["ช่วยแชร์พิกัดจุดที่น้ำท่วมได้ไหมคะ"],
-            quick_replies=[
-                {"type": "location", "label": "แชร์พิกัด", "text": None}
-            ],
+            quick_replies=[{"type": "location", "label": "แชร์พิกัด", "text": None}],
         )
-        # แปะปุ่มอย่างเดียว ไม่ได้แตะธงจบ — เหลือแค่ครั้งที่ chatbot ถอนให้ตอนรับข้อความ
         self.assertEqual(
             [call.args for call in self.set_finished.await_args_list],
             [(self.session_id, False)],
         )
 
-    async def test_เรียกสอง_tool_ในตาเดียว_ได้ทั้งปุ่มและธงจบ(self):
-        """แยก tool แล้วสองคำสั่งในตาเดียวเป็นเรื่องปกติ ไม่ใช่ความผิดพลาดอีกต่อไป"""
-        self.provider.return_value = {
-            "role": "assistant",
-            "content": "ขอบคุณที่เล่าให้ฟังนะคะ",
-            "tool_calls": [
-                {
-                    "id": "finish_1",
-                    "type": "function",
-                    "function": {
-                        "name": "set_finished_flag",
-                        "arguments": json.dumps({"is_finished": True}),
-                    },
-                },
-                {
-                    "id": "buttons_1",
-                    "type": "function",
-                    "function": {
-                        "name": "attach_quick_replies",
-                        "arguments": json.dumps(
-                            {"items": [
-                                {"type": "message", "label": "มีอีกเรื่อง", "text": "มีอีกเรื่อง"},
-                                {"type": "message", "label": "พอแล้ว", "text": "พอแล้ว"},
-                            ]},
-                            ensure_ascii=False,
-                        ),
-                    },
-                },
+    async def test_ได้ทั้งปุ่มและธงจบในตาเดียว (self):
+        """สามอย่างอยู่ในก้อนเดียวกันแล้ว ไม่ต้องแยกคำสั่งให้มาพร้อมกันอีก"""
+        self.provider.return_value = model_says(
+            "ขอบคุณที่เล่าให้ฟังนะคะ",
+            is_finished=True,
+            quick_replies=[
+                {"type": "message", "label": "มีอีกเรื่อง", "text": "มีอีกเรื่อง"},
+                {"type": "message", "label": "พอแล้ว", "text": "พอแล้ว"},
             ],
-        }
-
-        await chatbot.handle_user_events(
-            "U-test",
-            [{
-                "type": "message",
-                "replyToken": "reply-token",
-                "message": {"type": "text", "text": "พอแค่นี้ครับ"},
-            }],
         )
+
+        await self.say("พอแค่นี้ครับ")
 
         self.provider.assert_awaited_once()
         self.reply.assert_awaited_once_with(
@@ -228,6 +163,27 @@ class CommunicatorFinishedFlagTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [call.args for call in self.set_finished.await_args_list],
             [(self.session_id, False), (self.session_id, True)],
+        )
+
+    async def test_โมเดลลืมรูป_คายร้อยแก้ว_ชาวบ้านยังได้คำตอบ (self):
+        """เคสนี้เกิดจริง 2/72 ครั้งตอนวัด ชาวบ้านต้องไม่โดนเงียบใส่เพราะวงเล็บหาย"""
+        self.provider.return_value = "ขอบคุณค่ะ น้ำท่วมที่นั่นบ่อยไหมคะ"
+
+        await self.say("[got location from user: location_id=8f2c1a]")
+
+        self.reply.assert_awaited_once_with(
+            "reply-token", ["ขอบคุณค่ะ น้ำท่วมที่นั่นบ่อยไหมคะ"], quick_replies=[]
+        )
+
+    async def test_ไม่มีคำตอบใช้ได้_ไม่ยิงอะไรออกไลน์ (self):
+        self.provider.return_value = None
+
+        await self.say("สวัสดีครับ")
+
+        self.reply.assert_not_awaited()
+        self.assertEqual(
+            [call.args for call in self.set_finished.await_args_list],
+            [(self.session_id, False)],
         )
 
 

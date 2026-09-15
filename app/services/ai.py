@@ -2,12 +2,14 @@ from uuid import UUID
 
 from app.clients import psql, typhoon
 from app.schemas.ai_config import AgentConfig
+from app.schemas.communicator import CommunicatorReply
 from app.schemas.turn import Turn
-from app.services.ai_tools import (
-    COMMUNICATOR_TOOL_SCHEMAS,
-    SAVE_ANALYSE_PROTOCOL,
-    SAVE_ANALYSE_TOOL,
-    SET_FINISHED_PROTOCOL,
+from app.services.ai_tools import SAVE_ANALYSE_PROTOCOL, SAVE_ANALYSE_TOOL
+from app.services.communicator_output import (
+    COMMUNICATOR_OUTPUT_CONTRACT,
+    RESPONSE_FORMAT,
+    parse_communicator_reply,
+    past_reply_as_json,
 )
 from app.services.config import ai_config
 
@@ -19,99 +21,53 @@ def chatbot_session_to_messages (session: list[Turn]) -> list[dict]:
 
     Turn.role ใช้คำเดียวกับ OpenAI อยู่แล้ว (user / assistant / system)
     เลยยกมาตรง ๆ ส่วน content_type ไม่ได้ส่งไป โมเดลอ่านจาก content พอ
+
+    ยกเว้นตาของบอท ที่ต้องเขียนกลับเป็น JSON ตามสัญญาก่อนส่ง ไม่ใช่ส่งข้อความเปล่าที่เก็บไว้
+    เราเก็บแค่ reply_text ลงฐานเพราะนั่นคือของที่ชาวบ้านเห็น แต่โมเดลต้องเห็นรูปที่มันเคยคาย
+    ไม่งั้นมันลอกรูปร้อยแก้วจากตาเก่าของตัวเอง แล้วเลิกคาย JSON ทั้งบทสนทนา (วัดแล้ว 4/24)
     """
-    return [{"role": turn.role, "content": turn.content} for turn in session]
+    return [
+        {
+            "role": turn.role,
+            "content": past_reply_as_json(turn.content) if turn.role == "assistant" else turn.content,
+        }
+        for turn in session
+    ]
 
 
-async def communicator_reply (session: list[Turn]) -> tuple[str | None, list[dict], AgentConfig]:
-    """ถามโมเดลว่าจะตอบอะไร และคืน tool calls ให้ chatbot ลงมือหลังตอบ LINE
+async def communicator_reply (session: list[Turn]) -> tuple[CommunicatorReply | None, AgentConfig]:
+    """ถามโมเดลว่าจะตอบอะไร คืนคำตอบที่แกะแล้วให้ chatbot เอาไปส่งไลน์
 
     คืน config ที่ใช้ยิงรอบนั้นกลับไปด้วย คนเรียกจะได้เก็บลงฐานว่าคำตอบนี้ออกมาจากโมเดลตัวไหน
-    ยังไม่ลงมือตาม tool ตรงนี้ chatbot จะลงมือหลังบันทึกและส่งคำตอบแล้ว ป้องกัน runtime ปิด session แทรกกลางทาง
 
-    ปกติจบในรอบเดียว — typhoon เขียนข้อความมาพร้อม tool_calls ก้อนเดียวกันเป็นส่วนใหญ่
-    จะยิงรอบสองต่อเมื่อมันสั่ง tool แล้วปล่อย content ว่าง ซึ่งเป็นรอบที่ขอแค่ข้อความ ไม่เอา tool
-    รอบสองอ่านผลจำลองของ tool ผิดบ่อย (เห็น accepted แล้วนึกว่าชาวบ้านส่งของมาแล้ว) จึงเลี่ยงไว้ก่อน
+    ยิงรอบเดียวจบเสมอ เพราะสิ่งที่ communicator ต้องคายคือข้อความ ธงจบ และปุ่ม ซึ่งมันรู้ครบตั้งแต่ตาแรก
+    ไม่มีอะไรจากข้างนอกให้รอ การยิงรอบสองจึงไม่เคยเพิ่มข้อมูลให้มันเลย มีแต่เพิ่มเวลากับโอกาสตอบมั่ว
+    (ของเดิมป้อนผลจำลอง {"accepted": true} กลับเข้าไป แล้วมันอ่านว่าชาวบ้านส่งของมาจริง)
+
+    ธงจบกับปุ่มยอมหายได้ ข้อความห้ามหาย — ตัวแกะใน communicator_output ถือกติกานั้นไว้ทั้งชุด
     """
     config = ai_config.get().communicator
     if config.provider != "typhoon":
         await psql.create_and_save_log(PROCESS, f"communicator ตั้ง provider {config.provider} ที่ยังไม่รองรับ รอบนี้เลยเงียบ")
-        return None, [], config
+        return None, config
 
-    # protocol ต่อท้ายเสมอเพราะ prompt ในฐานอาจเก่ากว่าฟีเจอร์ tool calling
-    messages = chatbot_session_to_messages(session)
-    system = f"{config.prompt}\n\n{SET_FINISHED_PROTOCOL}" if config.prompt else SET_FINISHED_PROTOCOL
-    messages = [{"role": "system", "content": system}, *messages]
+    # สัญญาต่อท้ายเสมอเพราะ prompt ในฐานอาจเก่ากว่ารูปคำตอบที่โค้ดรออยู่
+    system = f"{config.prompt}\n\n{COMMUNICATOR_OUTPUT_CONTRACT}" if config.prompt else COMMUNICATOR_OUTPUT_CONTRACT
+    messages = [{"role": "system", "content": system}, *chatbot_session_to_messages(session)]
 
-    message = await typhoon.chat_with_tools(
+    raw = await typhoon.chat(
         messages,
-        COMMUNICATOR_TOOL_SCHEMAS,
         config.model_name,
         config.temperature,
         config.max_output_tokens,
+        response_format=RESPONSE_FORMAT,
     )
-    if message is None:
+    if raw is None:
         await psql.create_and_save_log(PROCESS, "ไม่มี provider ไหนตอบได้ รอบนี้เลยเงียบ")
-        return None, [], config
+        return None, config
 
-    tool_calls = message.get("tool_calls") or []
-    if not isinstance(tool_calls, list):
-        await psql.create_and_save_log(PROCESS, "communicator คืน tool_calls ในรูปที่อ่านไม่ออก")
-        return None, [], config
+    return await parse_communicator_reply(raw), config
 
-    # มีข้อความมาแล้วก็ใช้เลย ไม่ว่าจะแนบ tool มาด้วยหรือไม่ — ข้อความคือของที่ชาวบ้านรอ
-    # ทิ้งเมื่อไหร่ LINE เงียบทันที และเงียบแพงกว่าการไม่ได้ปักธงจบมาก
-    # ไม่เรียก tool เลยคือเรื่องปกติของตาที่บทสนทนายังเดินอยู่ ไม่ต้อง log
-    reply = message.get("content")
-    if isinstance(reply, str) and reply.strip():
-        return reply, tool_calls, config
-
-    if not tool_calls:
-        await psql.create_and_save_log(PROCESS, "communicator ไม่เรียก tool และไม่มีข้อความสำหรับตอบผู้ใช้")
-        return None, [], config
-
-    # เหลือทางเดียว: สั่ง tool มาแต่ไม่เขียนอะไรให้ชาวบ้าน ต้องยิงอีกรอบเอาเฉพาะข้อความ
-    # id ตรวจตรงนี้เพราะใช้แค่ตอนปั้น message รอบนี้ สายที่จบในรอบแรกไม่ต้องมีก็ได้
-    tool_messages = []
-    for call in tool_calls:
-        tool_call_id = call.get("id") if isinstance(call, dict) else None
-        if not isinstance(tool_call_id, str) or not tool_call_id:
-            await psql.create_and_save_log(PROCESS, "communicator คืน tool call ที่ไม่มี id")
-            return None, [], config
-        tool_messages.append({
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": '{"accepted": true, "instruction": "Reply to the user now without another tool call."}',
-        })
-
-    assistant_message = {
-        "role": "assistant",
-        "content": message.get("content"),
-        "tool_calls": tool_calls,
-    }
-    message = await typhoon.chat_with_tools(
-        [*messages, assistant_message, *tool_messages],
-        COMMUNICATOR_TOOL_SCHEMAS,
-        config.model_name,
-        config.temperature,
-        config.max_output_tokens,
-        tool_choice="none",
-    )
-    if message is None:
-        await psql.create_and_save_log(PROCESS, "communicator ไม่ตอบหลังรับผล tool")
-        return None, [], config
-
-    # เรียก tool ซ้ำก็ช่างมัน ของที่ต้องการจากรอบนี้คือข้อความอย่างเดียว
-    # ธงจบกับ quick reply ยึดของรอบแรกเสมอ ตัวซ้ำไม่ได้เห็นอะไรใหม่นอกจากผลจำลองที่เราป้อนเอง
-    if message.get("tool_calls"):
-        await psql.create_and_save_log(PROCESS, "communicator เรียก tool ซ้ำหลังได้รับผลแล้ว ใช้เฉพาะข้อความและยึด tool รอบแรก")
-
-    reply = message.get("content")
-    if not isinstance(reply, str) or not reply.strip():
-        await psql.create_and_save_log(PROCESS, "communicator ไม่คืนข้อความสำหรับตอบผู้ใช้")
-        return None, [], config
-
-    return reply, tool_calls, config
 
 def conversation_to_transcript (conversation: list[Turn]) -> str:
     """ปั้นบทสนทนาเป็นข้อความก้อนเดียวให้ analyzer อ่าน

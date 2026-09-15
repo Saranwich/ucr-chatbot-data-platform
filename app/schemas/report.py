@@ -102,7 +102,7 @@ class Session(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     user_id: UUID
     status: SessionStatus = "not_analyzed"
-    is_finished: bool = False   # ai_tools.set_finished_flag ปัก/ถอนตามที่ communicator อ่านได้
+    is_finished: bool = False   # chatbot ถอนทุกตาที่มีข้อความเข้า แล้วปักกลับตามช่อง is_finished ที่ communicator คืนมา
     created_at: datetime = Field(default_factory=datetime.now)
 
 

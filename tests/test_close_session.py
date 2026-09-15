@@ -19,7 +19,9 @@ from tests.support import patch_log
 USER_ID = uuid4()
 SESSION = Session(user_id=USER_ID)
 REDIS_KEY = f"session:{USER_ID}"
-RAW_REDIS = json.dumps({"session_id": str(SESSION.id), "turns": []})
+SPOKE = {"role": "user", "content_type": "text", "content": "น้ำท่วมปากซอย"}
+RAW_REDIS = json.dumps({"session_id": str(SESSION.id), "turns": [SPOKE]})
+RAW_REDIS_SILENT = json.dumps({"session_id": str(SESSION.id), "turns": []})
 
 TOOL_CALLS = [
     {
@@ -182,6 +184,18 @@ class CloseSessionTest (unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(saved)
         self.assertEqual(self.analyzer.await_count, 1)
         self.assertEqual(self.statuses(), ["pending", "analyzed"])
+        self.delete_session.assert_awaited_once_with(REDIS_KEY)
+
+    async def test_ชาวบ้านไม่ได้พูดสักคำ_ปิดทิ้งโดยไม่เรียก_analyzer (self):
+        patch.object(
+            chatbot.redis, "get_session", new=AsyncMock(return_value=RAW_REDIS_SILENT)
+        ).start()
+
+        saved = await chatbot.close_session(REDIS_KEY)
+
+        self.assertEqual(saved, 0)
+        self.analyzer.assert_not_awaited()
+        self.assertEqual(self.statuses(), ["analyzed"])
         self.delete_session.assert_awaited_once_with(REDIS_KEY)
 
     async def test_redis_หมดอายุไปก่อนแล้ว_ไม่ทำอะไรต่อ (self):

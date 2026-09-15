@@ -158,7 +158,7 @@ async def close_session(redis_key: str) -> int | None:
     การลงมือทำตาม tool อยู่ที่นี่ ไม่ใช่ใน ai.py เพราะคนที่ถือ session อยู่คือคนนี้
     และไม่ใช่ใน runtime.py เพราะนั่นมีหน้าที่แค่หาว่า session ไหนถึงคิวปิด
     """
-    session_id, _ = await load_session_from_redis(redis_key)
+    session_id, turns = await load_session_from_redis(redis_key)
     if session_id is None:
         return None            # หมดอายุเองไปแล้วระหว่างทาง ไม่มีอะไรให้ปิด
 
@@ -166,6 +166,17 @@ async def close_session(redis_key: str) -> int | None:
     if session is None or session.status != "not_analyzed":
         print("close_session: ข้าม", session_id, "สถานะ", session.status if session else "ไม่มีในฐาน")
         return None
+
+    # ชาวบ้านยังไม่ได้พูดสักคำ (ส่งสติกเกอร์มาอย่างเดียว หรือมีแต่ข้อความที่บอทยิงเข้าไป)
+    # ไม่มีอะไรให้วิเคราะห์ ปิดทิ้งเลย ไม่ต้องจ่ายค่าเรียกโมเดลเพื่อให้มันตอบว่าไม่เจอเรื่อง
+    if not any(turn.role == "user" for turn in turns):
+        await psql.set_session_status(session_id, "analyzed")
+        await redis.delete_session(redis_key)
+        await psql.create_and_save_log(
+            PROCESS, f"ปิด session {session_id} โดยไม่วิเคราะห์ เพราะชาวบ้านยังไม่ได้พูดอะไร"
+        )
+        print("close_session: ปิดแล้ว", session_id, "ไม่มีตาของชาวบ้าน ไม่เรียก analyzer")
+        return 0
 
     await psql.set_session_status(session_id, "pending")
 

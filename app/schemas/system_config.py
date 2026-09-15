@@ -25,6 +25,7 @@ class SystemConfig(BaseModel, frozen=True):
     finished_grace_seconds: int = Field(DEFAULT_FINISHED_GRACE_SECONDS, gt=0)  # บอกว่าจบแล้ว ยังรอข้อความใหม่กี่วินาที
     inactive_session_seconds: int = Field(DEFAULT_INACTIVE_SESSION_SECONDS, gt=0)  # ยังไม่จบ ต้องเงียบกี่วินาทีจึงปิด
     sweep_interval_seconds: int = Field(DEFAULT_SWEEP_INTERVAL_SECONDS, gt=0)              # ตัวกวาดวนมาทุกกี่วินาที
+    broadcast_auto_enabled: bool = False          # ให้ระบบยิง broadcast เองได้ไหม ปิดไว้เป็นค่าตั้งต้น
 
     @model_validator(mode="after")
     def timeouts_must_finish_before_redis_expires(self):

@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 Audience = Literal["all", "selected"]
-BroadcastStatus = Literal["draft", "sending", "completed"]
-DeliveryStatus = Literal["pending", "sending", "sent", "failed", "unknown"]
+BroadcastStatus = Literal["sending", "completed"]
+DeliveryStatus = Literal["pending", "sending", "sent", "failed", "unknown", "skipped"]
 
 
 def utf16_length(value: str) -> int:
@@ -45,6 +45,7 @@ class DeliveryCounts(BaseModel):
     sent: int = 0
     failed: int = 0
     unknown: int = 0
+    skipped: int = 0
 
 
 class BroadcastSummary(BaseModel):
@@ -74,8 +75,3 @@ class BroadcastDetail(BroadcastSummary):
 class BroadcastList(BaseModel):
     items: list[BroadcastSummary]
     total: int
-
-
-class BroadcastSettings(BaseModel):
-    auto_enabled: bool = False
-    configured_auto_enabled: bool = False

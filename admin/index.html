@@ -46,8 +46,9 @@
           <label for="audience">Recipients</label>
           <select id="audience"><option value="all">All known users</option><option value="selected">Selected users</option></select>
           <div id="user-picker" hidden><p>Choose recipients</p><div id="user-list">Loading users…</div><button id="more-users" type="button" hidden>Load more users</button></div>
-          <button type="submit" id="create-draft">Create draft</button>
-          <p class="muted">Review the saved draft and recipient count before sending.</p>
+          <label class="checkbox" for="force-send"><input id="force-send" type="checkbox"> Force send to people who are mid-conversation</label>
+          <button type="submit" id="create-draft">Send now</button>
+          <p class="muted">You confirm once, then the message goes out immediately.</p>
         </form>
         <aside id="broadcast-detail" aria-live="polite"><h2>Message details</h2><p>Select a saved message to review its content and sending status.</p></aside>
       </div>

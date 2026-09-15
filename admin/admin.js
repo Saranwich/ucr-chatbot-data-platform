@@ -1,7 +1,8 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-const API = '/api/admin';
+const ADMIN = '/api/admin';
+const DASHBOARD = '/api/dashboard';
 const PAGE_SIZE = 100;
 const types = { flood: 'Flood', heat: 'Heat', light: 'Street lighting', other: 'Other' };
 const colors = { flood: '#236db0', heat: '#bd4e26', light: '#987300', other: '#635397' };
@@ -21,7 +22,7 @@ function notice(message, error = false) {
   $('notice').hidden = !message;
 }
 async function api(path, options = {}) {
-  const response = await fetch(`${API}${path}`, {
+  const response = await fetch(path, {
     ...options, headers: { 'Content-Type': 'application/json', ...options.headers },
   });
   if (!response.ok) {
@@ -94,7 +95,7 @@ async function loadReports(reset = true) {
   const version = ++reportVersion;
   const offset = reset ? 0 : reportOffset;
   const filter = $('type-filter').value;
-  const data = await api(`/reports?limit=${PAGE_SIZE}&offset=${offset}${filter ? `&type=${encodeURIComponent(filter)}` : ''}`);
+  const data = await api(`${DASHBOARD}/reports?limit=${PAGE_SIZE}&offset=${offset}${filter ? `&type=${encodeURIComponent(filter)}` : ''}`);
   if (version !== reportVersion) return;
   loadedReports = reset ? data.items : [...loadedReports, ...data.items];
   reportOffset = offset + data.items.length;
@@ -105,7 +106,7 @@ async function showReport(id) {
   const version = ++detailVersion;
   $('report-detail').replaceChildren(node('p', 'Loading report…'));
   let report;
-  try { report = await api(`/reports/${encodeURIComponent(id)}`); }
+  try { report = await api(`${DASHBOARD}/reports/${encodeURIComponent(id)}`); }
   catch (error) {
     if (version === detailVersion) $('report-detail').replaceChildren(node('p', error.message));
     throw error;
@@ -213,7 +214,7 @@ function categoryChart(counts) {
 let statisticsVersion = 0;
 async function loadStatistics() {
   const version = ++statisticsVersion;
-  const data = await api(`/statistics?days=${$('stats-days').value}`);
+  const data = await api(`${DASHBOARD}/statistics?days=${$('stats-days').value}`);
   if (version !== statisticsVersion) return;
   const cards = node('div', undefined, 'stats-cards');
   for (const [label, value] of [
@@ -234,7 +235,7 @@ async function loadStatistics() {
   );
 }
 async function loadUsers() {
-  const data = await api(`/users?limit=${PAGE_SIZE}&offset=${usersOffset}`);
+  const data = await api(`${DASHBOARD}/users?limit=${PAGE_SIZE}&offset=${usersOffset}`);
   if (!usersLoaded) $('user-list').replaceChildren();
   for (const user of data.items) {
     const label = node('label');
@@ -248,7 +249,7 @@ async function loadUsers() {
 }
 async function loadBroadcasts(reset = true) {
   const offset = reset ? 0 : broadcastOffset;
-  const data = await api(`/broadcasts?limit=${PAGE_SIZE}&offset=${offset}`);
+  const data = await api(`${ADMIN}/broadcasts?limit=${PAGE_SIZE}&offset=${offset}`);
   let body;
   if (reset) {
     const table = node('table');
@@ -273,23 +274,13 @@ async function loadBroadcasts(reset = true) {
 }
 function renderBroadcast(item) {
   const panel = $('broadcast-detail');
-  panel.replaceChildren(node('h2', 'Saved message'), node('p', item.text, 'message-text'));
+  panel.replaceChildren(node('h2', 'Sent message'), node('p', item.text, 'message-text'));
   const fields = node('dl');
-  field(fields, 'Audience', item.audience === 'all' ? 'All known users at draft creation' : 'Selected users');
+  field(fields, 'Audience', item.audience === 'all' ? 'All known users when sent' : 'Selected users');
   field(fields, 'Recipients', item.recipient_count);
   field(fields, 'Status', item.status);
   for (const [status, count] of Object.entries(item.counts || {})) field(fields, status, count);
   panel.append(fields);
-  if (item.status === 'draft') {
-    const send = node('button', `Send to ${item.recipient_count} recipient(s)`, 'send-button');
-    send.type = 'button'; send.disabled = !item.recipient_count;
-    send.addEventListener('click', () => guarded(send, async () => {
-      await api(`/broadcasts/${item.id}/send`, { method: 'POST' });
-      notice('Sending started. The status below will update automatically.');
-      await showBroadcast(item.id); await loadBroadcasts();
-    }));
-    panel.append(send);
-  }
   if (item.counts?.unknown) panel.append(node('p', 'Some requests have an unknown outcome. They will not be resent automatically.'));
   if (item.recipients?.length) {
     const disclosure = node('details'); disclosure.append(node('summary', 'Recipient status'));
@@ -306,7 +297,7 @@ function renderBroadcast(item) {
 async function showBroadcast(id) {
   selectedBroadcast = id;
   clearTimeout(pollTimer);
-  const item = await api(`/broadcasts/${id}`);
+  const item = await api(`${ADMIN}/broadcasts/${id}`);
   if (selectedBroadcast !== id) return;
   renderBroadcast(item);
   if (item.status === 'sending' && location.hash === '#broadcasts') {
@@ -325,8 +316,8 @@ async function route() {
   if (page === 'map') { createMap(); map?.invalidateSize(); await loadReports(); }
   if (page === 'dashboard') await loadStatistics();
   if (page === 'broadcasts') {
-    const settings = await api('/broadcast-settings');
-    $('auto-status').textContent = `Automatic broadcasts: ${settings.auto_enabled ? 'enabled' : 'disabled'}`;
+    const settings = await api(`${ADMIN}/system-config`);
+    $('auto-status').textContent = `Automatic broadcasts: ${settings.broadcast_auto_enabled ? 'enabled' : 'disabled'}`;
     await loadBroadcasts();
     if (selectedBroadcast) await showBroadcast(selectedBroadcast);
   }
@@ -351,8 +342,13 @@ $('broadcast-form').addEventListener('submit', (event) => {
     const audience = $('audience').value;
     const user_ids = audience === 'selected' ? [...document.querySelectorAll('#user-list input:checked')].map((input) => input.value) : [];
     if (audience === 'selected' && !user_ids.length) throw new Error('Select at least one recipient.');
-    const item = await api('/broadcasts', { method: 'POST', body: JSON.stringify({ text: $('broadcast-text').value, audience, user_ids }) });
-    notice('Draft saved. Review the message and recipient count before sending.');
+    const text = $('broadcast-text').value;
+    const who = audience === 'all' ? 'every known user' : `${user_ids.length} selected user(s)`;
+    const force = $('force-send').checked;
+    const warning = force ? '\n\nForce send is on: people mid-conversation with the bot will be interrupted.' : '';
+    if (!confirm(`Send this message to ${who}? It goes out immediately and cannot be recalled.${warning}\n\n${text}`)) return;
+    const item = await api(`${ADMIN}/broadcasts?force_send=${force}`, { method: 'POST', body: JSON.stringify({ text, audience, user_ids }) });
+    notice('Sending started. The status below will update automatically.');
     await showBroadcast(item.id); await loadBroadcasts();
   });
 });

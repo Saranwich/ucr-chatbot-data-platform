@@ -1,4 +1,4 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import asyncpg
 from app.core.config import DATABASE_URL
@@ -83,7 +83,8 @@ async def init_db() -> None:
                 CHECK (close_when_ttl_under_seconds > 0), -- legacy, runtime ไม่อ่านแล้ว
             finished_grace_seconds integer   NOT NULL DEFAULT 60 CHECK (finished_grace_seconds > 0),
             inactive_session_seconds integer NOT NULL DEFAULT 600 CHECK (inactive_session_seconds > 0),
-            sweep_interval_seconds       integer NOT NULL CHECK (sweep_interval_seconds > 0)
+            sweep_interval_seconds       integer NOT NULL CHECK (sweep_interval_seconds > 0),
+            broadcast_auto_enabled       boolean NOT NULL DEFAULT false
         )
     """)
     # อัปเกรดฐานเดิมที่สร้างก่อนแยกเวลารอของ "จบแล้ว" กับ "เงียบหาย"
@@ -213,6 +214,42 @@ async def init_db() -> None:
         CREATE INDEX IF NOT EXISTS locations_report_id ON locations (report_id)
     """)
 
+    # หนึ่งแถว = ข้อความหนึ่งฉบับที่แอดมินสั่งส่ง เก็บก่อนยิงเสมอ ล้มกลางทางจะได้รู้ว่าค้างตรงไหน
+    await get_pool().execute("""
+        CREATE TABLE IF NOT EXISTS broadcasts (
+            id           uuid        PRIMARY KEY,
+            text         text        NOT NULL CHECK (text <> ''),
+            audience     text        NOT NULL CHECK (audience IN ('all', 'selected')),
+            user_ids     uuid[]      NOT NULL DEFAULT '{}',
+            status       text        NOT NULL DEFAULT 'sending'
+                CHECK (status IN ('sending', 'completed')),
+            created_at   timestamptz NOT NULL DEFAULT now(),
+            started_at   timestamptz,
+            completed_at timestamptz
+        )
+    """)
+    # หนึ่งแถว = ชาวบ้านหนึ่งคนใน broadcast หนึ่งฉบับ retry_key คงที่ ยิงซ้ำด้วยคีย์เดิมไลน์ไม่ส่งซ้ำ
+    await get_pool().execute("""
+        CREATE TABLE IF NOT EXISTS broadcast_deliveries (
+            id              uuid PRIMARY KEY,
+            broadcast_id    uuid NOT NULL REFERENCES broadcasts(id) ON DELETE CASCADE,
+            user_id         uuid NOT NULL,
+            line_user_id    text NOT NULL,
+            retry_key       uuid NOT NULL UNIQUE,
+            status          text NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'unknown', 'skipped')),
+            attempted_at    timestamptz,
+            completed_at    timestamptz,
+            response_status integer,
+            error           text,
+            UNIQUE (broadcast_id, user_id)
+        )
+    """)
+    await get_pool().execute("""
+        CREATE INDEX IF NOT EXISTS broadcast_deliveries_broadcast_status
+        ON broadcast_deliveries (broadcast_id, status)
+    """)
+
 
 def get_pool() -> asyncpg.Pool:
     if _pool is None:
@@ -289,7 +326,8 @@ async def get_active_system_config() -> dict | None:
     """แถวที่ is_active — คืน dict ดิบให้ services.config.system_config ตรวจเอง ไม่มีก็คืน None"""
     row = await get_pool().fetchrow("""
         SELECT id, created_at, note, session_ttl_seconds,
-               finished_grace_seconds, inactive_session_seconds, sweep_interval_seconds
+               finished_grace_seconds, inactive_session_seconds, sweep_interval_seconds,
+               broadcast_auto_enabled
         FROM system_config
         WHERE is_active
     """)
@@ -521,3 +559,282 @@ async def save_report(
                 """, report_id, image_ids)
 
     return report_id
+
+
+## broadcast part ##
+class UnknownBroadcastUsersError(ValueError):
+    def __init__(self, user_ids: list[UUID]):
+        self.user_ids = user_ids
+        super().__init__("มี user_id ที่ไม่มีอยู่จริง")
+
+
+_BROADCAST_SQL = """
+SELECT b.id, b.text, b.audience, b.user_ids, b.status, b.created_at,
+       count(d.id)::int AS recipient_count,
+       count(d.id) FILTER (WHERE d.status = 'pending')::int AS pending,
+       count(d.id) FILTER (WHERE d.status = 'sending')::int AS sending,
+       count(d.id) FILTER (WHERE d.status = 'sent')::int AS sent,
+       count(d.id) FILTER (WHERE d.status = 'failed')::int AS failed,
+       count(d.id) FILTER (WHERE d.status = 'unknown')::int AS unknown,
+       count(d.id) FILTER (WHERE d.status = 'skipped')::int AS skipped
+FROM broadcasts b LEFT JOIN broadcast_deliveries d ON d.broadcast_id = b.id
+WHERE ($1::uuid IS NULL OR b.id = $1)
+GROUP BY b.id
+"""
+
+
+def _broadcast_row(row) -> dict:
+    item = dict(row)
+    item["user_ids"] = list(item.get("user_ids") or [])
+    item["counts"] = {
+        key: item.pop(key)
+        for key in ("pending", "sending", "sent", "failed", "unknown", "skipped")
+    }
+    return item
+
+
+async def save_broadcast(text: str, audience: str, user_ids: list[UUID]) -> UUID:
+    """เขียนข้อความพร้อมตรึงรายชื่อผู้รับใน transaction เดียว ยังไม่ยิงอะไรทั้งนั้น
+
+    audience=selected แล้วมี id ที่ไม่มีอยู่จริง = ทิ้งทั้งฉบับ ไม่ส่งบางส่วน
+    """
+    broadcast_id = uuid4()
+    async with get_pool().acquire() as connection:
+        async with connection.transaction():
+            await connection.execute("""
+                INSERT INTO broadcasts (id, text, audience, user_ids, status, started_at)
+                VALUES ($1, $2, $3, $4, 'sending', now())
+            """, broadcast_id, text, audience, user_ids)
+            if audience == "all":
+                users = await connection.fetch("SELECT id, line_user_id FROM users")
+            else:
+                users = await connection.fetch("""
+                    SELECT id, line_user_id FROM users WHERE id = ANY($1::uuid[])
+                """, user_ids)
+                found_ids = {row["id"] for row in users}
+                missing_ids = [user_id for user_id in user_ids if user_id not in found_ids]
+                if missing_ids:
+                    raise UnknownBroadcastUsersError(missing_ids)
+            await connection.executemany("""
+                INSERT INTO broadcast_deliveries (id, broadcast_id, user_id, line_user_id, retry_key)
+                VALUES ($1, $2, $3, $4, $5)
+            """, [(uuid4(), broadcast_id, row["id"], row["line_user_id"], uuid4()) for row in users])
+    return broadcast_id
+
+
+async def claim_broadcast_recipient(broadcast_id: UUID) -> dict | None:
+    """หยิบผู้รับที่ยังไม่ได้ยิงมาหนึ่งคนแล้วปักว่ากำลังส่ง คนที่ถูกหยิบแล้วจะไม่ถูกหยิบซ้ำ"""
+    row = await get_pool().fetchrow("""
+        UPDATE broadcast_deliveries SET status = 'sending', attempted_at = now()
+        WHERE id = (
+            SELECT id FROM broadcast_deliveries
+            WHERE broadcast_id = $1 AND status = 'pending'
+            ORDER BY user_id FOR UPDATE SKIP LOCKED LIMIT 1
+        )
+        RETURNING id, user_id, line_user_id, retry_key
+    """, broadcast_id)
+    return dict(row) if row else None
+
+
+async def finish_broadcast_recipient(
+    delivery_id: UUID, status: str, response_status: int | None = None, error: str | None = None
+) -> None:
+    await get_pool().execute("""
+        UPDATE broadcast_deliveries
+        SET status = $2, response_status = $3, error = $4, completed_at = now()
+        WHERE id = $1 AND status = 'sending'
+    """, delivery_id, status, response_status, error)
+
+
+async def complete_broadcast(broadcast_id: UUID) -> None:
+    await get_pool().execute("""
+        UPDATE broadcasts SET status = 'completed', completed_at = now()
+        WHERE id = $1 AND status = 'sending'
+          AND NOT EXISTS (
+            SELECT 1 FROM broadcast_deliveries
+            WHERE broadcast_id = $1 AND status IN ('pending', 'sending')
+          )
+    """, broadcast_id)
+
+
+async def get_broadcast(broadcast_id: UUID, include_recipients: bool = False) -> dict | None:
+    row = await get_pool().fetchrow(_BROADCAST_SQL, broadcast_id)
+    if row is None:
+        return None
+    result = _broadcast_row(row)
+    if include_recipients:
+        rows = await get_pool().fetch("""
+            SELECT user_id, status, attempted_at, completed_at, response_status, error
+            FROM broadcast_deliveries WHERE broadcast_id = $1 ORDER BY user_id
+        """, broadcast_id)
+        result["recipients"] = [dict(item) for item in rows]
+    return result
+
+
+async def get_broadcasts(limit: int, offset: int) -> tuple[list[dict], int]:
+    rows = await get_pool().fetch(
+        _BROADCAST_SQL + " ORDER BY b.created_at DESC LIMIT $2 OFFSET $3", None, limit, offset
+    )
+    total = await get_pool().fetchval("SELECT count(*)::int FROM broadcasts")
+    return [_broadcast_row(row) for row in rows], total
+
+
+## dashboard part ##
+_REPORT_COLUMNS = """
+    id, created_at, status, session_id, title, type, threat, frequency,
+    effect, is_has_image, is_has_location
+"""
+# นับวันตามเวลาไทย ไม่ใช่ UTC — ชาวบ้านส่งเรื่องตอนสี่ทุ่มต้องอยู่ในวันเดียวกับที่เขารู้สึก
+_PERIOD_START = """
+    ((now() AT TIME ZONE 'Asia/Bangkok')::date - ($1::int - 1)) AT TIME ZONE 'Asia/Bangkok'
+"""
+_REPORT_FILTER = """
+    ($1::text IS NULL OR type = $1)
+    AND ($2::int IS NULL OR created_at >= (
+        ((now() AT TIME ZONE 'Asia/Bangkok')::date - ($2::int - 1)) AT TIME ZONE 'Asia/Bangkok'
+    ))
+"""
+
+
+async def count_reports(report_type: str | None, days: int | None) -> int:
+    return await get_pool().fetchval(
+        f"SELECT count(*) FROM reports WHERE {_REPORT_FILTER}", report_type, days
+    )
+
+
+async def get_reports(
+    limit: int, offset: int, report_type: str | None, days: int | None
+) -> list[dict]:
+    rows = await get_pool().fetch(
+        f"""SELECT {_REPORT_COLUMNS} FROM reports
+            WHERE {_REPORT_FILTER}
+            ORDER BY created_at DESC, id LIMIT $3 OFFSET $4""",
+        report_type, days, limit, offset,
+    )
+    return [dict(row) for row in rows]
+
+
+async def get_report(report_id: UUID) -> dict | None:
+    row = await get_pool().fetchrow(
+        f"SELECT {_REPORT_COLUMNS} FROM reports WHERE id = $1", report_id
+    )
+    return dict(row) if row else None
+
+
+async def get_locations_of_reports(report_ids: list[UUID]) -> list[dict]:
+    rows = await get_pool().fetch("""
+        SELECT id, report_id, lat, lon, address
+        FROM locations
+        WHERE report_id = ANY($1::uuid[])
+        ORDER BY created_at, id
+    """, report_ids)
+    return [dict(row) for row in rows]
+
+
+async def get_images_of_reports(report_ids: list[UUID]) -> list[dict]:
+    rows = await get_pool().fetch("""
+        SELECT image.id, relation.report_id, image."desc"
+        FROM report_images AS relation
+        JOIN images AS image ON image.id = relation.image_id
+        WHERE relation.report_id = ANY($1::uuid[])
+        ORDER BY image.created_at, image.id
+    """, report_ids)
+    return [dict(row) for row in rows]
+
+
+async def get_entity_totals() -> dict:
+    row = await get_pool().fetchrow("""
+        SELECT (SELECT count(*) FROM users) AS users,
+               (SELECT count(*) FROM sessions) AS sessions,
+               (SELECT count(*) FROM images) AS images,
+               (SELECT count(*) FROM locations) AS locations
+    """)
+    return dict(row)
+
+
+async def get_session_status_counts() -> list[dict]:
+    rows = await get_pool().fetch(
+        "SELECT status, count(*) AS count FROM sessions GROUP BY status ORDER BY status"
+    )
+    return [dict(row) for row in rows]
+
+
+async def get_report_media_coverage(days: int) -> dict:
+    """นับว่ากี่เรื่องมีรูป มีพิกัด มีทั้งคู่ หรือไม่มีเลย — รูปต้องโหลดลง storage สำเร็จจึงนับ"""
+    row = await get_pool().fetchrow(f"""
+        WITH period_reports AS (
+            SELECT id FROM reports WHERE created_at >= ({_PERIOD_START})
+        ), media AS (
+            SELECT report.id,
+                   EXISTS (
+                       SELECT 1 FROM report_images ri
+                       JOIN images image ON image.id = ri.image_id
+                       WHERE ri.report_id = report.id
+                         AND image.image_key IS NOT NULL
+                         AND btrim(image.image_key) <> ''
+                   ) AS has_image,
+                   EXISTS (
+                       SELECT 1 FROM locations loc
+                       WHERE loc.report_id = report.id
+                         AND loc.lat IS NOT NULL
+                         AND loc.lon IS NOT NULL
+                   ) AS has_location
+            FROM period_reports report
+        )
+        SELECT count(*) AS total,
+               count(*) FILTER (WHERE has_image) AS with_image,
+               count(*) FILTER (WHERE has_location) AS with_location,
+               count(*) FILTER (WHERE has_image AND has_location) AS with_both,
+               count(*) FILTER (WHERE NOT has_image AND NOT has_location) AS without_media
+        FROM media
+    """, days)
+    return dict(row)
+
+
+async def get_report_type_counts(days: int) -> list[dict]:
+    rows = await get_pool().fetch(f"""
+        SELECT coalesce(type, 'unclassified') AS type, count(*) AS count
+        FROM reports
+        WHERE created_at >= ({_PERIOD_START})
+        GROUP BY coalesce(type, 'unclassified')
+        ORDER BY type
+    """, days)
+    return [dict(row) for row in rows]
+
+
+async def get_report_daily_counts(days: int) -> list[dict]:
+    """วันที่ไม่มีเรื่องเข้าต้องมีแถวเป็นศูนย์ด้วย กราฟจะได้ไม่กระโดดข้ามวัน"""
+    rows = await get_pool().fetch(f"""
+        WITH days AS (
+            SELECT generate_series(
+                (now() AT TIME ZONE 'Asia/Bangkok')::date - ($1::int - 1),
+                (now() AT TIME ZONE 'Asia/Bangkok')::date,
+                interval '1 day'
+            )::date AS date
+        ), report_counts AS (
+            SELECT (created_at AT TIME ZONE 'Asia/Bangkok')::date AS date, count(*) AS count
+            FROM reports
+            WHERE created_at >= ({_PERIOD_START})
+            GROUP BY (created_at AT TIME ZONE 'Asia/Bangkok')::date
+        )
+        SELECT days.date, coalesce(report_counts.count, 0) AS count
+        FROM days LEFT JOIN report_counts USING (date)
+        ORDER BY days.date
+    """, days)
+    return [dict(row) for row in rows]
+
+
+async def count_users() -> int:
+    return await get_pool().fetchval("SELECT count(*) FROM users")
+
+
+async def get_users(limit: int, offset: int) -> list[dict]:
+    rows = await get_pool().fetch("""
+        SELECT id, line_user_id, name FROM users
+        ORDER BY name NULLS LAST, id LIMIT $1 OFFSET $2
+    """, limit, offset)
+    return [dict(row) for row in rows]
+
+
+async def get_image_key(image_id: UUID) -> str | None:
+    return await get_pool().fetchval("SELECT image_key FROM images WHERE id = $1", image_id)

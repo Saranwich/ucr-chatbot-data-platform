@@ -1,59 +1,75 @@
+import asyncio
 from uuid import UUID
 
 import httpx
 
-from app.clients import broadcast as client
+from app.clients import line, psql
 from app.schemas.broadcast import BroadcastCreate
+from app.schemas.turn import Turn
+from app.services import chatbot
+
+_running: set[asyncio.Task] = set()
 
 
-async def create_draft(text: str, audience: str, user_ids: list[UUID]) -> dict:
-    broadcast_id = await client.create_draft(text, audience, user_ids)
-    return await client.fetch_broadcast(broadcast_id)
+async def send(
+    text: str, audience: str, user_ids: list[UUID] | None = None, force_send: bool = False
+) -> dict:
+    """ส่งข้อความหาชาวบ้านตามกลุ่มที่เลือก คืนข้อมูลฉบับนั้นทันทีโดยไม่รอยิงครบ
+
+    ตรึงรายชื่อผู้รับลงฐานก่อนยิงเสมอ ล้มกลางทางจะได้รู้ว่าค้างที่ใคร
+    การยิงจริงวิ่งต่อเบื้องหลัง คนเรียกจึงตอบ HTTP ได้ทันทีโดยไม่ต้องรอ 500 คน
+    """
+    payload = BroadcastCreate(text=text, audience=audience, user_ids=user_ids or [])
+    broadcast_id = await psql.save_broadcast(payload.text, payload.audience, payload.user_ids)
+    task = asyncio.create_task(dispatch(broadcast_id, force_send))
+    _running.add(task)
+    task.add_done_callback(_running.discard)
+    return await psql.get_broadcast(broadcast_id)
 
 
-async def request_send(broadcast_id: UUID) -> tuple[dict | None, bool]:
-    existing = await client.fetch_broadcast(broadcast_id)
-    if existing is None:
-        return None, False
-    if existing["status"] != "draft" or not await client.begin_send(broadcast_id):
-        return await client.fetch_broadcast(broadcast_id), False
-    return await client.fetch_broadcast(broadcast_id), True
+async def dispatch(broadcast_id: UUID, force_send: bool = False) -> None:
+    """ยิงทีละคนจนหมดคิว ยิงไม่สำเร็จก็เดินต่อ ไม่ให้คนเดียวค้างทั้งฉบับ
 
+    คนที่พูดกับบอทไปแล้วในรอบที่ยังไม่ปิดถือว่ากำลังคุยอยู่ ปักเป็น skipped ไม่ยิงหา
+    ข้อความประกาศจะได้ไม่แทรกกลางบทสนทนา — เปิดรอบไว้แต่ยังไม่พูดไม่นับ ยังยิงได้ตามปกติ
 
-async def dispatch(broadcast_id: UUID) -> None:
-    broadcast = await client.fetch_broadcast(broadcast_id)
+    force_send ยิงทับคนที่กำลังคุยอยู่ แล้วต่อข้อความเข้ารอบนั้นเลย
+    บอทจะได้เห็นว่าตัวเองพูดอะไรไปตอนชาวบ้านตอบกลับ
+
+    ยิงแล้วไม่รู้ผล (เน็ตหลุด หมดเวลา) ปักเป็น unknown ไม่หยิบมายิงซ้ำเอง
+    เพราะไลน์อาจส่งถึงชาวบ้านไปแล้ว ยิงซ้ำ = เขาได้ข้อความสองรอบ
+    """
+    broadcast = await psql.get_broadcast(broadcast_id)
     if broadcast is None or broadcast["status"] != "sending":
         return
-    while delivery := await client.claim_recipient(broadcast_id):
+    while delivery := await psql.claim_broadcast_recipient(broadcast_id):
+        redis_key = f"session:{delivery['user_id']}"
+        session_id, turns = await chatbot.load_session_from_redis(redis_key)
+        is_talking = any(turn.role == "user" for turn in turns)
+        if is_talking and not force_send:
+            await psql.finish_broadcast_recipient(delivery["id"], "skipped")
+            continue
         try:
-            response_status = await client.push_text(
-                delivery["line_user_id"], broadcast["text"], delivery["retry_key"]
+            response_status = await line.push(
+                delivery["line_user_id"], [broadcast["text"]], delivery["retry_key"]
             )
         except (httpx.TimeoutException, httpx.TransportError) as error:
-            # The request may have reached LINE. Keep it unknown and never blindly claim it again.
-            await client.finish_recipient(delivery["id"], "unknown", error=type(error).__name__)
+            await psql.finish_broadcast_recipient(
+                delivery["id"], "unknown", error=type(error).__name__
+            )
         except Exception as error:
-            await client.finish_recipient(delivery["id"], "unknown", error=type(error).__name__)
+            await psql.finish_broadcast_recipient(
+                delivery["id"], "unknown", error=type(error).__name__
+            )
         else:
             status = "sent" if response_status == 200 else "failed"
-            await client.finish_recipient(delivery["id"], status, response_status=response_status)
-    await client.complete_broadcast(broadcast_id)
-
-
-async def dispatch_auto(
-    text: str, audience: str, user_ids: list[UUID] | None = None
-) -> dict | None:
-    """Internal gated hook for a future automatic trigger.
-
-    Nothing in runtime calls this hook. With the database gate off (the default), it exits
-    before validating, writing a draft, or contacting LINE. When enabled it deliberately
-    uses the same durable draft and delivery path as a manual broadcast.
-    """
-    if not await client.get_auto_enabled():
-        return None
-    payload = BroadcastCreate(text=text, audience=audience, user_ids=user_ids or [])
-    broadcast_id = await client.create_draft(payload.text, payload.audience, payload.user_ids)
-    if not await client.begin_send(broadcast_id):
-        return await client.fetch_broadcast(broadcast_id)
-    await dispatch(broadcast_id)
-    return await client.fetch_broadcast(broadcast_id)
+            if status == "sent" and session_id is not None:
+                await chatbot.save_session_to_redis(
+                    redis_key,
+                    session_id,
+                    turns + [Turn(role="assistant", content_type="text", content=broadcast["text"])],
+                )
+            await psql.finish_broadcast_recipient(
+                delivery["id"], status, response_status=response_status
+            )
+    await psql.complete_broadcast(broadcast_id)

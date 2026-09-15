@@ -6,20 +6,20 @@ from pydantic import BaseModel, Field
 from app.schemas.report import Frequency, ProblemType, ReportStatus, Threat
 
 
-class AdminLocation(BaseModel):
+class ReportLocation(BaseModel):
     id: UUID
     lat: float | None = None
     lon: float | None = None
     address: str | None = None
 
 
-class AdminImage(BaseModel):
+class ReportImage(BaseModel):
     id: UUID
     url: str
     desc: str | None = None
 
 
-class AdminReportSummary(BaseModel):
+class ReportSummary(BaseModel):
     id: UUID
     created_at: datetime
     status: ReportStatus
@@ -30,56 +30,56 @@ class AdminReportSummary(BaseModel):
     effect: str | None = None
     is_has_image: bool | None = None
     is_has_location: bool | None = None
-    locations: list[AdminLocation] = Field(default_factory=list)
-    images: list[AdminImage] = Field(default_factory=list)
+    locations: list[ReportLocation] = Field(default_factory=list)
+    images: list[ReportImage] = Field(default_factory=list)
 
 
-class AdminReportDetail(AdminReportSummary):
+class ReportDetail(ReportSummary):
     session_id: UUID
 
 
-class AdminReportPage(BaseModel):
-    items: list[AdminReportSummary]
+class ReportPage(BaseModel):
+    items: list[ReportSummary]
     total: int
 
 
-class AdminUser(BaseModel):
+class UserSummary(BaseModel):
     id: UUID
     line_user_id: str
     name: str | None = None
 
 
-class AdminUserPage(BaseModel):
-    items: list[AdminUser]
+class UserPage(BaseModel):
+    items: list[UserSummary]
     total: int
 
 
-class TotalStatistic(BaseModel):
+class Total(BaseModel):
     total: int
 
 
-class GroupedStatistic(TotalStatistic):
+class SessionTotal(Total):
     by_status: dict[str, int]
 
 
-class ReportStatistic(TotalStatistic):
+class ReportTotal(Total):
     by_type: dict[str, int]
-    by_day: list["DailyReportStatistic"]
+    by_day: list["DailyReportTotal"]
     with_image: int
     with_location: int
     with_both: int
     without_media: int
 
 
-class DailyReportStatistic(BaseModel):
+class DailyReportTotal(BaseModel):
     date: date
     count: int
 
 
-class AdminStatistics(BaseModel):
+class Statistics(BaseModel):
     period_days: int
-    users: TotalStatistic
-    sessions: GroupedStatistic
-    reports: ReportStatistic
-    images: TotalStatistic
-    locations: TotalStatistic
+    users: Total
+    sessions: SessionTotal
+    reports: ReportTotal
+    images: Total
+    locations: Total

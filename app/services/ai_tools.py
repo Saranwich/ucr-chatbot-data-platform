@@ -36,6 +36,7 @@ class ReportDraft (TypedDict, total=False):
     effect: str
     is_has_image: bool
     is_has_location: bool
+    image_ids: list[str] | None
     location_ids: list[str] | None
 
 
@@ -107,6 +108,8 @@ SET_FINISHED_FLAG_TOOL = {
 
 SET_FINISHED_PROTOCOL = """\
 # กติกาการปิดบทสนทนา (ระบบกำหนด)
+- ป้าย [got image from user: image_id=...] แปลว่าเขาส่งรูป รหัสเป็นของระบบ คุณมองเนื้อหารูปไม่เห็น ห้ามพูดรหัสกลับไป
+- ป้าย [image download failed] แปลว่าได้รับรูปแต่ระบบโหลดไฟล์ไม่ได้ จึงไม่มี image_id ที่ใช้อ้างอิง ห้ามอ้างว่าเห็นรูป
 - ป้าย [got location from user: location_id=...] แปลว่าเขาแชร์พิกัดมา รหัสเป็นของระบบ ห้ามพูดรหัสกลับไป
 - ต้องเรียก set_finished_flag หนึ่งครั้งทุกตาก่อนตอบ
 - ส่ง is_finished=true เมื่อชาวบ้านยืนยันว่าไม่มีเรื่องจะเล่าต่อ ต้องการหยุด หรือกล่าวลาชัดเจน
@@ -308,12 +311,18 @@ async def save_analyse (session_id: UUID, reports: list[ReportDraft]) -> SaveOut
             continue
 
         raw_location_ids = values.pop("location_ids", [])
+        raw_image_ids = values.pop("image_ids", [])
         if raw_location_ids is None:
             raw_location_ids = []
         if not isinstance(raw_location_ids, list):
             await psql.create_and_save_log(
                 PROCESS, f"save_analyse ของ session {session_id} location_ids ต้องเป็นลิสต์"
             )
+            continue
+        if raw_image_ids is None:
+            raw_image_ids = []
+        if not isinstance(raw_image_ids, list):
+            await psql.create_and_save_log(PROCESS, f"save_analyse ของ session {session_id} image_ids ต้องเป็นลิสต์")
             continue
 
         try:
@@ -326,6 +335,19 @@ async def save_analyse (session_id: UUID, reports: list[ReportDraft]) -> SaveOut
             await psql.create_and_save_log(
                 PROCESS, f"save_analyse ของ session {session_id} location_id อ่านไม่ได้ {error}"
             )
+            continue
+
+        try:
+            image_ids: list[UUID] = []
+            for value in raw_image_ids:
+                if not isinstance(value, str):
+                    raise ValueError("image_id ต้องเป็นข้อความ UUID")
+                image_ids.append(UUID(value))
+        except (ValueError, TypeError) as error:
+            await psql.create_and_save_log(PROCESS, f"save_analyse ของ session {session_id} image_id อ่านไม่ได้ {error}")
+            continue
+        if len(set(image_ids)) != len(image_ids):
+            await psql.create_and_save_log(PROCESS, f"save_analyse ของ session {session_id} ใส่ image_id ซ้ำใน report เดียว")
             continue
 
         location_id_set = set(location_ids)
@@ -348,6 +370,11 @@ async def save_analyse (session_id: UUID, reports: list[ReportDraft]) -> SaveOut
                 PROCESS, f"save_analyse ของ session {session_id} อ้างว่ามีพิกัดแต่ไม่ส่ง location_id"
             )
             continue
+        if image_ids:
+            values["is_has_image"] = True
+        elif values.get("is_has_image") is True:
+            await psql.create_and_save_log(PROCESS, f"save_analyse ของ session {session_id} อ้างว่ามีรูปแต่ไม่ส่ง image_id")
+            continue
 
         try:
             report = Report(**{**values, "session_id": session_id, "status": "analyzed"})
@@ -355,12 +382,18 @@ async def save_analyse (session_id: UUID, reports: list[ReportDraft]) -> SaveOut
             await psql.create_and_save_log(PROCESS, f"save_analyse ของ session {session_id} ค่าไม่ผ่าน {error}")
             continue
 
-        if location_ids:
+        if image_ids:
+            saved_report_id = await psql.save_report_with_media(report, location_ids, image_ids)
+        elif location_ids:
+            # คง helper เดิมไว้ให้ caller/test ที่ผูกเฉพาะพิกัดใช้งานต่อได้
             saved_report_id = await psql.save_report_with_locations(report, location_ids)
+        else:
+            saved_report_id = None
+        if location_ids or image_ids:
             if saved_report_id is None:
                 await psql.create_and_save_log(
                     PROCESS,
-                    f"save_analyse ของ session {session_id} อ้าง location ที่ไม่มี พิกัดไม่ครบ อยู่คนละ session หรือชี้คนละ report",
+                    f"save_analyse ของ session {session_id} อ้าง media ที่ไม่มี รูปยังโหลดไม่สำเร็จ อยู่คนละ session หรือชี้ report ที่ใช้ไม่ได้",
                 )
                 continue
         else:
@@ -439,6 +472,15 @@ SAVE_ANALYSE_TOOL = {
                                 "type": ["boolean", "null"],
                                 "description": "true เมื่อ location_ids มีพิกัดที่ผูกกับเรื่องนี้ได้ false=ถามแล้วไม่มี null=ยังไม่รู้",
                             },
+                            "image_ids": {
+                                "type": ["array", "null"],
+                                "items": {"type": "string", "format": "uuid"},
+                                "uniqueItems": True,
+                                "description": (
+                                    "รหัสจากป้าย [got image from user: image_id=...] ที่เป็นของเรื่องนี้แน่ ๆ "
+                                    "รหัสเป็นเพียงตัวอ้างอิงและไม่ได้แปลว่าคุณมองเห็นรูป ไม่มีหรือจับคู่ไม่ได้ให้ส่ง []"
+                                ),
+                            },
                             "location_ids": {
                                 "type": ["array", "null"],
                                 "items": {"type": "string", "format": "uuid"},
@@ -449,7 +491,7 @@ SAVE_ANALYSE_TOOL = {
                                 ),
                             },
                         },
-                        "required": ["location_ids"],
+                        "required": ["image_ids", "location_ids"],
                     },
                 }
             },
@@ -470,6 +512,8 @@ SAVE_ANALYSE_PROTOCOL = """\
 - ไม่มีเรื่องสภาพพื้นที่เลย ก็ยังต้องเรียก โดยส่ง {"reports": []} ห้ามสร้าง report เปล่ามากลบ
 - ห้ามตอบเป็นข้อความเปล่าแทนการเรียก tool ระบบไม่อ่านข้อความ รับเฉพาะ tool call
 - ป้าย [got location from user: location_id=...] มีรหัสพิกัดภายใน ให้ใส่รหัสที่ตรงกับแต่ละเรื่องใน location_ids
+- ป้าย [got image from user: image_id=...] มีรหัสรูปภายใน ให้ใส่รหัสที่ตรงกับแต่ละเรื่องใน image_ids คุณมองเนื้อหารูปไม่เห็น
+- ป้าย [image download failed] หมายถึงได้รับรูปแต่ไฟล์ใช้ไม่ได้ ไม่มี image_id ให้ใส่ใน image_ids
 - ใช้ได้เฉพาะ location_id ที่ปรากฏในบทสนทนาและผูกกับเรื่องนั้นชัดเจน จับคู่ไม่ได้ให้ส่ง [] ห้ามสร้างรหัสเอง
 - ช่องที่ชาวบ้านไม่ได้บอกให้ใส่ null ห้ามเดา และห้ามส่ง session_id, report_id, lat, lon หรือ status
 - ไม่เรียก tool ถือว่าทำงานไม่สำเร็จ ระบบจะสั่งให้อ่านใหม่ทั้งรอบ

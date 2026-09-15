@@ -284,10 +284,9 @@ async def message_text_handler(user: User, session_id: UUID, number: int, messag
 
 
 async def message_image_handler(user: User, session_id: UUID, number: int, message: dict) -> Turn:
-    """เก็บรูปไว้ แล้วบอกโมเดลแค่ว่ามีรูปเข้ามา ไม่ส่งรหัสรูปให้
+    """เก็บรูปไว้ แล้วส่งรหัสภายในให้โมเดลใช้ผูกกับ report
 
-    โมเดลมองรูปไม่เห็นอยู่แล้ว รหัสรูปเลยไม่มีประโยชน์กับมัน มีแต่จะหลอกให้มันพูดถึงรูป
-    ตัวรูปเก็บไว้ให้ ai ที่อ่านภาพมาอ่านทีหลัง
+    รหัสนี้เป็นเพียงป้ายอ้างอิง โมเดลยังมองรูปไม่เห็นและต้องไม่บรรยายสิ่งที่อยู่ในรูป
     โหลดไฟล์ไม่สำเร็จก็ยังเก็บแถวไว้ เพราะ line_image_url ยังพาไปตามเก็บใหม่ได้
     """
     message_id = message.get("id", "")
@@ -308,11 +307,8 @@ async def message_image_handler(user: User, session_id: UUID, number: int, messa
     )
     await psql.save_image(image)
 
-    turn = Turn(
-        role="user",
-        content_type="image",
-        content="[got image from user]",
-    )
+    marker = f"[got image from user: image_id={image.id}]" if image_key else "[image download failed]"
+    turn = Turn(role="user", content_type="image", content=marker)
     print("message_image_handler:", turn, image_key)
     return turn
 

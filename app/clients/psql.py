@@ -174,6 +174,17 @@ async def init_db() -> None:
             created_at     timestamptz NOT NULL
         )
     """)
+    # รูปหนึ่งใบอาจช่วยอธิบายได้มากกว่าหนึ่ง report และ report หนึ่งเรื่องมีได้หลายรูป
+    await get_pool().execute("""
+        CREATE TABLE IF NOT EXISTS report_images (
+            report_id uuid NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+            image_id  uuid NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+            PRIMARY KEY (report_id, image_id)
+        )
+    """)
+    await get_pool().execute("""
+        CREATE INDEX IF NOT EXISTS report_images_image_id ON report_images (image_id)
+    """)
 
     # หนึ่งแถว = ที่เกิดเรื่องหนึ่งจุด มาได้สองแบบ แชร์พิกัดในไลน์ หรือพิมพ์บอกเป็นคำพูด
     # ได้แบบไหนก็เก็บแบบนั้น อีกแบบว่างไว้ ไม่เดาเติมให้กัน — type บอกว่าแถวนี้ได้แบบไหนมา
@@ -445,24 +456,52 @@ async def save_report_with_locations(report: Report, location_ids: list[UUID]) -
     analyzer สองงานแย่งพิกัดไม่ได้ ถ้าเป็น retry ของงานที่เคยเขียนสำเร็จบางส่วน จะใช้ report id เดิม
     และอัปเดตเนื้อหาแทนการสร้างซ้ำ จึงยังจบรอบ retry ได้
     """
-    if not location_ids:
+    return await save_report_with_media(report, location_ids, [])
+
+
+async def save_report_with_media(
+    report: Report, location_ids: list[UUID], image_ids: list[UUID]
+) -> UUID | None:
+    """ตรวจและเขียน report พร้อม links ทั้งหมดใน transaction เดียว
+
+    location ต้องอยู่ session เดียวกัน มีพิกัดครบ และยังคงกติกาว่าผูกได้ report เดียว
+    image ต้องอยู่ session เดียวกันและมี image_key ซึ่งยืนยันว่าโหลดไฟล์ลง storage สำเร็จแล้ว
+    retry ที่มี location เดิมจะนำ report id นั้นกลับมาใช้ รูปเป็น many-to-many จึงใช้ตัดสิน
+    reuse report ไม่ได้ เพราะคนละเรื่องอาจอ้างรูปเดียวกันโดยตั้งใจ
+    """
+    if not location_ids and not image_ids:
         await save_report(report)
         return report.id
 
     async with get_pool().acquire() as connection:
         async with connection.transaction():
-            rows = await connection.fetch("""
-                SELECT location.id, location.report_id, report.session_id AS report_session_id
-                FROM locations AS location
-                LEFT JOIN reports AS report ON report.id = location.report_id
-                WHERE location.id = ANY($1::uuid[])
-                  AND location.session_id = $2
-                  AND location.lat IS NOT NULL
-                  AND location.lon IS NOT NULL
-                FOR UPDATE OF location
-            """, location_ids, report.session_id)
-            if len(rows) != len(location_ids):
-                return None
+            rows = []
+            if location_ids:
+                rows = await connection.fetch("""
+                    SELECT location.id, location.report_id, report.session_id AS report_session_id
+                    FROM locations AS location
+                    LEFT JOIN reports AS report ON report.id = location.report_id
+                    WHERE location.id = ANY($1::uuid[])
+                      AND location.session_id = $2
+                      AND location.lat IS NOT NULL
+                      AND location.lon IS NOT NULL
+                    FOR UPDATE OF location
+                """, location_ids, report.session_id)
+                if len(rows) != len(location_ids):
+                    return None
+
+            image_rows = []
+            if image_ids:
+                image_rows = await connection.fetch("""
+                    SELECT id
+                    FROM images
+                    WHERE id = ANY($1::uuid[])
+                      AND session_id = $2
+                      AND image_key IS NOT NULL
+                    FOR UPDATE
+                """, image_ids, report.session_id)
+                if len(image_rows) != len(image_ids):
+                    return None
 
             existing_report_ids = {row["report_id"] for row in rows if row["report_id"] is not None}
             if len(existing_report_ids) > 1:
@@ -477,14 +516,35 @@ async def save_report_with_locations(report: Report, location_ids: list[UUID]) -
             report_to_save = report if report_id == report.id else report.model_copy(update={"id": report_id})
 
             await _save_report(connection, report_to_save)
-            result = await connection.execute("""
-                UPDATE locations
-                SET report_id = $1
-                WHERE id = ANY($2::uuid[])
-                  AND session_id = $3
-                  AND (report_id IS NULL OR report_id = $1)
-            """, report_id, location_ids, report.session_id)
-            if result != f"UPDATE {len(location_ids)}":
-                raise RuntimeError("จำนวน location ที่ผูกไม่ตรงกับจำนวนที่ตรวจไว้")
+            if location_ids:
+                result = await connection.execute("""
+                    UPDATE locations
+                    SET report_id = $1
+                    WHERE id = ANY($2::uuid[])
+                      AND session_id = $3
+                      AND (report_id IS NULL OR report_id = $1)
+                """, report_id, location_ids, report.session_id)
+                if result != f"UPDATE {len(location_ids)}":
+                    raise RuntimeError("จำนวน location ที่ผูกไม่ตรงกับจำนวนที่ตรวจไว้")
+            if image_ids:
+                await connection.execute("""
+                    INSERT INTO report_images (report_id, image_id)
+                    SELECT $1, unnest($2::uuid[])
+                    ON CONFLICT (report_id, image_id) DO NOTHING
+                """, report_id, image_ids)
 
     return report_id
+
+
+async def get_report_media(report_id: UUID) -> dict[str, list[UUID]]:
+    """คืน id ของรูปและพิกัดที่ผูกกับ report สำหรับชั้น API/admin ไปโหลดรายละเอียดต่อ"""
+    image_rows = await get_pool().fetch(
+        "SELECT image_id FROM report_images WHERE report_id = $1 ORDER BY image_id", report_id
+    )
+    location_rows = await get_pool().fetch(
+        "SELECT id FROM locations WHERE report_id = $1 ORDER BY id", report_id
+    )
+    return {
+        "image_ids": [row["image_id"] for row in image_rows],
+        "location_ids": [row["id"] for row in location_rows],
+    }

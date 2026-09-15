@@ -192,6 +192,49 @@ class CommunicatorReplyTest (unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.chat_with_tools.await_args_list[0].kwargs["tool_choice"], "required")
         self.assertEqual(self.chat_with_tools.await_args_list[1].kwargs["tool_choice"], "none")
 
+    async def test_รอบแรกมีทั้ง_tool_และข้อความ_ใช้เลยไม่ยิงรอบสอง (self):
+        """typhoon เขียนข้อความมาพร้อม tool_calls เป็นส่วนใหญ่ รอบสองไม่มีอะไรให้เพิ่ม"""
+        self.chat_with_tools.side_effect = None
+        self.chat_with_tools.return_value = {
+            "role": "assistant",
+            "content": "น้ำท่วมตรงไหนคะ ช่วยแชร์พิกัดหน่อยได้ไหมคะ",
+            "tool_calls": [self.tool_call_false],
+        }
+
+        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
+
+        self.assertEqual(reply, "น้ำท่วมตรงไหนคะ ช่วยแชร์พิกัดหน่อยได้ไหมคะ")
+        self.assertEqual(tool_calls, [self.tool_call_false])
+        self.assertEqual(self.chat_with_tools.await_count, 1)
+
+    async def test_รอบสองเรียก_tool_ซ้ำแต่มีข้อความ_ยังเอาไปตอบ (self):
+        """ทิ้งข้อความเพราะ tool ซ้ำ = LINE เงียบ ธงจบยึดของรอบแรกพอ"""
+        repeated = {
+            "id": "finish_2",
+            "type": "function",
+            "function": {"name": "set_finished_flag", "arguments": '{"is_finished": true}'},
+        }
+        self.chat_with_tools.side_effect = [
+            {"role": "assistant", "content": None, "tool_calls": [self.tool_call_false]},
+            {"role": "assistant", "content": "ขอบคุณที่เล่าให้ฟังนะคะ", "tool_calls": [repeated]},
+        ]
+
+        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
+
+        self.assertEqual(reply, "ขอบคุณที่เล่าให้ฟังนะคะ")
+        self.assertEqual(tool_calls, [self.tool_call_false])
+
+    async def test_รอบสองเรียก_tool_ซ้ำและไม่มีข้อความ_คืน_None (self):
+        self.chat_with_tools.side_effect = [
+            {"role": "assistant", "content": None, "tool_calls": [self.tool_call_false]},
+            {"role": "assistant", "content": None, "tool_calls": [self.tool_call_false]},
+        ]
+
+        reply, tool_calls, _ = await ai.communicator_reply(CONVERSATION)
+
+        self.assertIsNone(reply)
+        self.assertEqual(tool_calls, [])
+
     async def test_โมเดลไม่ตอบ_ยังคืน_None (self):
         self.chat_with_tools.side_effect = None
         self.chat_with_tools.return_value = None

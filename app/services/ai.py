@@ -27,8 +27,11 @@ async def communicator_reply (session: list[Turn]) -> tuple[str | None, list[dic
     """ถามโมเดลว่าจะตอบอะไร และคืน tool calls ให้ chatbot ลงมือหลังตอบ LINE
 
     คืน config ที่ใช้ยิงรอบนั้นกลับไปด้วย คนเรียกจะได้เก็บลงฐานว่าคำตอบนี้ออกมาจากโมเดลตัวไหน
-    ถ้าโมเดลสั่ง tool ต้องส่งผลจำลองกลับไปให้มันอีกรอบเพื่อเอาข้อความตอบ แต่ยังไม่ลงมือจริงตรงนี้
-    chatbot จะลงมือหลังบันทึกและส่งคำตอบแล้ว ป้องกัน runtime ปิด session แทรกระหว่างสองรอบ
+    ยังไม่ลงมือตาม tool ตรงนี้ chatbot จะลงมือหลังบันทึกและส่งคำตอบแล้ว ป้องกัน runtime ปิด session แทรกกลางทาง
+
+    ปกติจบในรอบเดียว — typhoon เขียนข้อความมาพร้อม tool_calls ก้อนเดียวกันเป็นส่วนใหญ่
+    จะยิงรอบสองต่อเมื่อมันสั่ง tool แล้วปล่อย content ว่าง ซึ่งเป็นรอบที่ขอแค่ข้อความ ไม่เอา tool
+    รอบสองอ่านผลจำลองของ tool ผิดบ่อย (เห็น accepted แล้วนึกว่าชาวบ้านส่งของมาแล้ว) จึงเลี่ยงไว้ก่อน
     """
     config = ai_config.get().communicator
     if config.provider != "typhoon":
@@ -64,52 +67,58 @@ async def communicator_reply (session: list[Turn]) -> tuple[str | None, list[dic
         )
         return None, [], config
 
-    # Typhoon อาจไม่ทำตาม tool_choice=required แต่ยังคืนข้อความที่ใช้ตอบผู้ใช้ได้
-    # อย่าทิ้งข้อความจน LINE เงียบ — รอบนี้ chatbot ถอน is_finished เป็น False ไว้แล้ว
-    # จึงตอบต่อได้อย่างปลอดภัย เพียงแค่ไม่ปิด session ทันทีและปล่อยให้ TTL ปิดตามปกติ
+    # มีข้อความมาแล้วก็ใช้เลย ไม่ว่าจะสั่ง tool มาด้วยหรือไม่ — ข้อความคือของที่ชาวบ้านรอ
+    # ทิ้งเมื่อไหร่ LINE เงียบทันที และเงียบแพงกว่าการไม่ได้ปักธงจบมาก
+    reply = message.get("content")
+    if isinstance(reply, str) and reply.strip():
+        # ไม่มี tool = ธงจบไม่ถูกแตะรอบนี้ ปลอดภัยเพราะ chatbot ถอนเป็น False ไว้ก่อนถามแล้ว
+        # session ไม่ปิดทันทีก็แค่รอ TTL ปิดตามปกติ
+        if not tool_calls:
+            await psql.create_and_save_log(
+                PROCESS,
+                "communicator ไม่เรียก set_finished_flag แต่มีข้อความตอบ ใช้ข้อความนั้นโดยไม่เปลี่ยนธงจบ",
+            )
+        return reply, tool_calls, config
+
     if not tool_calls:
-        reply = message.get("content")
-        if not isinstance(reply, str) or not reply.strip():
-            await psql.create_and_save_log(PROCESS, "communicator ไม่เรียก set_finished_flag และไม่มีข้อความสำหรับตอบผู้ใช้")
-            return None, [], config
-        await psql.create_and_save_log(
-            PROCESS,
-            "communicator ไม่เรียก set_finished_flag แต่มีข้อความตอบ ใช้ข้อความนั้นโดยไม่เปลี่ยนธงจบ",
-        )
-        return reply, [], config
+        await psql.create_and_save_log(PROCESS, "communicator ไม่เรียก set_finished_flag และไม่มีข้อความสำหรับตอบผู้ใช้")
+        return None, [], config
 
-    if tool_calls:
-        tool_messages = []
-        for call in tool_calls:
-            tool_call_id = call.get("id") if isinstance(call, dict) else None
-            if not isinstance(tool_call_id, str) or not tool_call_id:
-                await psql.create_and_save_log(PROCESS, "communicator คืน tool call ที่ไม่มี id")
-                return None, [], config
-            tool_messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": '{"accepted": true, "instruction": "Reply to the user now without another tool call."}',
-            })
+    # เหลือทางเดียว: สั่ง tool มาแต่ไม่เขียนอะไรให้ชาวบ้าน ต้องยิงอีกรอบเอาเฉพาะข้อความ
+    # id ตรวจตรงนี้เพราะใช้แค่ตอนปั้น message รอบนี้ สายที่จบในรอบแรกไม่ต้องมีก็ได้
+    tool_messages = []
+    for call in tool_calls:
+        tool_call_id = call.get("id") if isinstance(call, dict) else None
+        if not isinstance(tool_call_id, str) or not tool_call_id:
+            await psql.create_and_save_log(PROCESS, "communicator คืน tool call ที่ไม่มี id")
+            return None, [], config
+        tool_messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": '{"accepted": true, "instruction": "Reply to the user now without another tool call."}',
+        })
 
-        assistant_message = {
-            "role": "assistant",
-            "content": message.get("content"),
-            "tool_calls": tool_calls,
-        }
-        message = await typhoon.chat_with_tools(
-            [*messages, assistant_message, *tool_messages],
-            [SET_FINISHED_FLAG_TOOL],
-            config.model_name,
-            config.temperature,
-            config.max_output_tokens,
-            tool_choice="none",
-        )
-        if message is None:
-            await psql.create_and_save_log(PROCESS, "communicator ไม่ตอบหลังรับผล tool")
-            return None, [], config
-        if message.get("tool_calls"):
-            await psql.create_and_save_log(PROCESS, "communicator เรียก tool ซ้ำหลังได้รับผลแล้ว")
-            return None, [], config
+    assistant_message = {
+        "role": "assistant",
+        "content": message.get("content"),
+        "tool_calls": tool_calls,
+    }
+    message = await typhoon.chat_with_tools(
+        [*messages, assistant_message, *tool_messages],
+        [SET_FINISHED_FLAG_TOOL],
+        config.model_name,
+        config.temperature,
+        config.max_output_tokens,
+        tool_choice="none",
+    )
+    if message is None:
+        await psql.create_and_save_log(PROCESS, "communicator ไม่ตอบหลังรับผล tool")
+        return None, [], config
+
+    # เรียก tool ซ้ำก็ช่างมัน ของที่ต้องการจากรอบนี้คือข้อความอย่างเดียว
+    # ธงจบกับ quick reply ยึดของรอบแรกเสมอ ตัวซ้ำไม่ได้เห็นอะไรใหม่นอกจากผลจำลองที่เราป้อนเอง
+    if message.get("tool_calls"):
+        await psql.create_and_save_log(PROCESS, "communicator เรียก tool ซ้ำหลังได้รับผลแล้ว ใช้เฉพาะข้อความและยึด tool รอบแรก")
 
     reply = message.get("content")
     if not isinstance(reply, str) or not reply.strip():
